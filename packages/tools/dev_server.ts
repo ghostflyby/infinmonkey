@@ -39,7 +39,7 @@ const MIME: Record<string, string> = {
 
 const sockets = new Set<WebSocket>();
 
-let requestStats = { count: 0, last: "" };
+const requestStats = { count: 0, last: "" };
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 const dirty = new Set<string>();
 

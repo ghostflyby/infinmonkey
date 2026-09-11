@@ -206,12 +206,6 @@ async function elClick(elId: string): Promise<void> {
   }
 }
 
-async function elText(elId: string): Promise<string> {
-  const r = await fetch(`${DRIVER}/session/${sessionId}/element/${elId}/text`);
-  const j = await r.json().catch(() => ({}));
-  return (j?.value ?? "") as string;
-}
-
 // ---- main flow ----
 
 await Deno.mkdir(SHOTS, { recursive: true });
@@ -236,7 +230,7 @@ try {
     return r?.value?.ready ? "ok" : null;
   }, 10000);
 
-  console.log("[e2e] creating session (headless)…");
+  console.log(`[e2e] creating session (${browserLabel ?? kind}, headless)…`);
   const capabilities = kind === "chromium"
     ? {
       alwaysMatch: {
