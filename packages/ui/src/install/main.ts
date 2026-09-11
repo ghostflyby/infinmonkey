@@ -1,7 +1,6 @@
 /** 安装确认页：展示元数据 + 代码预览，确认写入。 */
 import { RUNTIME_NAME } from "@infinmonkey/shared/constants";
 import type { AnyEntry, PendingInstall, ScriptEntry, StyleEntry } from "@infinmonkey/shared/types";
-import { detectKind, parseMeta } from "@infinmonkey/shared/meta";
 import { h, msg } from "../dom.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
