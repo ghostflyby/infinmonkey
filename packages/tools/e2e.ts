@@ -423,11 +423,21 @@ try {
   if (relayReady) {
     const appText = await exec<string>(`return window.__imE2E ? window.__imE2E.app : ""`);
     ok(appText.includes("E2E"), "install page metadata name", appText.slice(0, 60));
-    ok(appText.includes("GM_xmlhttpRequest"), "install page shows grant list", appText.slice(0, 80));
+    ok(
+      appText.includes("GM_xmlhttpRequest"),
+      "install page shows grant list",
+      appText.slice(0, 80),
+    );
     ok(appText.includes("document-end"), "install page shows run-at", appText.slice(0, 80));
-    ok(appText.includes("本地映射"), "install page detects dev server origin", appText.slice(0, 80));
+    ok(
+      appText.includes("本地映射"),
+      "install page detects dev server origin",
+      appText.slice(0, 80),
+    );
     await shot("02-install-page");
-    await exec(`window.__imE2E.src.postMessage({ __infinE2E: true, __infinClickConfirm: true }, "*")`);
+    await exec(
+      `window.__imE2E.src.postMessage({ __infinE2E: true, __infinClickConfirm: true }, "*")`,
+    );
     await sleep(800);
     console.log("  ✓ install clicked (relay)");
   } else {
