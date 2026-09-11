@@ -192,6 +192,10 @@ async function switchTo(handle: string): Promise<void> {
   await wd("POST", `/session/${sessionId}/window`, { handle });
 }
 
+async function currentUrl(): Promise<string> {
+  return await wd<string>("GET", `/session/${sessionId}/url`);
+}
+
 /** Find a tab whose URL contains the given fragment and switch to it. */
 async function switchToUrl(substr: string): Promise<void> {
   for (const h of await handles()) {
