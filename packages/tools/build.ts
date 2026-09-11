@@ -42,6 +42,8 @@ async function copyStatic(to: string) {
     await Deno.mkdir(dirname(dest), { recursive: true });
     await Deno.copyFile(p, dest);
   }
+  // 许可证随包分发
+  await Deno.copyFile(join(ROOT, "LICENSE"), join(to, "LICENSE"));
   // 图标
   const iconDir = join(ROOT, "assets/icons");
   await Deno.mkdir(join(to, "icons"), { recursive: true });

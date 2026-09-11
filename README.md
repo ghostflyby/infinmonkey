@@ -31,11 +31,11 @@
 
 ## Lint 插件与未使用导出检测
 
-- `deno lint` 已接入自制插件（`lint.plugins` → `packages/tools/lint-plugin.ts`）：
-  规则 `no-leaf-exports` 强制 `content/`、`inject/` 叶子 bundle 零导出（它们被 manifest
+- `deno lint` 已接入自制插件（`lint.plugins` → `packages/tools/lint-plugin.ts`）： 规则
+  `no-leaf-exports` 强制 `content/`、`inject/` 叶子 bundle 零导出（它们被 manifest
   直接声明为独立入口，导出只可能是错误或死代码）；
-- 跨文件的未使用导出检测不在 lint 插件能力范围内（插件按文件遍历报告、缺少
-  全部文件处理完的 finalize 钩子），由独立任务承担：`deno task unused`。
+- 跨文件的未使用导出检测不在 lint 插件能力范围内（插件按文件遍历报告、缺少 全部文件处理完的 finalize
+  钩子），由独立任务承担：`deno task unused`。
 
 ## 快速开始
 
@@ -43,23 +43,60 @@
 # 构建（firefox + chrome → dist/<browser>）
 deno task build
 
-# 启动本地映射服务（默认 127.0.0.1:17321， serving examples/）
+# 启动本地映射服务（默认 127.0.0.1:17321，serving examples/）
 deno task devserver --dir ./examples
 
-# 在 Zen 浏览器加载扩展（临时安装，自动重载）
-deno task run:zen
+# 构建 + 在配置的浏览器中以临时方式加载扩展（默认 zen）
+deno task run
+deno task run --browser nightly   # 临时指定
 ```
 
-`run:zen` 通过 `deno run -A npm:web-ext@10.6.0` 驱动 Zen（`/Applications/Zen.app`）。
+## 浏览器配置（本地文件，已 gitignore）
 
-> 注：`deno x` 在本项目配置下无法解析 web-ext 的传递依赖（其缓存安装布局的已知问题）， `deno run`
-> 走常规模块加载器则一切正常，故采用后者。
+解析优先级：`--browser <名>` > 环境变量 `INFIN_BROWSER` > `.browsers.local.json` 的 `default` > 内置
+`zen`。
+
+创建 `.browsers.local.json`（不会被提交）即可指向任意 Firefox 系浏览器：
+
+```json
+{
+  "default": "nightly",
+  "browsers": {
+    "nightly": {
+      "binary": "/Applications/Firefox Nightly.app/Contents/MacOS/firefox",
+      "profile": ".webext/nightly-profile",
+      "args": ["--devtools"]
+    }
+  }
+}
+```
+
+- `profile` 缺省为 `.webext/<名字>-profile`；`args` 经 web-ext 的 `--` 透传给浏览器；
+- `deno run -A packages/tools/browsers.ts` 直接打印解析结果；
+- E2E 遵循同一配置：`deno run -A packages/tools/e2e.ts --browser <名>`；
+- 未安装的路径会给出友好报错并提示检查本地配置。
+
+`run:zen` 等价于 `run --browser zen`。web-ext 通过 `deno run -A npm:web-ext@10.6.0` 调用 （`deno x`
+在本项目配置下无法解析其传递依赖，`deno run` 走常规模块加载器则正常）。
+
+## Chromium 系支持（实验性）
+
+内置 `edge` / `chrome` / `chromium` 条目（kind 自动推断，也可显式声明 `"kind": "chromium"`）：
+
+- **装载**（`deno task run --browser <名>`）：直接以 `--load-extension=<dist/chrome>` 启动浏览器，
+  一次性实例，无 web-ext 式自动重载；
+- **E2E**（`deno run -A packages/tools/e2e.ts --browser <名>`）：走 chromedriver
+  （`.webext/drivers/chromedriver` 优先，否则 PATH）；
+- **限制**：品牌版 Chrome/Edge 稳定通道会忽略 `--load-extension`（官方 2025 起的政策）， 实测 Edge
+  152 确实不装载扩展。要在 Chromium 系上真正开发/跑 E2E，需要无品牌构建 （Chromium 或 Chrome for
+  Testing）+ 同大版本 chromedriver，二者版本精确配对； 本仓库不代下载浏览器，请自行放置后通过
+  `.browsers.local.json` 指向。
 
 ## 验证
 
 ```bash
 deno task test          # 单元测试（元数据解析 / 匹配器 / mozdoc / 版本比较）
-deno run -A tools/e2e.ts  # 端到端：geckodriver 驱动 Zen 无头实例，18 项断言
+deno run -A packages/tools/e2e.ts  # 端到端：geckodriver 驱动 Zen 无头实例，18 项断言
 ```
 
 E2E 覆盖：临时安装扩展 → 安装横幅 → 确认页 → MAIN world 注入 → GM 存储/addStyle/xmlhttpRequest/
@@ -118,3 +155,12 @@ Safari 需在「设置 → 扩展」中手动允许，并注意：Safari 对 `sc
 `clipboardWrite`
 
 - `<all_urls>` 主机权限（跨域请求与全站注入所需，严格 `@connect` 授权控制实际外发）。
+
+## 许可证
+
+本项目以 [MPL-2.0](LICENSE) 发布：文件级 copyleft——扩展本体源码保持开放、修改可追溯，
+同时与全部分发渠道（AMO / Chrome Web Store / iOS・macOS App Store）兼容。
+
+运行时打包的第三方组件 `webextension-polyfill` 同为 MPL-2.0（许可随包内附于 `LICENSE`）；
+构建工具链（Deno、@std/*、web-ext、chromedriver/geckodriver）仅为开发依赖，不随扩展分发。
+`examples/` 下的示例脚本与项目同许可。

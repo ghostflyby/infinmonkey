@@ -5,5 +5,6 @@
       "esnext",
       "deno.window"
     ]
-  }
+  },
+  "license": "MPL-2.0"
 }

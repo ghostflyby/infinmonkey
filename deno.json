@@ -32,12 +32,13 @@
     "build:chrome": "deno run -A packages/tools/build.ts --browser chrome",
     "watch:firefox": "deno run -A --watch=packages tools/build.ts --browser firefox",
     "devserver": "deno run -A packages/tools/dev_server.ts --dir examples",
-    "run:zen": "deno run -A packages/tools/build.ts --browser firefox && mkdir -p .webext/zen-profile && deno run -A npm:web-ext@10.6.0 run --source-dir dist/firefox --firefox-binary /Applications/Zen.app/Contents/MacOS/zen --firefox-profile=.webext/zen-profile --keep-profile-changes",
+    "run:zen": "deno run -A packages/tools/launch.ts --browser zen",
     "lint:ext": "deno run -A packages/tools/build.ts --browser firefox && deno run -A npm:web-ext@10.6.0 lint --source-dir dist/firefox",
     "zip:firefox": "deno run -A packages/tools/build.ts --browser firefox --zip",
     "zip:chrome": "deno run -A packages/tools/build.ts --browser chrome --zip",
     "safari:convert": "deno run -A packages/tools/build.ts --browser chrome && xcrun safari-web-extension-converter dist/chrome --project-location .safari --app-name InfinMonkey --bundle-identifier dev.infinmonkey.extension --no-open",
-    "unused": "deno run -A packages/tools/unused.ts"
+    "unused": "deno run -A packages/tools/unused.ts",
+    "run": "deno run -A packages/tools/launch.ts"
   },
   "workspace": [
     "packages/shared",
@@ -49,3 +50,4 @@
     "packages/tests"
   ]
 }
+

@@ -12,12 +12,28 @@
  * → 用户样式注入。
  */
 import { dirname, fromFileUrl, join } from "@std/path";
+import { cliBrowserName, resolveBrowser } from "./browsers.ts";
 
 const ROOT = join(dirname(fromFileUrl(import.meta.url)), "..", "..");
 const DRIVER = "http://127.0.0.1:4444";
-const ZEN_BIN = "/Applications/Zen.app/Contents/MacOS/zen";
-const PROFILE = join(ROOT, ".webext/e2e-profile");
-const ADDON_DIR = join(ROOT, "dist/firefox");
+// 浏览器经统一解析（--browser / INFIN_BROWSER / .browsers.local.json / 默认 zen）
+const { name: browserLabel, kind, cfg } = await resolveBrowser(cliBrowserName());
+const BROWSER_BIN = cfg.binary;
+const PROFILE = join(
+  ROOT,
+  kind === "chromium" ? ".webext/e2e-chromium-profile" : ".webext/e2e-profile",
+);
+const EXT_DIR = join(ROOT, kind === "chromium" ? "dist/chrome" : "dist/firefox");
+// chromium：.webext/drivers/chromedriver 优先，否则 PATH 上的 chromedriver
+const DRIVER_BIN = kind === "chromium"
+  ? (await Deno.stat(join(ROOT, ".webext/drivers/chromedriver")).then(() =>
+    join(ROOT, ".webext/drivers/chromedriver")
+  ).catch(() => "chromedriver"))
+  : "geckodriver";
+
+function isExtPage(url: string): boolean {
+  return /^[a-z]+-extension:\/\//.test(url);
+}
 const SHOTS = join(ROOT, ".e2e");
 const DEV = "http://127.0.0.1:17321";
 
@@ -152,9 +168,12 @@ await Deno.mkdir(SHOTS, { recursive: true });
 await Deno.remove(PROFILE, { recursive: true }).catch(() => {});
 await Deno.mkdir(PROFILE, { recursive: true });
 
-console.log("[e2e] 启动 geckodriver…");
-const driver = new Deno.Command("geckodriver", {
-  args: ["--port", "4444", "--allow-origins", DRIVER],
+console.log("[e2e] 启动 WebDriver（" + kind + " → " + DRIVER_BIN + "）…");
+const driverArgs = kind === "chromium"
+  ? ["--port=4444"]
+  : ["--port", "4444", "--allow-origins", DRIVER];
+const driver = new Deno.Command(DRIVER_BIN, {
+  args: driverArgs,
   stdout: "null",
   stderr: "null",
 });
@@ -166,13 +185,28 @@ try {
     return r?.value?.ready ? "ok" : null;
   }, 10000);
 
-  console.log("[e2e] 创建会话（Zen 无头）…");
-  const sess = await wd<{ sessionId?: string }>("POST", "/session", {
-    capabilities: {
+  console.log("[e2e] 创建会话（" + browserLabel + " 无头）…");
+  const capabilities = kind === "chromium"
+    ? {
+      alwaysMatch: {
+        browserName: "chrome",
+        "goog:chromeOptions": {
+          binary: BROWSER_BIN,
+          args: [
+            "--headless=new",
+            "--user-data-dir=" + PROFILE,
+            "--load-extension=" + EXT_DIR,
+            "--no-first-run",
+            "--no-default-browser-check",
+          ],
+        },
+      },
+    }
+    : {
       alwaysMatch: {
         browserName: "firefox",
         "moz:firefoxOptions": {
-          binary: ZEN_BIN,
+          binary: BROWSER_BIN,
           args: ["-headless", "-profile", PROFILE],
           prefs: {
             "browser.shell.checkDefaultBrowser": false,
@@ -180,34 +214,37 @@ try {
           },
         },
       },
-    },
-  });
+    };
+  const sess = await wd<{ sessionId?: string }>("POST", "/session", { capabilities });
   sessionId = (sess as unknown as { sessionId: string }).sessionId ?? (sess as unknown as string);
 
-  console.log("[e2e] 临时安装扩展…");
-  const addonId = await wd<string>("POST", `/session/${sessionId}/moz/addon/install`, {
-    path: ADDON_DIR,
-    temporary: true,
-  });
-  console.log(`  addon id = ${addonId}`);
+  let addonId = "chromium-unpacked";
+  if (kind === "firefox") {
+    console.log("[e2e] 临时安装扩展…");
+    addonId = await wd<string>("POST", `/session/${sessionId}/moz/addon/install`, {
+      path: EXT_DIR,
+      temporary: true,
+    });
+    console.log("  addon id = " + addonId);
 
-  // 临时安装的扩展不写入 extensions.json，从 prefs.js 的 extensions.webextensions.uuids 取
-  const readUuidsPref = async (): Promise<Record<string, string> | null> => {
-    try {
-      const prefs = await Deno.readTextFile(join(PROFILE, "prefs.js"));
-      const m = /"extensions\.webextensions\.uuids",\s*"(.*)"\);/.exec(prefs);
-      if (!m) return null;
-      return JSON.parse(m[1].replaceAll('\\"', '"')) as Record<string, string>;
-    } catch {
-      return null;
+    // 临时安装的扩展不写入 extensions.json，从 prefs.js 的 extensions.webextensions.uuids 取
+    const readUuidsPref = async (): Promise<Record<string, string> | null> => {
+      try {
+        const prefs = await Deno.readTextFile(join(PROFILE, "prefs.js"));
+        const m = /"extensions\.webextensions\.uuids",\s*"(.*)"\);/.exec(prefs);
+        if (!m) return null;
+        return JSON.parse(m[1].replaceAll('\\"', '"')) as Record<string, string>;
+      } catch {
+        return null;
+      }
+    };
+    let extUuid = (await readUuidsPref())?.[addonId] ?? null;
+    if (!extUuid) {
+      await go("https://example.com/").catch(() => {});
+      extUuid = await poll(async () => (await readUuidsPref())?.[addonId] ?? null, 20000);
     }
-  };
-  let extUuid = (await readUuidsPref())?.[addonId] ?? null;
-  if (!extUuid) {
-    await go("https://example.com/").catch(() => {});
-    extUuid = await poll(async () => (await readUuidsPref())?.[addonId] ?? null, 20000);
+    ok(!!extUuid, "获取扩展 UUID", "uuid=" + extUuid);
   }
-  ok(!!extUuid, "获取扩展 UUID", `uuid=${extUuid}`);
 
   // ---- 1. 安装横幅 → 安装确认页 → 装入 ----
   console.log("[e2e] 1. 横幅安装 E2E 脚本…");
@@ -230,7 +267,7 @@ try {
     return now.find((hh) => !beforeInstall.includes(hh)) ?? null;
   }, 8000);
   await switchTo(installHandle);
-  await poll(async () => (await currentUrl()).startsWith("moz-extension://"), 8000);
+  await poll(async () => isExtPage(await currentUrl()), 8000);
   await waitText("#app .card h1", 8000);
   const installName = await textOf("#app .card h1");
   ok(installName.includes("E2E 验证脚本"), "安装页元数据名称", installName);
@@ -308,7 +345,7 @@ try {
     return now.find((hh) => !beforeOpt.includes(hh)) ?? null;
   }, 8000);
   await switchTo(optHandle);
-  await poll(async () => (await currentUrl()).startsWith("moz-extension://"), 8000);
+  await poll(async () => isExtPage(await currentUrl()), 8000);
   await waitText("#app .card", 8000);
   const beforeNav = await handles();
   await clickEl(".btns button:nth-child(3)"); // 「管理面板」

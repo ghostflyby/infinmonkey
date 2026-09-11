@@ -8,5 +8,6 @@
   },
   "imports": {
     "@infinmonkey/shared": "workspace:*"
-  }
+  },
+  "license": "MPL-2.0"
 }
