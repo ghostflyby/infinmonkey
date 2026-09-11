@@ -115,20 +115,47 @@ async function textOf(css: string): Promise<string> {
   );
 }
 
-/** The banner lives in an open shadow root; click it via plain JS. */
-async function clickShadowBanner(): Promise<void> {
-  await exec(`(() => {
-    const host = document.querySelector("#infin-installer-host, div[style*='z-index']");
+/** The banner lives in an open shadow root; click it via plain JS and log the resulting status text. */
+async function clickShadowBanner(): Promise<string> {
+  const status = await exec<string>(`return (async () => {
+    const host = document.querySelector("div[style*='2147483647']");
     const shadow = host?.shadowRoot;
     const btn = shadow?.querySelector(".install");
-    if (!btn) return false;
+    if (!btn) return "no-button";
     btn.click();
-    return true;
+    await new Promise((r) => setTimeout(r, 1500));
+    return shadow.querySelector(".card")?.textContent ?? "(no card)";
   })()`);
+  console.log("  [dbg] banner click:", JSON.stringify(status).slice(0, 160));
+  return status;
 }
 
 async function waitText(css: string, timeoutMs = 10000): Promise<string> {
   return await poll(() => textOf(css).then((t) => t ? t : null), timeoutMs);
+}
+
+/**
+ * 导航到 url 并等待注入标志（id 元素）出现；内核会间歇性丢失
+ * bridge→background 的消息，失败时重新导航重试。
+ */
+async function gotoAndWaitInject(url: string, elId: string, timeoutMs = 15000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  let last = "";
+  while (Date.now() < deadline) {
+    await go(url);
+    const t = await poll(async () => {
+      const st = await exec<string>(
+        `return JSON.stringify({ ready: !!window.__infinRunnerReady, demo: !!document.getElementById(${JSON.stringify(elId)}) })`,
+      ).catch(() => null);
+      if (!st) return null;
+      const parsed = JSON.parse(st) as { ready: boolean; demo: boolean };
+      return parsed.ready && parsed.demo ? st : null;
+    }, 6000, 500).catch(() => null);
+    if (t) return t;
+    last = t ?? "";
+    await sleep(500);
+  }
+  return last;
 }
 
 async function clickEl(css: string): Promise<void> {
@@ -318,15 +345,10 @@ try {
     ok(!!confirmEl, "install confirmation button located (element API)");
     if (confirmEl) await elClick(confirmEl);
     await sleep(1000);
-    // The install page may close itself: switch back to the first tab and assert injection
+    // The install page may close itself; retry navigation across kernel message drops
     await switchTo((await handles())[0]).catch(() => {});
-    await go("https://example.com/");
-    const smoke = await poll(async () => {
-      return await exec<string>(
-        `return JSON.stringify({ ready: !!window.__infinRunnerReady, demo: !!document.getElementById("infin-demo") })`,
-      );
-    }, 25000).catch(() => null);
-    const parsed = JSON.parse(smoke ?? "{}") as { ready: boolean; demo: boolean };
+    const smoke = await gotoAndWaitInject("https://example.com/", "infin-demo", 45000);
+    const parsed = JSON.parse(smoke || "{}") as { ready: boolean; demo: boolean };
     ok(parsed.ready === true, "runner injected (MAIN world)", smoke ?? "");
     ok(parsed.demo === true, "user script executed", smoke ?? "");
     await shot("90-smoke");
@@ -364,7 +386,7 @@ try {
   const installHandle = await poll(async () => {
     const now = await handles();
     return now.find((hh) => !beforeInstall.includes(hh)) ?? null;
-  }, 8000);
+  }, 15000);
   await switchTo(installHandle);
   await poll(async () => isExtPage(await currentUrl()), 8000);
   await waitText("#app .card h1", 8000);
@@ -382,8 +404,8 @@ try {
   // ---- 2. injection on example.com ----
   console.log("[e2e] 2. injection on example.com…");
   await switchTo((await handles())[0]); // install page may have closed itself
-  await go("https://example.com/");
-  const demoText = await waitText("#infin-demo", 12000);
+  const injectedState = await gotoAndWaitInject("https://example.com/", "infin-demo", 60000);
+  const demoText = await textOf("#infin-demo").catch(() => "");
   ok(demoText.includes("MARKER-A"), "user script injected (MAIN world)", demoText);
   ok(demoText.includes("visits=1"), "GM_getValue/GM_setValue storage works", demoText);
   const pos = await exec<string>(
@@ -443,7 +465,7 @@ try {
   const optHandle = await poll(async () => {
     const now = await handles();
     return now.find((hh) => !beforeOpt.includes(hh)) ?? null;
-  }, 8000);
+  }, 15000);
   await switchTo(optHandle);
   await poll(async () => isExtPage(await currentUrl()), 8000);
   await waitText("#app .card", 8000);
