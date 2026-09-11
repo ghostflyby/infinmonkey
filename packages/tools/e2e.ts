@@ -337,40 +337,27 @@ try {
       `return document.querySelector("div[style*='2147483647']").shadowRoot.querySelector(".name")?.textContent ?? ""`,
     );
     ok(bannerName.includes("E2E"), "install banner detected (text/html wrap view)", bannerName);
-    // Relay: the install page (opener child) announces itself via postMessage,
-    // then the banner page relays the confirm click — no tab switching needed.
-    await exec(`(() => {
-      window.__imE2E = { ready: false, installed: false, src: null, app: "" };
-      window.addEventListener("message", (ev) => {
-        const d = ev.data || {};
-        if (d.__infinE2EReady) {
-          window.__imE2E.ready = true;
-          window.__imE2E.src = ev.source;
-          window.__imE2E.app = String(d.app || "").slice(0, 150);
-        }
-        if (d.__infinInstalled) window.__imE2E.installed = true;
-      });
-      return true;
-    })()`);
-    const relayReady = await poll(async () => {
-      return await exec<boolean>(`return !!(window.__imE2E && window.__imE2E.ready)`);
-    }, 8000).catch(() => false);
-    ok(relayReady, "install page ready via opener relay");
-    if (relayReady) {
-      await exec(
-        `window.__imE2E.src.postMessage({ __infinE2E: true, __infinClickConfirm: true }, "*")`,
-      );
-    } else {
-      // fallback: element API confirm
-      const confirmEl = await poll(async () => await findEl("#app button.primary"), 8000);
-      ok(!!confirmEl, "install confirmation button located (element API fallback)");
-      if (confirmEl) await elClick(confirmEl);
-    }
+    // Banner click → install page opens in a new tab (extension page)
+    await clickShadowBanner();
+    const installHandle = await poll(async () => {
+      const now = await handles();
+      return now.find((hh) => !beforeInstall.includes(hh)) ?? null;
+    }, 10000);
+    await switchTo(installHandle);
+    await poll(async () => isExtPage(await currentUrl()), 8000);
+    // Confirm via element API (execute is refused on extension pages by official Firefox)
+    const confirmEl = await poll(async () => await findEl("#app button.primary"), 8000);
+    ok(!!confirmEl, "install confirmation button located (element API)");
+    if (confirmEl) await elClick(confirmEl);
     await sleep(1000);
-    // The install page may close itself; retry navigation across kernel message drops
+    // The install page may close itself: switch back and assert injection
     await switchTo((await handles())[0]).catch(() => {});
-    const smoke = await gotoAndWaitInject("https://example.com/", "infin-demo", 45000);
-    const parsed = JSON.parse(smoke || "{}") as { ready: boolean; demo: boolean };
+    const smoke = await poll(async () => {
+      return await exec<string>(
+        `return JSON.stringify({ ready: !!window.__infinRunnerReady, demo: !!document.getElementById("infin-demo") })`,
+      );
+    }, 25000).catch(() => null);
+    const parsed = JSON.parse(smoke ?? "{}") as { ready: boolean; demo: boolean };
     ok(parsed.ready === true, "runner injected (MAIN world)", smoke ?? "");
     ok(parsed.demo === true, "user script executed", smoke ?? "");
     await shot("90-smoke");
@@ -461,7 +448,7 @@ try {
   // ---- 2. injection on example.com ----
   console.log("[e2e] 2. injection on example.com…");
   await switchTo((await handles())[0]); // install page may have closed itself
-  const injectedState = await gotoAndWaitInject("https://example.com/", "infin-demo", 60000);
+  await gotoAndWaitInject("https://example.com/", "infin-demo", 60000);
   const demoText = await textOf("#infin-demo").catch(() => "");
   ok(demoText.includes("MARKER-A"), "user script injected (MAIN world)", demoText);
   ok(demoText.includes("visits=1"), "GM_getValue/GM_setValue storage works", demoText);
