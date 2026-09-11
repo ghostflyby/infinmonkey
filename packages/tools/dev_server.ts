@@ -38,6 +38,8 @@ const MIME: Record<string, string> = {
 };
 
 const sockets = new Set<WebSocket>();
+
+let requestStats = { count: 0, last: "" };
 let reloadTimer: ReturnType<typeof setTimeout> | null = null;
 const dirty = new Set<string>();
 
@@ -142,11 +144,14 @@ function broadcastChanged(files: string[]): void {
 }
 
 function handle(req: Request): Response | Promise<Response> {
+  requestStats.count++;
+  requestStats.last = new URL(req.url).pathname;
   const url = new URL(req.url);
   if (url.pathname === "/__infin/health") {
-    return new Response(JSON.stringify({ ok: true, name: "infinmonkey-dev-server", root: ROOT }), {
-      headers: { "content-type": "application/json", "cache-control": "no-store" },
-    });
+    return new Response(
+      JSON.stringify({ ok: true, root: ROOT, requests: requestStats }),
+      { headers: { "content-type": "application/json", "cache-control": "no-store" } },
+    );
   }
   if (url.pathname === "/__infin/ws") {
     const { socket, response } = Deno.upgradeWebSocket(req);

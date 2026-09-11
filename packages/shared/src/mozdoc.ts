@@ -1,7 +1,7 @@
 /**
- * 解析用户样式中的 @-moz-document 作用域，产出「CSS 块 + 目标条件」。
- * 两种浏览器的注入引擎统一走这里：background 按 URL 条件逐块 insertCSS，
- * 因此 Chromium 上也能获得与 Firefox 原生 @-moz-document 相同的语义。
+ * Parse @-moz-document scopes in user styles into "CSS chunk + target conditions".
+ * Both engines share this path: the background applies chunks conditionally by URL,
+ * giving Chromium the same semantics as native Firefox @-moz-document.
  */
 
 interface TargetSpec {
@@ -120,7 +120,7 @@ export function targetsMatch(targets: TargetSpec[] | null, url: string): boolean
   });
 }
 
-/** 样式的可读目标摘要（UI 用）。 */
+/** Human-readable target summary (for UI). */
 export function describeTargets(targets: TargetSpec[] | null): string {
   if (!targets || targets.length === 0) return "所有网站";
   return targets.map((t) => `${t.type}: ${t.value}`).join(", ");

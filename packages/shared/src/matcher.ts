@@ -1,6 +1,6 @@
 import type { ScriptMeta } from "./types.ts";
 
-/** Chrome match pattern → 正则（对去掉 #hash 后的 URL 全匹配）。 */
+/** Chrome match pattern → RegExp (full match against the URL minus its #hash). */
 export function matchPatternToRegExp(pattern: string): RegExp | null {
   const p = pattern.trim();
   if (!p) return null;
@@ -18,7 +18,7 @@ export function matchPatternToRegExp(pattern: string): RegExp | null {
   } else if (host) {
     re += escapeRe(host);
   }
-  // path：glob 转换；未含通配时宽容处理查询串与结尾斜杠。
+  // path: glob conversion; be lenient about query strings when no wildcard is present.
   let pathRe = globBody(path);
   if (!path.includes("*") && !path.includes("?")) pathRe += "(?:\\?.*)?";
   re += pathRe;
@@ -29,7 +29,7 @@ export function matchPatternToRegExp(pattern: string): RegExp | null {
   }
 }
 
-/** @include/@exclude：glob 或 /regex/ 形式，非锚定（GM 传统语义，对整个 URL 做 test）。 */
+/** @include/@exclude: glob or /regex/ form, unanchored (classic GM semantics, tested against the whole URL). */
 export function globToRegExp(glob: string): RegExp | null {
   const g = glob.trim();
   if (!g) return null;

@@ -26,7 +26,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(
  * 带「超时 + 重试」的消息发送：部分内核（实测 Zen MV3 事件页）会间歇性
  * 丢弃/挂起 runtime 消息，这里通过重试兜底。
  */
-export async function msg<T = unknown>(req: BgRequest, retries = 2, timeoutMs = 6000): Promise<T> {
+export async function msg<T = unknown>(req: BgRequest, retries = 4, timeoutMs = 5000): Promise<T> {
   let lastErr: unknown = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -44,7 +44,7 @@ export async function msg<T = unknown>(req: BgRequest, retries = 2, timeoutMs = 
       // 但为简单起见仅对超时类错误重试。
       if (!String((e as Error)?.message ?? e).includes("消息超时")) throw e;
     }
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 400));
   }
   throw lastErr ?? new Error("消息发送失败");
 }

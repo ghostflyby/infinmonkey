@@ -2,13 +2,14 @@ export function randomId(): string {
   return crypto.randomUUID();
 }
 
-export function fetchWithTimeout(
-  url: string,
-  timeoutMs: number,
-  init?: RequestInit,
-): Promise<Response> {
+/** Runtime object guard: the single narrowing entry for cross-context messages and untrusted input. */
+export function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+export function fetchWithTimeout(url: string, timeoutMs: number, init?: RequestInit): Promise<Response> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(new Error(`请求超时 (${timeoutMs}ms)`)), timeoutMs);
+  const timer = setTimeout(() => ctrl.abort(new Error(`request timed out (${timeoutMs}ms)`)), timeoutMs);
   return fetch(url, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(timer));
 }
 
@@ -27,9 +28,4 @@ export function base64ToBytes(b64: string): Uint8Array {
   const out = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
-}
-
-/** 运行时对象守卫：跨上下文消息与不可信输入的统一收窄入口。 */
-export function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
 }
