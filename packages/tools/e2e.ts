@@ -359,7 +359,15 @@ try {
     }, 25000).catch(() => null);
     const parsed = JSON.parse(smoke ?? "{}") as { ready: boolean; demo: boolean };
     ok(parsed.ready === true, "runner injected (MAIN world)", smoke ?? "");
-    ok(parsed.demo === true, "user script executed", smoke ?? "");
+    let devStats = "stats-unavailable";
+    try {
+      devStats = await fetch(DEV + "/__infin/stats").then((r) => r.json()).then((r) =>
+        JSON.stringify(r.requests)
+      );
+    } catch {
+      // dev server 不可达
+    }
+    ok(parsed.demo === true, "user script executed", `${smoke} devStats=${devStats}`);
     await shot("90-smoke");
     const failed = failures.length > 0;
     console.log(`\n[e2e] result: ${passed} passed, ${failures.length} failed`);
