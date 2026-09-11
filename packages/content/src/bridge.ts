@@ -72,15 +72,20 @@ const fetchTextWith = async (
   url: string,
   timeoutMs = 8000,
 ): Promise<{ text: string; mime: string }> => {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(new Error("content fetch timeout")), timeoutMs);
-    const res = await fetch(url, { cache: "no-store", signal: ctrl.signal });
-    clearTimeout(t);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return { text: await res.text(), mime: res.headers.get("content-type") ?? "text/plain" };
-  } catch {
-    // fall through to the background fetch
+  // https 页面取 http 资源必被 mixed content 拦截（实测表现为挂起到超时而非快速失败），
+  // 跳过必败的内容侧 fetch 直接走后台；内容侧 fetch 还受页面 CORS 约束，后台路径无此限制
+  const mixedContent = location.protocol === "https:" && url.startsWith("http://");
+  if (!mixedContent) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(new Error("content fetch timeout")), timeoutMs);
+      const res = await fetch(url, { cache: "no-store", signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return { text: await res.text(), mime: res.headers.get("content-type") ?? "text/plain" };
+    } catch {
+      // fall through to the background fetch
+    }
   }
   const res = await browser.runtime.sendMessage({ type: "FetchText", url }) as
     | { text: string; mime: string }

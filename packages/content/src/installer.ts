@@ -4,8 +4,7 @@
  */
 import browser from "webextension-polyfill";
 import { detectKind, parseMeta } from "@infinmonkey/shared/meta";
-import type { PendingInstall, ScriptEntry, StyleEntry } from "@infinmonkey/shared/types";
-import { randomId } from "@infinmonkey/shared/util";
+import type { ScriptEntry, Settings, StyleEntry } from "@infinmonkey/shared/types";
 
 interface Found {
   kind: "script" | "style";
@@ -95,75 +94,49 @@ function showBanner(found: Found): void {
     try {
       // 内容脚本直接通过 storage 完成 pending → entry（不依赖 bg 消息通道）
       const st = (await browser.storage.local.get(["scripts", "styles", "settings"])) as {
-        scripts?: {
-          id: string;
-          kind: "script";
-          enabled: boolean;
-          code: string;
-          meta: ReturnType<typeof parseMeta>;
-          source: { type: "dev"; url: string; autoReload: boolean } | { type: "inline" };
-          installedAt: number;
-          updatedAt: number;
-          position: number;
-          connectGrants: string[];
-          values: Record<string, unknown>;
-          devCode?: string;
-        }[];
-        styles?: {
-          id: string;
-          kind: "style";
-          enabled: boolean;
-          code: string;
-          meta: ReturnType<typeof parseMeta>;
-          source: { type: "inline" };
-          installedAt: number;
-          updatedAt: number;
-          position: number;
-        }[];
-        settings?: { devOrigin?: string };
+        scripts?: ScriptEntry[];
+        styles?: StyleEntry[];
+        settings?: Partial<Settings>;
       };
-      const all: Array<{ kind: string; code: string; source: { type: string; url?: string } }> = [
-        ...(st.scripts ?? []),
-        ...(st.styles ?? []),
-      ];
-      const fallbackName = decodeURIComponent(location.pathname.split("/").pop() ?? "");
+      const all: (ScriptEntry | StyleEntry)[] = [...(st.scripts ?? []), ...(st.styles ?? [])];
       const kind = detectKind(found.text);
       const dev = location.href.startsWith("http://127.0.0.1:17321") ||
         location.href.startsWith("http://localhost:17321");
       const dup = all.find((e) =>
         e.kind === kind &&
-        ((location.href && e.source.type === "dev" && "url" in e.source &&
-          e.source.url === location.href) || e.code === found.text)
+        ((e.source.type === "dev" && e.source.url === location.href) || e.code === found.text)
       );
       if (dup) {
         // 更新已有条目
         dup.code = found.text;
-        (dup as Record<string, unknown>).updatedAt = Date.now();
+        dup.updatedAt = Date.now();
       } else {
-        const position = kind === "script" ? 1 : 1;
-        const entry = {
+        const now = Date.now();
+        const common = {
           id: crypto.randomUUID(),
-          kind,
           enabled: true,
           code: found.text,
           meta: parseMeta(found.text, meta.name),
-          position,
+          position: 1,
           source: dev
             ? { type: "dev" as const, url: location.href, autoReload: true }
             : { type: "inline" as const },
-          installedAt: Date.now(),
-          updatedAt: Date.now(),
-          connectGrants: [] as string[],
-          values: {} as Record<string, unknown>,
-          devCode: dev ? found.text : undefined,
+          installedAt: now,
+          updatedAt: now,
         };
         if (kind === "script") {
           const arr = st.scripts ?? [];
-          arr.push(entry as never);
+          arr.push({
+            ...common,
+            kind: "script",
+            connectGrants: [],
+            values: {},
+            devCode: dev ? found.text : undefined,
+          });
           await browser.storage.local.set({ scripts: arr });
         } else {
           const arr = st.styles ?? [];
-          arr.push(entry as never);
+          arr.push({ ...common, kind: "style" });
           await browser.storage.local.set({ styles: arr });
         }
       }

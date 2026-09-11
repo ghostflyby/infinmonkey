@@ -59,7 +59,8 @@ async function toPrepared(
   let code = s.code;
   if (s.source.type === "dev") {
     try {
-      code = (await fetchText(s.source.url)).text;
+      // dev 映射源是本地 dev server，超时收紧（取不到就用缓存代码，注入不应被网络拖死）
+      code = (await fetchText(s.source.url, 3000)).text;
       s.devCode = code;
     } catch (e) {
       console.warn("[InfinMonkey] dev fetch failed, using cached code:", s.source.url, e);
