@@ -1,3 +1,5 @@
+[![CI](https://github.com/ghostflyby/infinmonkey/actions/workflows/ci.yml/badge.svg)](https://github.com/ghostflyby/infinmonkey/actions/workflows/ci.yml)
+
 # 🐵 InfinMonkey
 
 用户脚本（userscript）与用户样式（userstyle）管理器和运行时，目标平台 **Manifest V3**， 支持 Chrome
@@ -164,3 +166,14 @@ Safari 需在「设置 → 扩展」中手动允许，并注意：Safari 对 `sc
 运行时打包的第三方组件 `webextension-polyfill` 同为 MPL-2.0（许可随包内附于 `LICENSE`）；
 构建工具链（Deno、@std/*、web-ext、chromedriver/geckodriver）仅为开发依赖，不随扩展分发。
 `examples/` 下的示例脚本与项目同许可。
+
+## CI
+
+`.github/workflows/ci.yml`，三个 job：
+
+- **static**：fmt / lint / check / 单元测试 / 未使用导出检测 / 构建（dist 作为 artifact）；
+- **e2e-firefox**：ubuntu runner 预装 Firefox + geckodriver，`deno task devserver` 后台 + 全量 E2E；
+- **e2e-chromium**：`setup-chromium.ts` 从 Chrome for Testing 下载钉死 known-good 版本的 Chrome +
+  chromedriver（CI 一次性环境的标准做法，规避品牌版 `--load-extension` 政策），跑同一套 E2E。
+
+失败时上传 `.e2e/` 截图与现场。Safari 需人工在系统设置中启用扩展，暂不进 CI（见上方限制说明）。

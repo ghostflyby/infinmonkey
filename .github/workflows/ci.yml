@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static:
+    name: 静态检查 / 单元测试 / 构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno fmt --check
+      - run: deno lint
+      - run: deno check packages
+      - run: deno test -A
+      - run: deno task unused
+      - run: deno task build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  e2e-firefox:
+    name: E2E（Firefox / geckodriver）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: 写入 CI 浏览器配置
+        run: |
+          cat > .browsers.local.json <<'JSON'
+          { "browsers": { "firefox": { "binary": "/usr/bin/firefox" } } }
+          JSON
+      - name: 构建
+        run: deno run -A packages/tools/build.ts --browser firefox
+      - name: 启动 dev server
+        run: |
+          deno task devserver &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:17321/__infin/health && break; sleep 1; done
+      - name: 运行 E2E
+        run: deno run -A packages/tools/e2e.ts --browser firefox
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-firefox
+          path: .e2e/
+
+  e2e-chromium:
+    name: E2E（Chrome for Testing / chromedriver）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # CI 一次性环境下载钉死版本的 CfT 浏览器 + 驱动（品牌版 Chrome/Edge 会忽略 --load-extension）
+      - name: 装配 CfT Chrome + chromedriver
+        run: deno run -A packages/tools/setup-chromium.ts
+      - name: 构建
+        run: deno run -A packages/tools/build.ts --browser chrome
+      - name: 启动 dev server
+        run: |
+          deno task devserver &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:17321/__infin/health && break; sleep 1; done
+      - name: 运行 E2E
+        run: deno run -A packages/tools/e2e.ts --browser cft
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-chromium
+          path: .e2e/

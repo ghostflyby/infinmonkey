@@ -40,6 +40,8 @@ interface LocalConfig {
 
 const BUILTIN: Record<string, BrowserConfig> = {
   zen: { binary: "/Applications/Zen.app/Contents/MacOS/zen" },
+  // CI Linux runner 的预装 Firefox（macOS 上若路径不存在，选择该条目会得到友好报错）
+  firefox: { binary: "/usr/bin/firefox" },
   edge: {
     kind: "chromium",
     binary: "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
