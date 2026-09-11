@@ -1,0 +1,150 @@
+body {
+  width: 320px;
+  margin: 0;
+  padding: 0 0 4px;
+  font: 13px/1.5 system-ui, -apple-system, sans-serif;
+  background: #17171b;
+  color: #e8e8ea;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #2e2e37;
+}
+header b {
+  font-size: 14px;
+}
+.logo {
+  font-size: 17px;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #555;
+  margin-left: auto;
+}
+.dot.on {
+  background: #7bd88f;
+}
+.url {
+  padding: 5px 14px;
+  color: #9a9aa5;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid #2e2e37;
+}
+section {
+  padding: 8px 8px 2px;
+}
+h3 {
+  margin: 4px 8px 6px;
+  font-size: 11px;
+  color: #9a9aa5;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: 7px;
+}
+.row:hover {
+  background: #232329;
+}
+.row .glyph {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: #232329;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.row .name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row .ver {
+  color: #9a9aa5;
+  font-size: 11px;
+}
+.empty {
+  color: #9a9aa5;
+  font-size: 12px;
+  padding: 4px 10px 8px;
+}
+.switch {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  flex: none;
+  cursor: pointer;
+}
+.switch input {
+  display: none;
+}
+.switch .track {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: #3a3a44;
+  transition: background .15s;
+}
+.switch .knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left .15s;
+}
+.switch input:checked ~ .track {
+  background: #e91e63;
+}
+.switch input:checked ~ .knob {
+  left: 14px;
+}
+.cmd-btn {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  width: calc(100% - 16px);
+  margin: 2px 8px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+}
+.cmd-btn:hover {
+  background: #232329;
+}
+footer {
+  padding: 6px 8px;
+}
+footer button {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 7px 0;
+  border-radius: 7px;
+  background: #232329;
+  font-size: 12.5px;
+}
+footer button:hover {
+  background: #2b2b33;
+}

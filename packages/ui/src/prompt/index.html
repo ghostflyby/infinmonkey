@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>跨域授权 - InfinMonkey</title>
+    <style>
+    body {
+      margin: 0;
+      font: 13.5px/1.6 system-ui, -apple-system, sans-serif;
+      background: #17171b;
+      color: #e8e8ea;
+      padding: 18px 20px;
+    }
+    .title {
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .domain {
+      color: #f5a623;
+      font-family: ui-monospace, Menlo, monospace;
+      word-break: break-all;
+    }
+    .script {
+      color: #e91e63;
+    }
+    .sub {
+      color: #9a9aa5;
+      font-size: 12px;
+      margin-bottom: 16px;
+    }
+    .btns {
+      display: flex;
+      gap: 8px;
+    }
+    button {
+      all: unset;
+      cursor: pointer;
+      flex: 1;
+      text-align: center;
+      padding: 8px 0;
+      border-radius: 7px;
+      font-size: 12.5px;
+      font-weight: 600;
+      background: #232329;
+      border: 1px solid #2e2e37;
+    }
+    button:hover {
+      border-color: #e91e63;
+    }
+    button.allow {
+      background: #e91e63;
+      border-color: #e91e63;
+      color: #fff;
+    }
+    button.allow:hover {
+      background: #f04580;
+    }
+    button.always {
+      color: #f5c26b;
+    }
+    button.deny {
+      color: #ff6b81;
+    }
+    </style>
+  </head>
+  <body>
+    <div class="title">🐵 <span id="script-name" class="script"></span> 想要访问</div>
+    <div class="domain" id="domain"></div>
+    <div
+      class="sub">该域名不在脚本的 @connect 声明内。GM_xmlhttpRequest / GM_download 需要你的授权。</div>
+    <div class="btns">
+      <button id="once" class="allow">仅此一次</button>
+      <button id="always" class="always">永久允许</button>
+      <button id="deny" class="deny">拒绝</button>
+    </div>
+    <script src="main.js"></script>
+  </body>
+</html>

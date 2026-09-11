@@ -1,0 +1,23 @@
+{
+  "name": "@infinmonkey/shared",
+  "version": "0.1.0",
+  "exports": {
+    "./constants": "./src/constants.ts",
+    "./types": "./src/types.ts",
+    "./util": "./src/util.ts",
+    "./version": "./src/version.ts",
+    "./meta": "./src/meta.ts",
+    "./matcher": "./src/matcher.ts",
+    "./mozdoc": "./src/mozdoc.ts",
+    "./protocol": "./src/protocol.ts",
+    "./templates": "./src/templates.ts"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "lib": [
+      "esnext",
+      "webworker",
+      "dom"
+    ]
+  }
+}

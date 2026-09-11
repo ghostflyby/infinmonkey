@@ -1,0 +1,23 @@
+/* ==UserStyle==
+@name         InfinMonkey 演示样式
+@namespace    infinmonkey.demo
+@version      1.1.0
+@description  example.com / example.org 的深色主题（保存后免刷新即时生效）
+@author       infinmonkey
+==/UserStyle== */
+
+@-moz-document domain("example.com"), domain("example.org") {
+  body {
+    background: #17171b !important;
+    color: #e8e8ea !important;
+  }
+  a,
+  a:visited {
+    color: #f04580 !important;
+  }
+  h1,
+  div,
+  p {
+    border-color: #2e2e37 !important;
+  }
+}

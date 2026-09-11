@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "lib": [
+      "esnext",
+      "deno.window"
+    ]
+  },
+  "imports": {
+    "@infinmonkey/shared": "workspace:*"
+  }
+}

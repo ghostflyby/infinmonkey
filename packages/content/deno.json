@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "lib": [
+      "esnext",
+      "dom"
+    ]
+  },
+  "imports": {
+    "@infinmonkey/shared": "workspace:*"
+  }
+}
