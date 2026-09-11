@@ -1,68 +1,104 @@
 /**
- * ISOLATED world 桥：document_start 时向 background 请求本 frame 的脚本与样式载荷，
- * 经 postMessage 交给 MAIN world runner（runner 由 manifest 以 world:"MAIN" 直接声明，
- * 不依赖 background 注入）。同时转发 GM 特权调用与后台事件。
+ * ISOLATED world 桥（自足版）：直接读取扩展 storage（内容脚本可用、可靠），
+ * 在内容侧完成脚本匹配与载荷构建，经 postMessage 交给 MAIN world runner
+ * （runner 由 manifest 以 world:"MAIN" 直接声明）。GM 特权调用仍经消息
+ * 转发给 background。storage.onChanged 时自动重新同步样式。
  */
 import browser from "webextension-polyfill";
-import { PM_TAG } from "@infinmonkey/shared/constants";
-import type { FrameScripts } from "@infinmonkey/shared/protocol";
+import { DEFAULT_DEV_ORIGIN, PM_TAG } from "@infinmonkey/shared/constants";
+import { matchScripts, prepareScripts, type TextFetcher } from "@infinmonkey/shared/inject";
+import { splitUserStyle, targetsMatch } from "@infinmonkey/shared/mozdoc";
+import type { PreparedScript, ScriptEntry, Settings, StyleEntry } from "@infinmonkey/shared/types";
 import { isRecord } from "@infinmonkey/shared/util";
 
-/**
- * 心跳：实测 Zen/Firefox MV3 的事件页在闲置挂起后，对「扩展页面」发起的
- * 消息唤醒不可靠（内容脚本消息则可靠）。有任意标签页存在时以 20s 心跳
- * 维持 background 存活，规避该缺陷。
- */
-setInterval(() => {
-  browser.runtime.sendMessage({ type: "ping" }).catch(() => {});
-}, 20_000);
+const BROADCAST = (m: Record<string, unknown>): void =>
+  window.postMessage({ [PM_TAG]: true, ...m }, "*");
 
-void (async () => {
+let currentUrl = location.href;
+
+async function readStore(): Promise<{
+  scripts: ScriptEntry[];
+  styles: StyleEntry[];
+  devOrigin: string;
+}> {
+  const st = (await browser.storage.local.get(["scripts", "styles", "settings"])) as {
+    scripts?: ScriptEntry[];
+    styles?: StyleEntry[];
+    settings?: { devOrigin?: string };
+  };
+  return {
+    scripts: st.scripts ?? [],
+    styles: st.styles ?? [],
+    devOrigin: st.settings?.devOrigin ?? DEFAULT_DEV_ORIGIN,
+  };
+}
+
+async function deliver(): Promise<void> {
   try {
-    await requestAndDeliver();
-  } catch {
-    // 扩展正在重载等情况
-  }
-})();
+    const { scripts, styles, devOrigin } = await readStore();
+    const url = location.href;
+    const top = window.top === window;
 
-/** 注入关键路径：带重试的消息（内核会间歇性丢消息）。 */
-async function bgSend<T>(req: Record<string, unknown>, retries = 4, timeoutMs = 5000): Promise<T> {
-  let lastErr: unknown = null;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return (await Promise.race([
-        browser.runtime.sendMessage(req) as Promise<T>,
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("bg 超时")), timeoutMs)
-        ),
-      ])) as T;
-    } catch (e) {
-      lastErr = e;
+    const prepared: PreparedScript[] = [];
+    for (const s of matchScripts(scripts, url, top)) {
+      prepared.push(await prepareScripts([s], url, top, fetchTextWith).then((r) => r[0]));
     }
-    await new Promise((r) => setTimeout(r, 400));
+
+    const stylePayload: { id: string; css: string }[] = [];
+    for (const style of styles) {
+      if (!style.enabled) continue;
+      const parts: string[] = [];
+      for (const chunk of splitUserStyle(style.code)) {
+        if (targetsMatch(chunk.targets, url)) parts.push(chunk.css);
+      }
+      if (parts.length) stylePayload.push({ id: style.id, css: parts.join("\n") });
+    }
+
+    BROADCAST({ dir: "load", frameKey: url, scripts: prepared });
+    BROADCAST({ dir: "styles", styles: stylePayload });
+    // 跨世界调试标记（Firefox 隔离世界的 window 属性页面不可见，dataset 共享 ✓）
+    document.documentElement.dataset.infinBridge = JSON.stringify({
+      scripts: prepared.length,
+      styles: stylePayload.length,
+    });
+  } catch (e) {
+    console.warn("[InfinMonkey] deliver failed:", e);
   }
-  throw lastErr ?? new Error("bg 通信失败");
 }
 
-async function requestAndDeliver(): Promise<void> {
-  const res = (await bgSend({
-    type: "GetScriptsForFrame",
-    url: location.href,
-    top: window.top === window,
-  })) as FrameScripts | null;
-  if (!res) return;
-  window.postMessage(
-    { [PM_TAG]: true, dir: "load", frameKey: res.frameKey, scripts: res.scripts },
-    "*",
-  );
-  window.postMessage({ [PM_TAG]: true, dir: "styles", styles: res.styles }, "*");
-}
+/** Content-side fetch; on failure fall back to a background fetch (no CORS limits). */
+const fetchTextWith = async (
+  url: string,
+  timeoutMs = 8000,
+): Promise<{ text: string; mime: string }> => {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(new Error("content fetch timeout")), timeoutMs);
+    const res = await fetch(url, { cache: "no-store", signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return { text: await res.text(), mime: res.headers.get("content-type") ?? "text/plain" };
+  } catch {
+    // fall through to the background fetch
+  }
+  const res = await browser.runtime.sendMessage({ type: "FetchText", url }) as
+    | { text: string; mime: string }
+    | { error: string };
+  if (res && !("error" in res)) return res;
+  throw new Error("error" in (res as object) ? (res as { error: string }).error : "fetch failed");
+};
 
-// 条目变化（增删改/开关/样式保存/dev 推送）→ 只同步样式；脚本变更下次导航生效
+/** storage.onChanged：样式与条目即时同步（免刷新） */
+browser.storage.onChanged.addListener((changes: Record<string, unknown>, area: string) => {
+  if (area !== "local") return;
+  if (!("styles" in changes)) return;
+  void deliver();
+});
+
 browser.runtime.onMessage.addListener((msg: unknown) => {
   if (!isRecord(msg)) return;
   if (msg.type === "entriesChanged") {
-    void requestAndDeliver();
+    void deliver();
     return;
   }
   if (msg.type !== "gmValueChanged" && msg.type !== "gmCallback") return;
@@ -117,5 +153,7 @@ async function setClipboard(text: string, type: string): Promise<void> {
   ta.select();
   const ok = document.execCommand("copy");
   ta.remove();
-  if (!ok) throw new Error("剪贴板写入失败");
+  if (!ok) throw new Error("clipboard write failed");
 }
+
+void deliver();

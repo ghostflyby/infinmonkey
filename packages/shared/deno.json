@@ -10,7 +10,8 @@
     "./matcher": "./src/matcher.ts",
     "./mozdoc": "./src/mozdoc.ts",
     "./protocol": "./src/protocol.ts",
-    "./templates": "./src/templates.ts"
+    "./templates": "./src/templates.ts",
+    "./inject": "./src/inject.ts"
   },
   "compilerOptions": {
     "strict": true,

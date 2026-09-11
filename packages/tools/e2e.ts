@@ -354,7 +354,7 @@ try {
     await switchTo((await handles())[0]).catch(() => {});
     const smoke = await poll(async () => {
       return await exec<string>(
-        `return JSON.stringify({ ready: !!window.__infinRunnerReady, demo: !!document.getElementById("infin-demo") })`,
+        `return JSON.stringify({ ready: !!window.__infinRunnerReady, demo: !!document.getElementById("infin-demo"), bridge: document.documentElement.dataset.infinBridge ?? null })`,
       );
     }, 25000).catch(() => null);
     const parsed = JSON.parse(smoke ?? "{}") as { ready: boolean; demo: boolean };
@@ -411,21 +411,26 @@ try {
     return true;
   })()`);
   const beforeInstall = await handles();
-  await clickShadowBanner();
+  const clickStatus = await clickShadowBanner();
+  console.log("  [dbg] banner click:", JSON.stringify(clickStatus).slice(0, 120));
 
-  // Confirm via the relay when available (chromedriver execute on chrome-extension
-  // pages also works — this path is for kernels where handles() misbehaves)
+  // Confirm: prefer the opener relay (works on both engines when the opener
+  // reference exists), otherwise fall back to the install tab + element click
   const relayReady = await poll(async () => {
     return await exec<boolean>(`return !!(window.__imE2E && window.__imE2E.ready)`);
-  }, 8000).catch(() => false);
-  let installName = "";
-  let grid = "";
+  }, 6000).catch(() => false);
+
   if (relayReady) {
-    installName = await exec<string>(`return window.__imE2E ? window.__imE2E.app : ""`);
-    grid = installName;
-    ok(installName.includes("E2E"), "install page metadata name (relay)", installName.slice(0, 60));
+    const appText = await exec<string>(`return window.__imE2E ? window.__imE2E.app : ""`);
+    ok(appText.includes("E2E"), "install page metadata name", appText.slice(0, 60));
+    ok(appText.includes("GM_xmlhttpRequest"), "install page shows grant list", appText.slice(0, 80));
+    ok(appText.includes("document-end"), "install page shows run-at", appText.slice(0, 80));
+    ok(appText.includes("本地映射"), "install page detects dev server origin", appText.slice(0, 80));
+    await shot("02-install-page");
+    await exec(`window.__imE2E.src.postMessage({ __infinE2E: true, __infinClickConfirm: true }, "*")`);
+    await sleep(800);
+    console.log("  ✓ install clicked (relay)");
   } else {
-    // fallback: switch to the install tab by handle and read the DOM
     const installHandle = await poll(async () => {
       const now = await handles();
       return now.find((hh) => !beforeInstall.includes(hh)) ?? null;
@@ -433,25 +438,17 @@ try {
     await switchTo(installHandle);
     await poll(async () => isExtPage(await currentUrl()), 8000);
     await waitText("#app .card h1", 8000);
-    installName = await textOf("#app .card h1");
-    grid = await textOf("#app .grid");
-  }
-  ok(installName.includes("E2E"), "install page metadata name", installName);
-  ok(grid.includes("GM_xmlhttpRequest"), "install page shows grant list", grid.slice(0, 60));
-  ok(grid.includes("document-end"), "install page shows run-at", grid.slice(0, 60));
-  ok(grid.includes("本地映射"), "install page detects dev server origin", grid.slice(0, 60));
-  await shot("02-install-page");
-
-  // Confirm the install: relay click when possible, else element click on the page
-  if (relayReady) {
-    await exec(
-      `window.__imE2E.src.postMessage({ __infinE2E: true, __infinClickConfirm: true }, "*")`,
-    );
-  } else {
+    const installName = await textOf("#app .card h1");
+    ok(installName.includes("E2E"), "install page metadata name", installName);
+    const grid = await textOf("#app .grid");
+    ok(grid.includes("GM_xmlhttpRequest"), "install page shows grant list");
+    ok(grid.includes("document-end"), "install page shows run-at");
+    ok(grid.includes("本地映射"), "install page detects dev server origin");
+    await shot("02-install-page");
     await clickEl("button.primary");
+    await sleep(800);
+    console.log("  ✓ install clicked (fallback)");
   }
-  await sleep(800);
-  console.log("  ✓ install clicked");
 
   // ---- 2. injection on example.com ----
   console.log("[e2e] 2. injection on example.com…");

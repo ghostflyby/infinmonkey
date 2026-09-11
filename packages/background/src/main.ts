@@ -12,7 +12,7 @@ import type {
 import { compareVersions } from "@infinmonkey/shared/version";
 import { fetchWithTimeout, isRecord } from "@infinmonkey/shared/util";
 import { devClient } from "./devclient.ts";
-import { findTabIdByUrl, prepareForFrame, prepareStyles } from "./injection.ts";
+import { findTabIdByUrl } from "./injection.ts";
 import { abortXhr, handleDownload, handleXhr, resolveConnectAuth } from "./network.ts";
 import {
   createEntry,
@@ -76,12 +76,20 @@ function route(
     // ----- 心跳（内容脚本维持事件页存活） -----
     case "ping":
       return { ok: true };
+    case "FetchText": {
+      const url = String(msg.url ?? "");
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(new Error("bg fetch timeout")), 10000);
+      const out = fetch(url, { cache: "no-store", signal: ctrl.signal })
+        .then(async (r) => ({
+          text: await r.text(),
+          mime: r.headers.get("content-type") ?? "text/plain",
+        }))
+        .catch((e: unknown) => ({ error: String((e as Error).message ?? e) }));
+      return out.finally(() => clearTimeout(timer));
+    }
 
     // ----- 注入链路 -----
-    case "GetScriptsForFrame":
-      return handleGetScriptsForFrame(
-        msg as unknown as { url: string; top: boolean; nonce?: string },
-      );
     case "gmCall":
       return handleGmCall(
         msg as unknown as {
@@ -213,21 +221,6 @@ function route(
 }
 
 const byPosition = (a: { position: number }, b: { position: number }) => a.position - b.position;
-
-async function handleGetScriptsForFrame(msg: { url: string; top: boolean; nonce?: string }) {
-  const { reportError } = await import("./store.ts");
-  try {
-    const url = String(msg.url ?? "");
-    const [scripts, styles] = await Promise.all([
-      prepareForFrame(url, !!msg.top),
-      prepareStyles(url),
-    ]);
-    return { frameKey: String(msg.nonce ?? ""), scripts, styles };
-  } catch (e) {
-    await reportError("GetScriptsForFrame", e);
-    return { frameKey: "err", scripts: [], styles: [] };
-  }
-}
 
 async function handleSetEnabled(id: string, enabled: boolean) {
   const entry = await setEnabled(id, enabled);
