@@ -179,9 +179,13 @@ function route(
 
     // ----- 安装流 -----
     case "StartInstallFromText":
-      return startInstallFromText(msg.code as string, msg.url as string | undefined);
+      return startInstallFromText(
+        msg.code as string,
+        msg.url as string | undefined,
+        sender.tab?.id,
+      );
     case "StartInstallFromUrl":
-      return startInstallFromUrl(msg.url as string);
+      return startInstallFromUrl(msg.url as string, sender.tab?.id);
     case "OpenOptions":
       return browser.runtime.openOptionsPage().then(() => ({ ok: true }));
     case "GetPendingInstall":
@@ -445,20 +449,21 @@ async function handlePopupData(tabId: number): Promise<PopupData> {
 
 // ---- 安装流 ----
 
-async function openInstallPage(pendingId: string): Promise<void> {
+async function openInstallPage(pendingId: string, openerTabId?: number): Promise<void> {
   await browser.tabs.create({
     url: browser.runtime.getURL(`install/index.html?id=${encodeURIComponent(pendingId)}`),
+    ...(openerTabId != null ? { openerTabId } : {}),
   });
 }
 
-async function startInstallFromText(code: string, url?: string) {
+async function startInstallFromText(code: string, url?: string, openerTabId?: number) {
   const kind = detectKind(code);
   const pendingId = await putPendingInstall({ kind, code, url });
-  await openInstallPage(pendingId);
+  await openInstallPage(pendingId, openerTabId);
   return { ok: true };
 }
 
-async function startInstallFromUrl(url: string) {
+async function startInstallFromUrl(url: string, openerTabId?: number) {
   if (!/^https?:\/\//.test(url)) return { ok: false, message: "仅支持 http(s) URL" };
   let code: string;
   try {
@@ -471,7 +476,7 @@ async function startInstallFromUrl(url: string) {
   }
   const kind = detectKind(code);
   const pendingId = await putPendingInstall({ kind, code, url });
-  await openInstallPage(pendingId);
+  await openInstallPage(pendingId, openerTabId);
   return { ok: true };
 }
 

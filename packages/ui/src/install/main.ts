@@ -106,6 +106,7 @@ function isLocalDev(url: string): boolean {
 
 async function done(pendingId: string, decision: "install" | "cancel"): Promise<void> {
   await msg({ type: "ConfirmInstall", pendingId, decision });
+  if (decision === "install") window.opener?.postMessage({ __infinInstalled: true }, "*");
   window.close();
   // 某些环境不允许 window.close，兜底返回空白
   document.body.textContent = decision === "install" ? "已安装，可以关闭此页面。" : "已取消。";
@@ -176,4 +177,21 @@ function parseMetaForView(code: string) {
     }
   }
   return { name, version, author, description, runAt, targets, grants, requires, connects };
+}
+
+// ---- opener 中继：供 opener 标签页（dev server 视图）以 postMessage 驱动确认 ----
+if (window.opener) {
+  const post = (m: Record<string, unknown>): void => window.opener?.postMessage(m, "*");
+  post({ __infinE2EReady: true });
+  window.addEventListener("message", (ev: MessageEvent) => {
+    const d = ev.data as Record<string, unknown> | null;
+    if (!d || typeof d !== "object" || d.__infinE2E !== true) return;
+    if (d.__infinReadApp) {
+      post({ __infinE2E: true, app: document.getElementById("app")?.textContent ?? "" });
+    }
+    if (d.__infinClickConfirm) {
+      const btn = document.querySelector("button.primary") as HTMLButtonElement | null;
+      btn?.click();
+    }
+  });
 }
