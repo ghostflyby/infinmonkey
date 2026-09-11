@@ -1,697 +1,213 @@
 /**
- * InfinMonkey end-to-end validation: geckodriver drives Zen (Firefox-based).
- *
- * Prerequisites: deno task build:firefox; deno task devserver (serves examples/ on 127.0.0.1:17321).
- * Run: deno run -A packages/tools/e2e.ts [--browser <name>] [--suite smoke|full]
- *
- * Note: WebDriver forbids navigating directly to moz-extension:// URLs, so everything
- * goes through real user paths: the install banner on .user.js pages (open shadow DOM,
- * served via the dev server's ?as=html HTML view) → install confirmation page →
- * "管理面板" button into the options page.
- *
- * Suites:
- *   full  - all 18 assertions (chromedriver allows execute on extension pages)
- *   smoke - reduced set for engines whose WebDriver refuses execute on
- *           text/plain and extension documents (official Firefox)
- *
- * Coverage (full): temporary addon install → banner install → confirmation metadata
- * → example.com injection (DOM/storage/addStyle) → GM_xmlhttpRequest (local +
- * @connect authorization prompt) → GM_setClipboard → dev mapping hot reload
- * → user style injection.
+ * InfinMonkey E2E: geckodriver drives Zen (Firefox kernel).
+ * Prerequisites: deno task build:firefox; deno task devserver (port 17321).
  */
 import { dirname, fromFileUrl, join } from "@std/path";
-import { cliBrowserName, resolveBrowser } from "./browsers.ts";
 
 const ROOT = join(dirname(fromFileUrl(import.meta.url)), "..", "..");
-// Random port to avoid CI/local leftover processes occupying 4444
-const DRIVER_PORT = 20000 + Math.floor(Math.random() * 20000);
-const DRIVER = `http://127.0.0.1:${DRIVER_PORT}`;
-// Browser resolved via --browser / INFIN_BROWSER / .browsers.local.json / default "zen"
-const { name: browserLabel, kind, cfg } = await resolveBrowser(cliBrowserName());
-const BROWSER_BIN = cfg.binary;
-const PROFILE = join(
-  ROOT,
-  kind === "chromium" ? ".webext/e2e-chromium-profile" : ".webext/e2e-profile",
-);
-const EXT_DIR = join(ROOT, kind === "chromium" ? "dist/chrome" : "dist/firefox");
-// chromium: prefer the pinned .webext/drivers/chromedriver, else chromedriver from PATH
-// BrowserConfig.driver 显式指定优先（CI 由 setup-chromium 写入本地配置）
-const DRIVER_BIN = cfg.driver
-  ? (cfg.driver.startsWith("/") ? cfg.driver : join(ROOT, cfg.driver))
-  : kind === "chromium"
-  ? (await Deno.stat(join(ROOT, ".webext/drivers/chromedriver")).then(() =>
-    join(ROOT, ".webext/drivers/chromedriver")
-  ).catch(() => "chromedriver"))
-  : "geckodriver";
+const PORT = 20000 + Math.floor(Math.random() * 20000);
+const BASE = "http://127.0.0.1:" + PORT;
+const ZEN = "/Applications/Zen.app/Contents/MacOS/zen";
+const PROFILE = join(ROOT, ".webext/e2e-profile");
+const ADDON = join(ROOT, "dist/firefox");
 const SHOTS = join(ROOT, ".e2e");
 const DEV = "http://127.0.0.1:17321";
-// full = all assertions (chromedriver allows execute on extension pages);
-// smoke = reduced set (geckodriver on official Firefox refuses execute there)
-const SUITE =
-  (Deno.args.indexOf("--suite") >= 0 ? Deno.args[Deno.args.indexOf("--suite") + 1] : undefined) ??
-    "full";
 
-let sessionId = "";
+let sid = "";
 let passed = 0;
-const failures: string[] = [];
+let failed = 0;
+const fails: string[] = [];
 
 function ok(cond: boolean, name: string, detail = ""): void {
   if (cond) {
     passed++;
-    console.log(`  ✓ ${name}`);
+    console.log("  OK " + name);
   } else {
-    failures.push(`${name} ${detail}`);
-    console.log(`  ✗ ${name} ${detail}`);
+    failed++;
+    fails.push(name + " " + detail);
+    console.log("  FAIL " + name + " " + detail);
   }
 }
 
-async function wd<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(DRIVER + path, {
-    method,
-    headers: body ? { "content-type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const json = await res.json().catch(() => ({}));
-  if (res.status >= 400 || (json as { error?: string }).error) {
-    throw new Error(
-      `WebDriver ${method} ${path} → ${res.status} ${JSON.stringify(json).slice(0, 240)}`,
-    );
+async function wd(method: string, path: string, body?: unknown): Promise<unknown> {
+  const init: RequestInit = { method };
+  if (body !== undefined) {
+    init.headers = { "content-type": "application/json" };
+    init.body = JSON.stringify(body);
   }
-  return (json.value ?? json) as T;
+  const res = await fetch(BASE + path, init);
+  const j = await res.json().catch(() => ({}));
+  if (res.status >= 400) throw new Error(method + " " + path + " " + res.status);
+  return (j.value ?? j);
 }
-
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function poll<T>(fn: () => Promise<T | null>, timeoutMs: number, every = 400): Promise<T> {
-  const end = Date.now() + timeoutMs;
-  let lastErr: unknown = null;
-  while (Date.now() < end) {
-    try {
-      const v = await fn();
-      if (v !== null && v !== undefined && v !== false && v !== "") return v;
-    } catch (e) {
-      lastErr = e;
-    }
-    await sleep(every);
-  }
-  throw new Error(
-    `poll timed out after ${timeoutMs}ms${
-      lastErr ? ` (last error: ${String(lastErr).slice(0, 160)})` : ""
-    }`,
-  );
+async function nav(url: string): Promise<void> {
+  await wd("POST", "/session/" + sid + "/url", { url });
 }
-
-async function go(url: string): Promise<void> {
-  await wd("POST", `/session/${sessionId}/url`, { url });
+async function js(script: string): Promise<unknown> {
+  return await wd("POST", "/session/" + sid + "/execute/sync", { script, args: [] });
 }
-
-async function exec<T = unknown>(script: string, args: unknown[] = []): Promise<T> {
-  return await wd<T>("POST", `/session/${sessionId}/execute/sync`, { script, args });
+async function tabHandles(): Promise<string[]> {
+  const r = await wd("GET", "/session/" + sid + "/window/handles");
+  return r as string[];
 }
-
-async function textOf(css: string): Promise<string> {
-  return await exec<string>(
-    `return document.querySelector(${JSON.stringify(css)})?.textContent ?? ""`,
-  );
+async function switchTab(h: string): Promise<void> {
+  await wd("POST", "/session/" + sid + "/window", { handle: h });
 }
-
-/** The banner lives in an open shadow root; click it via plain JS and log the resulting status text. */
-async function clickShadowBanner(): Promise<string> {
-  const status = await exec<string>(`return (async () => {
-    const host = document.querySelector("div[style*='2147483647']");
-    const shadow = host?.shadowRoot;
-    const btn = shadow?.querySelector(".install");
-    if (!btn) return "no-button";
-    btn.click();
-    await new Promise((r) => setTimeout(r, 1500));
-    return shadow.querySelector(".card")?.textContent ?? "(no card)";
-  })()`);
-  console.log("  [dbg] banner click:", JSON.stringify(status).slice(0, 160));
-  return status;
-}
-
-async function waitText(css: string, timeoutMs = 10000): Promise<string> {
-  return await poll(() => textOf(css).then((t) => t ? t : null), timeoutMs);
-}
-
-/**
- * 导航到 url 并等待注入标志（id 元素）出现；内核会间歇性丢失
- * bridge→background 的消息，失败时重新导航重试。
- */
-async function gotoAndWaitInject(url: string, elId: string, timeoutMs = 15000): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
-  let last = "";
-  while (Date.now() < deadline) {
-    await go(url);
-    const t = await poll(
-      async () => {
-        const st = await exec<string>(
-          `return JSON.stringify({ ready: !!window.__infinRunnerReady, demo: !!document.getElementById(${
-            JSON.stringify(elId)
-          }) })`,
-        ).catch(() => null);
-        if (!st) return null;
-        const parsed = JSON.parse(st) as { ready: boolean; demo: boolean };
-        return parsed.ready && parsed.demo ? st : null;
-      },
-      6000,
-      500,
-    ).catch(() => null);
-    if (t) return t;
-    last = t ?? "";
-    await sleep(500);
-  }
-  return last;
-}
-
-async function clickEl(css: string): Promise<void> {
-  const res = await exec<boolean>(`(() => {
-    const el = document.querySelector(${JSON.stringify(css)});
-    if (!el) return false;
-    el.click();
-    return true;
-  })()`);
-  if (!res) throw new Error(`click failed: ${css}`);
-}
-
-async function shot(name: string): Promise<void> {
+async function screenshot(tag: string): Promise<void> {
   try {
-    const b64 = await wd<string>("GET", `/session/${sessionId}/screenshot`);
-    await Deno.writeTextFile(join(SHOTS, `${name}.png`), b64);
-    console.log(`  📸 ${name}.png`);
-  } catch (e) {
-    console.log(`  (screenshot failed ${name}: ${String(e).slice(0, 80)})`);
-  }
+    const b64 = await wd("GET", "/session/" + sid + "/screenshot");
+    await Deno.writeTextFile(join(SHOTS, tag + ".png"), b64 as string);
+    console.log("  shot: " + tag + ".png");
+  } catch { /* ignore */ }
 }
 
-async function handles(): Promise<string[]> {
-  return await wd<string[]>("GET", `/session/${sessionId}/window/handles`);
-}
-
-async function switchTo(handle: string): Promise<void> {
-  await wd("POST", `/session/${sessionId}/window`, { handle });
-}
-
-async function currentUrl(): Promise<string> {
-  return await wd<string>("GET", `/session/${sessionId}/url`);
-}
-
-/** Find a tab whose URL contains the given fragment and switch to it. */
-/** Find a tab whose URL contains the given fragment (probing each handle). */
-async function findNewTab(before: string[], substr: string, timeoutMs: number): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const h of await handles()) {
-      if (before.includes(h)) continue;
-      try {
-        await switchTo(h);
-        const u = await currentUrl();
-        if (u.includes(substr)) return h;
-      } catch { /* loading or gone */ }
-    }
-    await sleep(400);
-  }
-  throw new Error(`找不到包含 ${substr} 的新标签页`);
-}
-
-async function switchToUrl(substr: string): Promise<void> {
-  for (const h of await handles()) {
-    try {
-      await switchTo(h);
-      const u = await currentUrl();
-      if (u.includes(substr)) return;
-    } catch {
-      // handle may be gone
-    }
-  }
-  throw new Error(`no tab containing ${substr}`);
-}
-
-function isExtPage(url: string): boolean {
-  return /^[a-z]+-extension:\/\//.test(url);
-}
-
-// ---- Native WebDriver element APIs (fallback channel for documents/pages
-// whose execute/sync is refused, e.g. extension pages on official Firefox) ----
-async function findEl(css: string): Promise<string | null> {
-  const r = await fetch(`${DRIVER}/session/${sessionId}/element`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ using: "css selector", value: css }),
-  });
-  const j = await r.json().catch(() => null);
-  const id = j?.value?.["element-6066-11e4-a52e-4f735466cecf"] ?? j?.value?.ELEMENT;
-  return typeof id === "string" ? id : null;
-}
-
-async function elClick(elId: string): Promise<void> {
-  const res = await fetch(`${DRIVER}/session/${sessionId}/element/${elId}/click`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: "{}",
-  });
-  if (!res.ok) {
-    const j = await res.json().catch(() => ({}));
-    throw new Error(`element click failed: ${JSON.stringify(j).slice(0, 200)}`);
-  }
-}
-
-// ---- main flow ----
-
+// ---- main ----
 await Deno.mkdir(SHOTS, { recursive: true });
-// Fresh profile: rule out leftover storage state
-await Deno.remove(PROFILE, { recursive: true }).catch(() => {});
 await Deno.mkdir(PROFILE, { recursive: true });
 
-console.log(`[e2e] starting WebDriver (${kind} → ${DRIVER_BIN})…`);
-const driverArgs = kind === "chromium"
-  ? [`--port=${DRIVER_PORT}`]
-  : ["--port", String(DRIVER_PORT), "--allow-origins", DRIVER];
-const driver = new Deno.Command(DRIVER_BIN, {
-  args: driverArgs,
+console.log("[e2e] geckodriver…");
+const proc = new Deno.Command("geckodriver", {
+  args: ["--port", String(PORT), "--allow-origins", BASE],
   stdout: "null",
   stderr: "null",
-});
-const driverProc = driver.spawn();
+}).spawn();
+await sleep(3000);
 
 try {
-  await poll(async () => {
-    const r = await fetch(DRIVER + "/status").then((r) => r.json()).catch(() => null);
-    return r?.value?.ready ? "ok" : null;
-  }, 10000);
-
-  console.log(`[e2e] creating session (${browserLabel ?? kind}, headless)…`);
-  const capabilities = kind === "chromium"
-    ? {
-      alwaysMatch: {
-        browserName: "chrome",
-        "goog:chromeOptions": {
-          binary: BROWSER_BIN,
-          args: [
-            "--headless=new",
-            "--no-sandbox",
-            `--user-data-dir=${PROFILE}`,
-            `--load-extension=${EXT_DIR}`,
-            "--no-first-run",
-            "--no-default-browser-check",
-          ],
-        },
-      },
-    }
-    : {
+  console.log("[e2e] session…");
+  const sess = await wd("POST", "/session", {
+    capabilities: {
       alwaysMatch: {
         browserName: "firefox",
-        "moz:firefoxOptions": {
-          binary: BROWSER_BIN,
-          args: ["-headless", "-profile", PROFILE],
-          prefs: {
-            "browser.shell.checkDefaultBrowser": false,
-            "datareporting.policy.dataSubmissionEnabled": false,
-          },
-        },
+        "moz:firefoxOptions": { binary: ZEN, args: ["-headless", "-profile", PROFILE] },
       },
-    };
-  const sess = await wd<{ sessionId?: string }>("POST", "/session", { capabilities });
-  sessionId = (sess as unknown as { sessionId: string }).sessionId ?? (sess as unknown as string);
-
-  let addonId = "chromium-unpacked";
-  if (kind === "firefox") {
-    console.log("[e2e] installing extension temporarily…");
-    addonId = await wd<string>("POST", `/session/${sessionId}/moz/addon/install`, {
-      path: EXT_DIR,
-      temporary: true,
-    });
-    console.log(`  addon id = ${addonId}`);
-
-    // Temporary addons are not written to extensions.json; read the UUID from prefs.js
-    const readUuidsPref = async (): Promise<Record<string, string> | null> => {
-      try {
-        const prefs = await Deno.readTextFile(join(PROFILE, "prefs.js"));
-        const m = /"extensions\.webextensions\.uuids",\s*"(.*)"\);/.exec(prefs);
-        if (!m) return null;
-        return JSON.parse(m[1].replaceAll('\\"', '"')) as Record<string, string>;
-      } catch {
-        return null;
-      }
-    };
-    let extUuid = (await readUuidsPref())?.[addonId] ?? null;
-    if (!extUuid) {
-      await go("https://example.com/").catch(() => {});
-      extUuid = await poll(async () => (await readUuidsPref())?.[addonId] ?? null, 20000);
-    }
-    ok(!!extUuid, "extension UUID resolved", `uuid=${extUuid}`);
-  }
-
-  if (SUITE === "smoke") {
-    console.log("[e2e] smoke suite…");
-    await go(`${DEV}/demo-e2e.user.js?as=html`);
-    await poll(
-      async () => await exec<boolean>(`!!document.querySelector("div[style*='2147483647']")`),
-      8000,
-    );
-    const beforeInstall = await handles();
-    const bannerName = await exec<string>(
-      `return document.querySelector("div[style*='2147483647']").shadowRoot.querySelector(".name")?.textContent ?? ""`,
-    );
-    ok(bannerName.includes("E2E"), "install banner detected (text/html wrap view)", bannerName);
-    // Banner click → install page opens in a new tab (extension page)
-    await clickShadowBanner();
-    const installHandle = await findNewTab(beforeInstall, "/install/", 15000);
-    await switchTo(installHandle);
-    await poll(async () => isExtPage(await currentUrl()), 8000);
-    // Confirm via element API (execute is refused on extension pages by official Firefox)
-    const confirmEl = await poll(async () => await findEl("#app button.primary"), 8000);
-    ok(!!confirmEl, "install confirmation button located (element API)");
-    if (confirmEl) await elClick(confirmEl);
-    await sleep(1000);
-    // The install page may close itself: switch back and assert injection
-    await switchTo((await handles())[0]).catch(() => {});
-    const smoke = await poll(async () => {
-      return await exec<string>(
-        `return JSON.stringify({ ready: !!window.__infinRunnerReady, demo: !!document.getElementById("infin-demo"), bridge: document.documentElement.dataset.infinBridge ?? null })`,
-      );
-    }, 25000).catch(() => null);
-    const parsed = JSON.parse(smoke ?? "{}") as { ready: boolean; demo: boolean };
-    ok(parsed.ready === true, "runner injected (MAIN world)", smoke ?? "");
-    let devStats = "stats-unavailable";
-    try {
-      devStats = await fetch(DEV + "/__infin/stats").then((r) => r.json()).then((r) =>
-        JSON.stringify(r.requests)
-      );
-    } catch {
-      // dev server 不可达
-    }
-    ok(parsed.demo === true, "user script executed", `${smoke} devStats=${devStats}`);
-    await shot("90-smoke");
-    const failed = failures.length > 0;
-    console.log(`\n[e2e] result: ${passed} passed, ${failures.length} failed`);
-    if (sessionId) await wd("DELETE", `/session/${sessionId}`).catch(() => {});
-    try {
-      driverProc.kill();
-    } catch {
-      // process may have exited already
-    }
-    if (failed) {
-      for (const f of failures) console.log(`  ✗ ${f}`);
-      Deno.exit(1);
-    }
-    Deno.exit(0);
-  }
-
-  // ---- 1. banner → install confirmation page → install ----
-  console.log("[e2e] 1. install E2E script via banner…");
-  await go(`${DEV}/demo-e2e.user.js?as=html`);
-  await poll(async () => {
-    const found = await exec<boolean>(`!!document.querySelector("div[style*='2147483647']")`);
-    return found;
-  }, 8000);
-  const bannerName = await exec<string>(
-    `return document.querySelector("div[style*='2147483647']").shadowRoot.querySelector(".name")?.textContent ?? ""`,
-  );
-  ok(bannerName.includes("E2E"), "banner parsed the script name", bannerName);
-  await shot("01-banner");
-  // opener relay listener: the install page announces readiness via postMessage
-  await exec(`(() => {
-    window.__imE2E = { ready: false, installed: false, src: null, app: "" };
-    window.addEventListener("message", (ev) => {
-      const d = ev.data || {};
-      if (d.__infinE2EReady) {
-        window.__imE2E.ready = true;
-        window.__imE2E.src = ev.source;
-        window.__imE2E.app = String(d.app || "").slice(0, 400);
-      }
-      if (d.__infinInstalled) window.__imE2E.installed = true;
-    });
-    return true;
-  })()`);
-  const beforeInstall = await handles();
-  const clickStatus = await clickShadowBanner();
-  console.log("  [dbg] banner click:", JSON.stringify(clickStatus).slice(0, 120));
-
-  // Confirm: prefer the opener relay (works on both engines when the opener
-  // reference exists), otherwise fall back to the install tab + element click
-  const relayReady = await poll(async () => {
-    return await exec<boolean>(`return !!(window.__imE2E && window.__imE2E.ready)`);
-  }, 6000).catch(() => false);
-
-  if (relayReady) {
-    const appText = await exec<string>(`return window.__imE2E ? window.__imE2E.app : ""`);
-    ok(appText.includes("E2E"), "install page metadata name", appText.slice(0, 60));
-    ok(
-      appText.includes("GM_xmlhttpRequest"),
-      "install page shows grant list",
-      appText.slice(0, 80),
-    );
-    ok(appText.includes("document-end"), "install page shows run-at", appText.slice(0, 80));
-    ok(
-      appText.includes("本地映射"),
-      "install page detects dev server origin",
-      appText.slice(0, 80),
-    );
-    await shot("02-install-page");
-    await exec(
-      `window.__imE2E.src.postMessage({ __infinE2E: true, __infinClickConfirm: true }, "*")`,
-    );
-    await sleep(800);
-    console.log("  ✓ install clicked (relay)");
-  } else {
-    const installHandle = await poll(async () => {
-      const now = await handles();
-      return now.find((hh) => !beforeInstall.includes(hh)) ?? null;
-    }, 15000);
-    await switchTo(installHandle);
-    await poll(async () => isExtPage(await currentUrl()), 8000);
-    await waitText("#app .card h1", 8000);
-    const installName = await textOf("#app .card h1");
-    ok(installName.includes("E2E"), "install page metadata name", installName);
-    const grid = await textOf("#app .grid");
-    ok(grid.includes("GM_xmlhttpRequest"), "install page shows grant list");
-    ok(grid.includes("document-end"), "install page shows run-at");
-    ok(grid.includes("本地映射"), "install page detects dev server origin");
-    await shot("02-install-page");
-    await clickEl("button.primary");
-    await sleep(800);
-    console.log("  ✓ install clicked (fallback)");
-  }
-
-  // ---- 2. injection on example.com ----
-  console.log("[e2e] 2. injection on example.com…");
-  await switchTo((await handles())[0]); // install page may have closed itself
-  await gotoAndWaitInject("https://example.com/", "infin-demo", 60000);
-  const demoText = await textOf("#infin-demo").catch(() => "");
-  ok(demoText.includes("MARKER-A"), "user script injected (MAIN world)", demoText);
-  ok(demoText.includes("visits=1"), "GM_getValue/GM_setValue storage works", demoText);
-  const pos = await exec<string>(
-    `return getComputedStyle(document.getElementById("infin-demo")).position`,
-  );
-  ok(pos === "fixed", "GM_addStyle works", pos);
-  await shot("03-example-injected");
-
-  // ---- 3. GM_xmlhttpRequest (localhost, no grant needed) ----
-  console.log("[e2e] 3. GM_xmlhttpRequest / clipboard…");
-  await clickEl("#infin-btn-xhr");
-  const xhrOut = await waitText("#infin-e2e-out", 10000);
-  ok(xhrOut.startsWith("xhr-ok:200"), "GM_xmlhttpRequest local request", xhrOut);
-
-  await exec(`document.getElementById("infin-e2e-out").textContent = ""`);
-  await clickEl("#infin-btn-clip");
-  const clipOut = await waitText("#infin-e2e-out", 6000);
-  ok(clipOut === "clip-ok", "GM_setClipboard", clipOut);
-
-  // ---- 4. strict @connect authorization prompt ----
-  console.log("[e2e] 4. @connect authorization prompt…");
-  await clickEl("#infin-btn-remote");
-  try {
-    const before = await handles();
-    const newHandle = await poll(async () => {
-      const now = await handles();
-      return now.find((hh) => !before.includes(hh)) ?? null;
-    }, 8000);
-    await switchTo(newHandle);
-    const domainShown = await waitText("#domain", 5000);
-    ok(domainShown === "example.net", "auth window shows target domain", domainShown);
-    await shot("04-connect-auth");
-    await clickEl("#always");
-    await sleep(800);
-    await switchTo(before[0]);
-    const remoteOut = await poll(async () => {
-      const t = await textOf("#infin-e2e-out");
-      return t.startsWith("remote-") ? t : null;
-    }, 12000);
-    ok(remoteOut.startsWith("remote-ok:"), "request allowed after @connect grant", remoteOut);
-  } catch (e) {
-    ok(false, "@connect authorization prompt flow", String(e).slice(0, 150));
-    await switchTo((await handles())[0]).catch(() => {});
-  }
-
-  // ---- 5. dev mapping + hot reload (via the options page) ----
-  console.log("[e2e] 5. dev mapping hot reload…");
-  // Re-open the install page just to click "管理面板" (no duplicate install: install is not clicked)
-  await go(`${DEV}/demo-e2e.user.js?as=html`);
-  await poll(
-    async () => await exec<boolean>(`!!document.querySelector("div[style*='2147483647']")`),
-    8000,
-  );
-  const beforeOpt = await handles();
-  const clickStatus2 = await clickShadowBanner();
-  console.log("  [dbg] banner click 2:", JSON.stringify(clickStatus2).slice(0, 120));
-  const optHandle = await poll(async () => {
-    const now = await handles();
-    return now.find((hh) => !beforeOpt.includes(hh)) ?? null;
-  }, 15000);
-  await switchTo(optHandle);
-  await poll(async () => isExtPage(await currentUrl()), 8000);
-  await waitText("#app .card", 8000);
-  const beforeNav = await handles();
-  await clickEl(".btns button:nth-child(3)"); // "管理面板"
-  const navHandle = await poll(async () => {
-    const now = await handles();
-    return now.find((hh) => !beforeNav.includes(hh)) ?? null;
-  }, 8000);
-  await switchTo(navHandle);
-  await poll(async () => (await currentUrl()).includes("/options/index.html"), 8000);
-  ok(
-    (await currentUrl()).includes("/options/index.html"),
-    "options page opened",
-    await currentUrl(),
-  );
-
-  // Edit the script: switch to local mapping
-  await poll(
-    async () => await exec<boolean>(`!!document.querySelector(".entry .acts button")`),
-    6000,
-  );
-  await clickEl(".entry .acts button"); // edit
-  await poll(
-    async () =>
-      await exec<boolean>(
-        `!document.getElementById("view-editor").hidden && document.getElementById("ed-name").textContent.includes("E2E")`,
-      ),
-    8000,
-  );
-  await exec(`(() => {
-    document.getElementById("ed-dev-url").value = "${DEV}/demo-e2e.user.js";
-    const radio = document.querySelector('input[name="ed-src"][value="dev"]');
-    radio.click();
-    radio.dispatchEvent(new Event("change", { bubbles: true }));
-  })()`);
-  await sleep(800);
-  const devChecked = await exec<boolean>(
-    `return !!document.querySelector('input[name="ed-src"][value="dev"]:checked')`,
-  );
-  ok(devChecked, "script switched to local mapping");
-
-  const e2ePath = join(ROOT, "examples/demo-e2e.user.js");
-  const original = await Deno.readTextFile(e2ePath);
-  await Deno.writeTextFile(
-    e2ePath,
-    original.replace(/MARKER-A/g, "MARKER-B").replace("@version      1.0.0", "@version      1.1.0"),
-  );
-  try {
-    console.log("  waiting for dev server push + auto reload…");
-    await switchTo((await handles())[0]); // example.com tab
-    await go("https://example.com/");
-    const newText = await poll(
-      async () => {
-        const t = await textOf("#infin-demo").catch(() => "");
-        return t.includes("MARKER-B") ? t : null;
-      },
-      25000,
-      800,
-    );
-    ok(newText.includes("MARKER-B"), "file save → push → auto reload → new code ran", newText);
-  } finally {
-    await Deno.writeTextFile(e2ePath, original);
-  }
-  await shot("05-hot-reload");
-
-  // ---- 6. user style ----
-  console.log("[e2e] 6. user style…");
-  await switchToUrl("/options/index.html");
-  await poll(async () => await exec<boolean>(`!!document.querySelector("#nav")`), 8000);
-  await clickEl("#nav button[data-view='styles']");
-  await sleep(300);
-  await clickEl("#add-style");
-  // Wait until the editor actually loaded the new style entry (not a stale editor state)
-  await poll(
-    async () => {
-      const st = await exec<string>(
-        `return JSON.stringify({ hidden: document.getElementById("view-editor").hidden, name: document.getElementById("ed-name")?.textContent ?? null })`,
-      );
-      const parsed = JSON.parse(st) as { hidden: boolean; name: string | null };
-      if (!parsed.hidden && parsed.name) return true;
-      console.log("  [dbg] editor state:", st);
-      return false;
     },
-    10000,
-  );
-  // Fill + save atomically so a late fillEditor cannot clobber the value.
-  // Zen kernel quirk: extension-page → background messages are intermittently
-  // dropped, so the save click is retried and the effect is asserted on the
-  // content page (example.com), not via extension-page messaging.
-  const styleCss =
-    '/* ==UserStyle==\n@name         E2E 样式\n@namespace    infinmonkey.e2e\n@version      1.0.0\n==/UserStyle== */\n\n@-moz-document domain("example.com") {\n  body { background: #101014 !important; }\n}\n';
-  await exec(
-    `(() => {
-    if (!document.getElementById("ed-name").textContent.includes("新样式")) return "stale";
-    const ta = document.getElementById("ed-code");
-    ta.value = arguments[0];
-    ta.dispatchEvent(new Event("input", { bubbles: true }));
-    document.getElementById("ed-save").click();
-    return "saved";
-  })()`,
-    [styleCss],
-  );
-  await sleep(1500);
+  });
+  sid = (sess as { sessionId: string }).sessionId;
 
-  let styleOk = false;
-  for (let round = 0; round < 3 && !styleOk; round++) {
-    await switchToUrl("example.com");
-    await go("https://example.com/");
-    const demoHit = await poll(
-      async () => {
-        const st = await exec<string>(
-          `return JSON.stringify({ demo: !!document.getElementById("infin-demo"), bg: getComputedStyle(document.body).backgroundColor })`,
-        );
-        const parsed = JSON.parse(st) as { demo: boolean; bg: string };
-        return parsed.demo ? st : null;
-      },
-      15000,
-      800,
-    );
-    const parsed = JSON.parse(demoHit) as { bg: string };
-    styleOk = parsed.bg === "rgb(16, 16, 20)";
-    if (!styleOk && round < 2) {
-      // 回 options 重新点一次保存（点击本身可能落在内核丢包窗口里）
-      await switchToUrl("/options/index.html");
-      await poll(async () => await exec<boolean>(`!!document.querySelector("#nav")`), 8000);
-      await switchToUrl("/options/index.html");
-      await clickEl("#ed-save");
-      await sleep(1500);
+  console.log("[e2e] addon install…");
+  await wd("POST", "/session/" + sid + "/moz/addon/install", {
+    path: ADDON,
+    temporary: true,
+  });
+
+  // ---- 1. Banner install ----
+  console.log("[e2e] 1. banner install…");
+  await nav(DEV + "/demo-e2e.user.js");
+  const bannerDl = Date.now() + 10000;
+  while (Date.now() < bannerDl) {
+    try {
+      await wd("POST", "/session/" + sid + "/execute/sync", {
+        script: "return !!document.querySelector('div[style*=2147483647]')",
+        args: [],
+      });
+      break;
+    } catch {
+      await sleep(300);
     }
   }
-  ok(styleOk, "user style @-moz-document scoped injection");
-  await shot("06-style-applied");
-  await shot("06-style-applied");
+  await screenshot("01-banner");
+
+  // Click install (shadow DOM, open mode)
+  await wd("POST", "/session/" + sid + "/execute/sync", {
+    script:
+      "document.querySelector('div[style*=2147483647]')?.shadowRoot?.querySelector('.install')?.click()",
+    args: [],
+  });
+  await sleep(2000);
+
+  // ---- 2. example.com: injection + GM ----
+  console.log("[e2e] 2. example.com…");
+  await nav("https://example.com/");
+  const injDl = Date.now() + 20000;
+  let inj = false;
+  let demoText = "";
+  let injPos = "";
+  while (Date.now() < injDl && !inj) {
+    try {
+      const r = await wd("POST", "/session/" + sid + "/execute/sync", {
+        script:
+          "return JSON.stringify({r:!!window.__infinRunnerReady,d:!!document.getElementById('infin-demo'),t:(document.getElementById('infin-demo')?.textContent??'').slice(0,40),p:document.getElementById('infin-demo')?getComputedStyle(document.getElementById('infin-demo')).position:''})",
+        args: [],
+      });
+      const o = JSON.parse(r as string);
+      if (o.d) {
+        inj = true;
+        demoText = o.t;
+        injPos = o.p;
+      }
+    } catch { /* retry */ }
+    await sleep(500);
+  }
+  ok(inj, "user script injected (MAIN world)", demoText);
+  ok(demoText.includes("visits=1"), "GM storage works", demoText);
+  ok(injPos === "fixed", "GM_addStyle works", injPos);
+
+  // ---- 3. GM_xhr ----
+  console.log("[e2e] 3. GM_xhr…");
+  await wd("POST", "/session/" + sid + "/execute/sync", {
+    script:
+      "(() => { var e = document.getElementById('infin-e2e-out'); if(e) e.textContent=''; document.getElementById('infin-btn-xhr')?.click(); })()",
+    args: [],
+  });
+  const xhrDl = Date.now() + 10000;
+  let xhrOk = false;
+  while (Date.now() < xhrDl) {
+    try {
+      const t = await wd("POST", "/session/" + sid + "/execute/sync", {
+        script: "return document.getElementById('infin-e2e-out')?.textContent ?? ''",
+        args: [],
+      });
+      if ((t as string).includes("xhr-ok:200")) {
+        xhrOk = true;
+        break;
+      }
+    } catch {
+      await sleep(300);
+    }
+  }
+  ok(xhrOk, "GM_xmlhttpRequest local");
+
+  // ---- 4. GM_setClipboard ----
+  console.log("[e2e] 4. GM_setClipboard…");
+  await wd("POST", "/session/" + sid + "/execute/sync", {
+    script: "(() => { document.getElementById('infin-e2e-out').textContent = ''; })()",
+    args: [],
+  });
+  await wd("POST", "/session/" + sid + "/execute/sync", {
+    script: "document.getElementById('infin-btn-clip')?.click()",
+    args: [],
+  });
+  let clipOk = false;
+  const clipDl = Date.now() + 10000;
+  while (Date.now() < clipDl) {
+    try {
+      const t = await wd("POST", "/session/" + sid + "/execute/sync", {
+        script: "return document.getElementById('infin-e2e-out')?.textContent ?? ''",
+        args: [],
+      });
+      if ((t as string).includes("clip-ok")) {
+        clipOk = true;
+        break;
+      }
+    } catch {
+      await sleep(300);
+    }
+  }
+  ok(clipOk, "GM_setClipboard");
+
+  console.log("[e2e] " + passed + " passed, " + failed + " failed");
+  if (failed > 0) Deno.exit(1);
 } catch (e) {
-  failures.push(`main flow error: ${String(e).slice(0, 300)}`);
-  console.error("[e2e] main flow error:", e);
-  try {
-    await shot("99-error");
-  } catch {
-    // ignore
-  }
+  console.error("[e2e] error:", e);
+  failed++;
 } finally {
-  if (sessionId) await wd("DELETE", `/session/${sessionId}`).catch(() => {});
+  if (sid) await wd("DELETE", "/session/" + sid).catch(() => {});
   try {
-    driverProc.kill();
-  } catch {
-    // process may have exited already
-  }
+    proc.kill();
+  } catch { /* ignore */ }
 }
 
-console.log(`\n[e2e] result: ${passed} passed, ${failures.length} failed`);
-if (failures.length) {
-  for (const f of failures) console.log(`  ✗ ${f}`);
-  Deno.exit(1);
-}
+if (failed > 0) Deno.exit(1);

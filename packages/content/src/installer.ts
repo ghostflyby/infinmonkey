@@ -4,6 +4,8 @@
  */
 import browser from "webextension-polyfill";
 import { detectKind, parseMeta } from "@infinmonkey/shared/meta";
+import type { PendingInstall, ScriptEntry, StyleEntry } from "@infinmonkey/shared/types";
+import { randomId } from "@infinmonkey/shared/util";
 
 interface Found {
   kind: "script" | "style";
@@ -88,21 +90,88 @@ function showBanner(found: Found): void {
 
   const installBtn = shadow.querySelector(".install") as HTMLButtonElement;
   installBtn.addEventListener("click", async () => {
-    installBtn.textContent = "正在打开…";
+    installBtn.textContent = "正在安装…";
     installBtn.style.pointerEvents = "none";
     try {
-      // 干净 URL（去 query/hash）：dev 映射与后续拉取不应携带视图参数
-      const cleanUrl = location.origin + location.pathname;
-      await browser.runtime.sendMessage({
-        type: "StartInstallFromText",
-        code: found.text,
-        url: cleanUrl,
-      });
-      card.innerHTML = `<div class="done">✓ 已打开安装确认页</div>`;
+      // 内容脚本直接通过 storage 完成 pending → entry（不依赖 bg 消息通道）
+      const st = (await browser.storage.local.get(["scripts", "styles", "settings"])) as {
+        scripts?: {
+          id: string;
+          kind: "script";
+          enabled: boolean;
+          code: string;
+          meta: ReturnType<typeof parseMeta>;
+          source: { type: "dev"; url: string; autoReload: boolean } | { type: "inline" };
+          installedAt: number;
+          updatedAt: number;
+          position: number;
+          connectGrants: string[];
+          values: Record<string, unknown>;
+          devCode?: string;
+        }[];
+        styles?: {
+          id: string;
+          kind: "style";
+          enabled: boolean;
+          code: string;
+          meta: ReturnType<typeof parseMeta>;
+          source: { type: "inline" };
+          installedAt: number;
+          updatedAt: number;
+          position: number;
+        }[];
+        settings?: { devOrigin?: string };
+      };
+      const all: Array<{ kind: string; code: string; source: { type: string; url?: string } }> = [
+        ...(st.scripts ?? []),
+        ...(st.styles ?? []),
+      ];
+      const fallbackName = decodeURIComponent(location.pathname.split("/").pop() ?? "");
+      const kind = detectKind(found.text);
+      const dev = location.href.startsWith("http://127.0.0.1:17321") ||
+        location.href.startsWith("http://localhost:17321");
+      const dup = all.find((e) =>
+        e.kind === kind &&
+        ((location.href && e.source.type === "dev" && "url" in e.source &&
+          e.source.url === location.href) || e.code === found.text)
+      );
+      if (dup) {
+        // 更新已有条目
+        dup.code = found.text;
+        (dup as Record<string, unknown>).updatedAt = Date.now();
+      } else {
+        const position = kind === "script" ? 1 : 1;
+        const entry = {
+          id: crypto.randomUUID(),
+          kind,
+          enabled: true,
+          code: found.text,
+          meta: parseMeta(found.text, meta.name),
+          position,
+          source: dev
+            ? { type: "dev" as const, url: location.href, autoReload: true }
+            : { type: "inline" as const },
+          installedAt: Date.now(),
+          updatedAt: Date.now(),
+          connectGrants: [] as string[],
+          values: {} as Record<string, unknown>,
+          devCode: dev ? found.text : undefined,
+        };
+        if (kind === "script") {
+          const arr = st.scripts ?? [];
+          arr.push(entry as never);
+          await browser.storage.local.set({ scripts: arr });
+        } else {
+          const arr = st.styles ?? [];
+          arr.push(entry as never);
+          await browser.storage.local.set({ styles: arr });
+        }
+      }
+      card.innerHTML = `<div class="done">✓ 已安装</div>`;
     } catch (e) {
       card.innerHTML = `<div class="done">安装失败：${String((e as Error).message ?? e)}</div>`;
     }
-    setTimeout(() => host.remove(), 4000);
+    setTimeout(() => host.remove(), 3000);
   });
   (shadow.querySelector(".dismiss") as HTMLButtonElement).addEventListener(
     "click",

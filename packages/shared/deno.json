@@ -11,7 +11,8 @@
     "./mozdoc": "./src/mozdoc.ts",
     "./protocol": "./src/protocol.ts",
     "./templates": "./src/templates.ts",
-    "./inject": "./src/inject.ts"
+    "./inject": "./src/inject.ts",
+    "./confirm": "./src/confirm.ts"
   },
   "compilerOptions": {
     "strict": true,
