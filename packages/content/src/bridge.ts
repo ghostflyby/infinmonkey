@@ -26,7 +26,7 @@ void (async () => {
 })();
 
 /** 注入关键路径：带重试的消息（内核会间歇性丢消息）。 */
-async function bgSend<T>(req: Record<string, unknown>, retries = 2, timeoutMs = 4000): Promise<T> {
+async function bgSend<T>(req: Record<string, unknown>, retries = 4, timeoutMs = 5000): Promise<T> {
   let lastErr: unknown = null;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -39,7 +39,7 @@ async function bgSend<T>(req: Record<string, unknown>, retries = 2, timeoutMs = 
     } catch (e) {
       lastErr = e;
     }
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 400));
   }
   throw lastErr ?? new Error("bg 通信失败");
 }

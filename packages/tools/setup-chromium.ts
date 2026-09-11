@@ -52,7 +52,7 @@ await download(picked.chrome, chromeZip);
 new Deno.Command("unzip", { args: ["-oq", chromeZip, "-d", BROWSERS] }).outputSync();
 Deno.removeSync(chromeZip);
 
-// chromedriver
+// chromedriver（zip 内有平台内层目录：chromedriver-<platform>/chromedriver）
 const driverZip = join(ROOT, ".webext/drivers/chromedriver.zip");
 await download(picked.driver, driverZip);
 new Deno.Command("unzip", { args: ["-oq", driverZip, "-d", DRIVERS] }).outputSync();
@@ -65,7 +65,7 @@ const binary = platform.startsWith("mac")
     "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
   )
   : join(BROWSERS, "chrome-linux64/chrome");
-const driver = join(DRIVERS, "chromedriver");
+const driver = join(DRIVERS, `chromedriver-${platform}`, "chromedriver");
 for (const f of [binary, driver]) {
   await Deno.chmod(f, 0o755).catch(() => {});
   await Deno.stat(f);

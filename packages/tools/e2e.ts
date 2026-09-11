@@ -248,7 +248,7 @@ try {
 
   // ---- 1. 安装横幅 → 安装确认页 → 装入 ----
   console.log("[e2e] 1. 横幅安装 E2E 脚本…");
-  await go(`${DEV}/demo-e2e.user.js`);
+  await go(`${DEV}/demo-e2e.user.js?as=html`);
   await poll(async () => {
     const found = await exec<boolean>(`!!document.querySelector("div[style*='2147483647']")`);
     return found;
@@ -333,7 +333,7 @@ try {
   // ---- 5. dev 映射 + 热更新（走 options 面板） ----
   console.log("[e2e] 5. dev 映射热更新…");
   // 重新拉起安装页只为点「管理面板」（不会重复安装：不点安装按钮）
-  await go(`${DEV}/demo-e2e.user.js`);
+  await go(`${DEV}/demo-e2e.user.js?as=html`);
   await poll(
     async () => await exec<boolean>(`!!document.querySelector("div[style*='2147483647']")`),
     8000,

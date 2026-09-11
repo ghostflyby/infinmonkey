@@ -67,11 +67,21 @@ function safePath(urlPath: string): string | null {
   return p === "" ? null : p;
 }
 
-async function serveFile(path: string): Promise<Response> {
+async function serveFile(path: string, asHtml = false): Promise<Response> {
   const full = resolve(ROOT, path);
   if (!full.startsWith(ROOT)) return new Response("Forbidden", { status: 403 });
   const stat = await Deno.stat(full).catch(() => null);
   if (!stat?.isFile) return new Response("Not Found", { status: 404 });
+  // ?as=html：以 text/html 包裹源码文本（供 WebDriver 在官方 Firefox 上自动化，
+  // 其对 text/plain 文档拒绝 execute；安装器按 .user.js/.css 路径识别该视图）
+  if (asHtml) {
+    const text = await Deno.readTextFile(full);
+    const escaped = text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    return new Response(
+      `<!doctype html><meta charset="utf-8"><title>${path}</title><pre style="white-space:pre-wrap">${escaped}</pre>`,
+      { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } },
+    );
+  }
   const body = await Deno.readFile(full);
   return new Response(body, {
     headers: {
@@ -148,7 +158,10 @@ function handle(req: Request): Response | Promise<Response> {
   if (url.pathname === "/") return indexPage();
   const rel = safePath(url.pathname);
   if (!rel) return new Response("Bad Request", { status: 400 });
-  return serveFile(rel);
+  // 仅真实导航（Accept: text/html）返回包裹视图；扩展后台的 fetch（Accept: */*）拿原始代码
+  const wantsHtml = url.searchParams.get("as") === "html" &&
+    (req.headers.get("accept") ?? "").includes("text/html");
+  return serveFile(rel, wantsHtml);
 }
 
 function startWatch(): void {

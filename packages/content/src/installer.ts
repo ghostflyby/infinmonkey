@@ -12,8 +12,11 @@ interface Found {
 
 function detect(): Found | null {
   const ct = (document as unknown as { contentType?: string }).contentType ?? "";
-  // 浏览器都不会执行「顶层导航到的」JS 文件，会以文本展示；greasyfork 等站点用 text/plain
-  const okType = ct.startsWith("text/plain") || ct.includes("javascript");
+  // 浏览器都不会执行「顶层导航到的」JS 文件，会以文本展示；greasyfork 等站点用 text/plain。
+  // text/html 仅在路径本身是 .user.js/.user.css 时放行（dev server 的 ?as=html 包裹视图，
+  // 供 WebDriver 在官方 Firefox 上自动化——其对 text/plain 文档拒绝 execute）。
+  const wrapView = ct.startsWith("text/html") && /\.user\.(js|css)$/.test(location.pathname);
+  const okType = ct.startsWith("text/plain") || ct.includes("javascript") || wrapView;
   if (ct && !okType) return null;
   if (window.top !== window) return null;
   const text = document.body?.innerText ?? document.body?.textContent ?? "";
@@ -88,10 +91,12 @@ function showBanner(found: Found): void {
     installBtn.textContent = "正在打开…";
     installBtn.style.pointerEvents = "none";
     try {
+      // 干净 URL（去 query/hash）：dev 映射与后续拉取不应携带视图参数
+      const cleanUrl = location.origin + location.pathname;
       await browser.runtime.sendMessage({
         type: "StartInstallFromText",
         code: found.text,
-        url: location.href,
+        url: cleanUrl,
       });
       card.innerHTML = `<div class="done">✓ 已打开安装确认页</div>`;
     } catch (e) {
