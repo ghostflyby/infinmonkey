@@ -331,7 +331,7 @@ try {
     ok(parsed.demo === true, "user script executed", smoke ?? "");
     await shot("90-smoke");
     const failed = failures.length > 0;
-    console.log(`\n[e2e] result: ${passed} passed, ${failed} failed`);
+    console.log(`\n[e2e] result: ${passed} passed, ${failures.length} failed`);
     if (sessionId) await wd("DELETE", `/session/${sessionId}`).catch(() => {});
     try {
       driverProc.kill();
@@ -438,7 +438,8 @@ try {
     8000,
   );
   const beforeOpt = await handles();
-  await clickShadowBanner();
+  const clickStatus2 = await clickShadowBanner();
+  console.log("  [dbg] banner click 2:", JSON.stringify(clickStatus2).slice(0, 120));
   const optHandle = await poll(async () => {
     const now = await handles();
     return now.find((hh) => !beforeOpt.includes(hh)) ?? null;
