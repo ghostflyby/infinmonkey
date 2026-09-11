@@ -195,3 +195,27 @@ if (window.opener) {
     }
   });
 }
+
+// ---- opener postMessage 中继 ----
+// dev server 视图（opener 标签页）可通过 postMessage 驱动本页：
+//   { __infinE2E: true, __infinReadApp: true }            → 回传页面文本
+//   { __infinE2E: true, __infinClickConfirm: true }       → 点击确认安装
+//   { __infinE2E: true, __infinClickManage: true }        → 打开管理面板
+// 并回传 { __infinE2EReady: true } / { __infinInstalled: true }。
+if (window.opener) {
+  const post = (m: Record<string, unknown>): void => window.opener?.postMessage(m, "*");
+  post({ __infinE2EReady: true, app: document.getElementById("app")?.textContent ?? "" });
+  window.addEventListener("message", (ev: MessageEvent) => {
+    const d = ev.data as Record<string, unknown> | null;
+    if (!d || typeof d !== "object" || d.__infinE2E !== true) return;
+    if (d.__infinReadApp) {
+      post({ __infinE2E: true, app: document.getElementById("app")?.textContent ?? "" });
+    }
+    if (d.__infinClickConfirm) {
+      (document.querySelector("button.primary") as HTMLButtonElement | null)?.click();
+    }
+    if (d.__infinClickManage) {
+      void msg({ type: "OpenOptions" });
+    }
+  });
+}

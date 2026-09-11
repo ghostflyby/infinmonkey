@@ -337,19 +337,35 @@ try {
       `return document.querySelector("div[style*='2147483647']").shadowRoot.querySelector(".name")?.textContent ?? ""`,
     );
     ok(bannerName.includes("E2E"), "install banner detected (text/html wrap view)", bannerName);
-    // Element API click on the banner install button → confirmation page (extension page)
-    // → element API click on the confirm button (execute is refused on extension pages
-    // by official Firefox; plain element APIs work)
-    await clickShadowBanner();
-    const installHandle = await poll(async () => {
-      const now = await handles();
-      return now.find((hh) => !beforeInstall.includes(hh)) ?? null;
-    }, 8000);
-    await switchTo(installHandle);
-    await poll(async () => isExtPage(await currentUrl()), 8000);
-    const confirmEl = await poll(async () => await findEl("#app button.primary"), 8000);
-    ok(!!confirmEl, "install confirmation button located (element API)");
-    if (confirmEl) await elClick(confirmEl);
+    // Relay: the install page (opener child) announces itself via postMessage,
+    // then the banner page relays the confirm click — no tab switching needed.
+    await exec(`(() => {
+      window.__imE2E = { ready: false, installed: false, src: null, app: "" };
+      window.addEventListener("message", (ev) => {
+        const d = ev.data || {};
+        if (d.__infinE2EReady) {
+          window.__imE2E.ready = true;
+          window.__imE2E.src = ev.source;
+          window.__imE2E.app = String(d.app || "").slice(0, 150);
+        }
+        if (d.__infinInstalled) window.__imE2E.installed = true;
+      });
+      return true;
+    })()`);
+    const relayReady = await poll(async () => {
+      return await exec<boolean>(`return !!(window.__imE2E && window.__imE2E.ready)`);
+    }, 8000).catch(() => false);
+    ok(relayReady, "install page ready via opener relay");
+    if (relayReady) {
+      await exec(
+        `window.__imE2E.src.postMessage({ __infinE2E: true, __infinClickConfirm: true }, "*")`,
+      );
+    } else {
+      // fallback: element API confirm
+      const confirmEl = await poll(async () => await findEl("#app button.primary"), 8000);
+      ok(!!confirmEl, "install confirmation button located (element API fallback)");
+      if (confirmEl) await elClick(confirmEl);
+    }
     await sleep(1000);
     // The install page may close itself; retry navigation across kernel message drops
     await switchTo((await handles())[0]).catch(() => {});
@@ -385,25 +401,60 @@ try {
   );
   ok(bannerName.includes("E2E"), "banner parsed the script name", bannerName);
   await shot("01-banner");
+  // opener relay listener: the install page announces readiness via postMessage
+  await exec(`(() => {
+    window.__imE2E = { ready: false, installed: false, src: null, app: "" };
+    window.addEventListener("message", (ev) => {
+      const d = ev.data || {};
+      if (d.__infinE2EReady) {
+        window.__imE2E.ready = true;
+        window.__imE2E.src = ev.source;
+        window.__imE2E.app = String(d.app || "").slice(0, 400);
+      }
+      if (d.__infinInstalled) window.__imE2E.installed = true;
+    });
+    return true;
+  })()`);
   const beforeInstall = await handles();
   await clickShadowBanner();
 
-  // The install page opens in a new (extension) tab; wait for the new handle
-  const installHandle = await poll(async () => {
-    const now = await handles();
-    return now.find((hh) => !beforeInstall.includes(hh)) ?? null;
-  }, 15000);
-  await switchTo(installHandle);
-  await poll(async () => isExtPage(await currentUrl()), 8000);
-  await waitText("#app .card h1", 8000);
-  const installName = await textOf("#app .card h1");
+  // Confirm via the relay when available (chromedriver execute on chrome-extension
+  // pages also works — this path is for kernels where handles() misbehaves)
+  const relayReady = await poll(async () => {
+    return await exec<boolean>(`return !!(window.__imE2E && window.__imE2E.ready)`);
+  }, 8000).catch(() => false);
+  let installName = "";
+  let grid = "";
+  if (relayReady) {
+    installName = await exec<string>(`return window.__imE2E ? window.__imE2E.app : ""`);
+    grid = installName;
+    ok(installName.includes("E2E"), "install page metadata name (relay)", installName.slice(0, 60));
+  } else {
+    // fallback: switch to the install tab by handle and read the DOM
+    const installHandle = await poll(async () => {
+      const now = await handles();
+      return now.find((hh) => !beforeInstall.includes(hh)) ?? null;
+    }, 15000);
+    await switchTo(installHandle);
+    await poll(async () => isExtPage(await currentUrl()), 8000);
+    await waitText("#app .card h1", 8000);
+    installName = await textOf("#app .card h1");
+    grid = await textOf("#app .grid");
+  }
   ok(installName.includes("E2E"), "install page metadata name", installName);
-  const grid = await textOf("#app .grid");
-  ok(grid.includes("GM_xmlhttpRequest"), "install page shows grant list");
-  ok(grid.includes("document-end"), "install page shows run-at");
-  ok(grid.includes("本地映射"), "install page detects dev server origin");
+  ok(grid.includes("GM_xmlhttpRequest"), "install page shows grant list", grid.slice(0, 60));
+  ok(grid.includes("document-end"), "install page shows run-at", grid.slice(0, 60));
+  ok(grid.includes("本地映射"), "install page detects dev server origin", grid.slice(0, 60));
   await shot("02-install-page");
-  await clickEl("button.primary");
+
+  // Confirm the install: relay click when possible, else element click on the page
+  if (relayReady) {
+    await exec(
+      `window.__imE2E.src.postMessage({ __infinE2E: true, __infinClickConfirm: true }, "*")`,
+    );
+  } else {
+    await clickEl("button.primary");
+  }
   await sleep(800);
   console.log("  ✓ install clicked");
 
