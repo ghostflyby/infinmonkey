@@ -143,14 +143,20 @@ async function gotoAndWaitInject(url: string, elId: string, timeoutMs = 15000): 
   let last = "";
   while (Date.now() < deadline) {
     await go(url);
-    const t = await poll(async () => {
-      const st = await exec<string>(
-        `return JSON.stringify({ ready: !!window.__infinRunnerReady, demo: !!document.getElementById(${JSON.stringify(elId)}) })`,
-      ).catch(() => null);
-      if (!st) return null;
-      const parsed = JSON.parse(st) as { ready: boolean; demo: boolean };
-      return parsed.ready && parsed.demo ? st : null;
-    }, 6000, 500).catch(() => null);
+    const t = await poll(
+      async () => {
+        const st = await exec<string>(
+          `return JSON.stringify({ ready: !!window.__infinRunnerReady, demo: !!document.getElementById(${
+            JSON.stringify(elId)
+          }) })`,
+        ).catch(() => null);
+        if (!st) return null;
+        const parsed = JSON.parse(st) as { ready: boolean; demo: boolean };
+        return parsed.ready && parsed.demo ? st : null;
+      },
+      6000,
+      500,
+    ).catch(() => null);
     if (t) return t;
     last = t ?? "";
     await sleep(500);
