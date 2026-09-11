@@ -14,8 +14,6 @@ import { isRecord } from "@infinmonkey/shared/util";
 const BROADCAST = (m: Record<string, unknown>): void =>
   window.postMessage({ [PM_TAG]: true, ...m }, "*");
 
-let currentUrl = location.href;
-
 async function readStore(): Promise<{
   scripts: ScriptEntry[];
   styles: StyleEntry[];
