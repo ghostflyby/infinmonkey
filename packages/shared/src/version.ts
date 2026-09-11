@@ -23,7 +23,9 @@ function tokenize(v: string): { core: number[]; pre: string } {
   const dash = s.indexOf("-");
   const corePart = (dash >= 0 ? s.slice(0, dash) : s).split("+")[0];
   const pre = dash >= 0 ? s.slice(dash + 1).split("+")[0] : "";
-  const core = corePart.split(".").map((x) => (/^\d+$/.test(x) ? parseInt(x, 10) : hashNonNumeric(x)));
+  const core = corePart.split(".").map((
+    x,
+  ) => (/^\d+$/.test(x) ? parseInt(x, 10) : hashNonNumeric(x)));
   return { core, pre: pre.toLowerCase() };
 }
 

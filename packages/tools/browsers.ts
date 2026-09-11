@@ -27,6 +27,8 @@ export interface BrowserConfig {
   kind?: BrowserKind;
   /** 可执行文件路径 */
   binary: string;
+  /** WebDriver 可执行文件路径覆盖（缺省按 kind 推断） */
+  driver?: string;
   /** 运行用 profile 目录（相对仓库根或绝对路径），缺省 .webext/<名字>-profile */
   profile?: string;
   /** 传给浏览器的附加启动参数（web-ext run 经 -- 透传） */

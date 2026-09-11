@@ -7,9 +7,16 @@ export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
-export function fetchWithTimeout(url: string, timeoutMs: number, init?: RequestInit): Promise<Response> {
+export function fetchWithTimeout(
+  url: string,
+  timeoutMs: number,
+  init?: RequestInit,
+): Promise<Response> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(new Error(`request timed out (${timeoutMs}ms)`)), timeoutMs);
+  const timer = setTimeout(
+    () => ctrl.abort(new Error(`request timed out (${timeoutMs}ms)`)),
+    timeoutMs,
+  );
   return fetch(url, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(timer));
 }
 

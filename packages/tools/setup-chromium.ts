@@ -65,7 +65,9 @@ const binary = platform.startsWith("mac")
     "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
   )
   : join(BROWSERS, "chrome-linux64/chrome");
-const driver = join(DRIVERS, `chromedriver-${platform}`, "chromedriver");
+// 归一到规范路径：e2e 的 DRIVER_BIN 解析查找 .webext/drivers/chromedriver
+const driver = join(DRIVERS, "chromedriver");
+await Deno.copyFile(join(DRIVERS, `chromedriver-${platform}`, "chromedriver"), driver);
 for (const f of [binary, driver]) {
   await Deno.chmod(f, 0o755).catch(() => {});
   await Deno.stat(f);

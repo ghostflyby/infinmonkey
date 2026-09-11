@@ -35,7 +35,10 @@ const PROFILE = join(
 );
 const EXT_DIR = join(ROOT, kind === "chromium" ? "dist/chrome" : "dist/firefox");
 // chromium: prefer the pinned .webext/drivers/chromedriver, else chromedriver from PATH
-const DRIVER_BIN = kind === "chromium"
+// BrowserConfig.driver 显式指定优先（CI 由 setup-chromium 写入本地配置）
+const DRIVER_BIN = cfg.driver
+  ? (cfg.driver.startsWith("/") ? cfg.driver : join(ROOT, cfg.driver))
+  : kind === "chromium"
   ? (await Deno.stat(join(ROOT, ".webext/drivers/chromedriver")).then(() =>
     join(ROOT, ".webext/drivers/chromedriver")
   ).catch(() => "chromedriver"))
