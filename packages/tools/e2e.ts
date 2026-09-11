@@ -197,6 +197,23 @@ async function currentUrl(): Promise<string> {
 }
 
 /** Find a tab whose URL contains the given fragment and switch to it. */
+/** Find a tab whose URL contains the given fragment (probing each handle). */
+async function findNewTab(before: string[], substr: string, timeoutMs: number): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const h of await handles()) {
+      if (before.includes(h)) continue;
+      try {
+        await switchTo(h);
+        const u = await currentUrl();
+        if (u.includes(substr)) return h;
+      } catch { /* loading or gone */ }
+    }
+    await sleep(400);
+  }
+  throw new Error(`找不到包含 ${substr} 的新标签页`);
+}
+
 async function switchToUrl(substr: string): Promise<void> {
   for (const h of await handles()) {
     try {
@@ -339,10 +356,7 @@ try {
     ok(bannerName.includes("E2E"), "install banner detected (text/html wrap view)", bannerName);
     // Banner click → install page opens in a new tab (extension page)
     await clickShadowBanner();
-    const installHandle = await poll(async () => {
-      const now = await handles();
-      return now.find((hh) => !beforeInstall.includes(hh)) ?? null;
-    }, 10000);
+    const installHandle = await findNewTab(beforeInstall, "/install/", 15000);
     await switchTo(installHandle);
     await poll(async () => isExtPage(await currentUrl()), 8000);
     // Confirm via element API (execute is refused on extension pages by official Firefox)
