@@ -6,9 +6,9 @@
  */
 import browser from "webextension-polyfill";
 import { DEFAULT_DEV_ORIGIN, PM_TAG } from "@infinmonkey/shared/constants";
-import { matchScripts, prepareScripts, type TextFetcher } from "@infinmonkey/shared/inject";
+import { matchScripts, prepareScripts } from "@infinmonkey/shared/inject";
 import { splitUserStyle, targetsMatch } from "@infinmonkey/shared/mozdoc";
-import type { PreparedScript, ScriptEntry, Settings, StyleEntry } from "@infinmonkey/shared/types";
+import type { PreparedScript, ScriptEntry, StyleEntry } from "@infinmonkey/shared/types";
 import { isRecord } from "@infinmonkey/shared/util";
 
 const BROADCAST = (m: Record<string, unknown>): void =>
@@ -33,7 +33,7 @@ async function readStore(): Promise<{
 
 async function deliver(): Promise<void> {
   try {
-    const { scripts, styles, devOrigin } = await readStore();
+    const { scripts, styles } = await readStore();
     const url = location.href;
     const top = window.top === window;
 
@@ -58,6 +58,9 @@ async function deliver(): Promise<void> {
     document.documentElement.dataset.infinBridge = JSON.stringify({
       scripts: prepared.length,
       styles: stylePayload.length,
+      total: scripts.length,
+      firstUrl: scripts[0]?.source.type === "dev" ? scripts[0].source.url : "",
+      firstMatches: scripts[0]?.meta.matches ?? [],
     });
   } catch (e) {
     console.warn("[InfinMonkey] deliver failed:", e);

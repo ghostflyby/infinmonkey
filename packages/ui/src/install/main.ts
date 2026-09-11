@@ -1,7 +1,8 @@
 /** 安装确认页：展示元数据 + 代码预览，确认写入。 */
 import { RUNTIME_NAME } from "@infinmonkey/shared/constants";
-import type { PendingInstall } from "@infinmonkey/shared/types";
-import type { AnyEntry } from "@infinmonkey/shared/types";
+import browser from "webextension-polyfill";
+import type { AnyEntry, PendingInstall, ScriptEntry, StyleEntry } from "@infinmonkey/shared/types";
+import { detectKind, parseMeta } from "@infinmonkey/shared/meta";
 import { h, msg } from "../dom.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
@@ -107,11 +108,9 @@ function isLocalDev(url: string): boolean {
 async function done(pendingId: string, decision: "install" | "cancel"): Promise<void> {
   await msg({ type: "ConfirmInstall", pendingId, decision });
   if (decision === "install") window.opener?.postMessage({ __infinInstalled: true }, "*");
-  window.close();
-  // 某些环境不允许 window.close，兜底返回空白
   document.body.textContent = decision === "install" ? "已安装，可以关闭此页面。" : "已取消。";
+  window.close();
 }
-
 /** 复用 background 的解析器不可行（页面打包独立），这里做轻量展示用解析。 */
 function parseMetaForView(code: string) {
   const targets: string[] = [];

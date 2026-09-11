@@ -7,7 +7,7 @@
  * kernels). GM_* calls still go through background messaging.
  */
 import { urlMatchesMeta } from "./matcher.ts";
-import type { PreparedScript, ResourcePayload, ScriptEntry, StyleEntry } from "./types.ts";
+import type { PreparedScript, ResourcePayload, ScriptEntry } from "./types.ts";
 
 export interface TextFetchResult {
   text: string;
