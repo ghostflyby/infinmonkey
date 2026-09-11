@@ -44,8 +44,8 @@ jobs:
         run: |
           deno task devserver &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:17321/__infin/health && break; sleep 1; done
-      - name: 运行 E2E
-        run: deno run -A packages/tools/e2e.ts --browser firefox
+      - name: 运行 E2E 冒烟
+        run: deno run -A packages/tools/e2e.ts --browser firefox --suite smoke
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -69,8 +69,8 @@ jobs:
         run: |
           deno task devserver &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:17321/__infin/health && break; sleep 1; done
-      - name: 运行 E2E
-        run: deno run -A packages/tools/e2e.ts --browser cft
+      - name: 运行 E2E 全量
+        run: deno run -A packages/tools/e2e.ts --browser cft --suite full
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

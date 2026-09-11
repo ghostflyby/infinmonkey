@@ -34,8 +34,43 @@ const DRIVER_BIN = kind === "chromium"
 function isExtPage(url: string): boolean {
   return /^[a-z]+-extension:\/\//.test(url);
 }
+
+// ---- WebDriver 原生元素 API（execute 被拒的文档/扩展页上的备选交互通道） ----
+async function findEl(css: string): Promise<string | null> {
+  const r = await fetch(`${DRIVER}/session/${sessionId}/element`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ using: "css selector", value: css }),
+  });
+  const j = await r.json().catch(() => null);
+  const id = j?.value?.["element-6066-11e4-a52e-4f735466cecf"] ?? j?.value?.ELEMENT;
+  return typeof id === "string" ? id : null;
+}
+
+async function elClick(elId: string): Promise<void> {
+  const res = await fetch(`${DRIVER}/session/${sessionId}/element/${elId}/click`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{}",
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(`element click 失败: ${JSON.stringify(j).slice(0, 200)}`);
+  }
+}
+
+async function elText(elId: string): Promise<string> {
+  const r = await fetch(`${DRIVER}/session/${sessionId}/element/${elId}/text`);
+  const j = await r.json().catch(() => ({}));
+  return (j?.value ?? "") as string;
+}
 const SHOTS = join(ROOT, ".e2e");
 const DEV = "http://127.0.0.1:17321";
+// suite：full = 全部 18 项（chromedriver 对扩展页 execute 可用）；
+// smoke = 冒烟（官方 Firefox 的 geckodriver 拒绝在扩展页 execute，且部分文档拒绝 execute）
+const SUITE =
+  (Deno.args.indexOf("--suite") >= 0 ? Deno.args[Deno.args.indexOf("--suite") + 1] : undefined) ??
+    "full";
 
 let sessionId = "";
 let passed = 0;
@@ -194,6 +229,7 @@ try {
           binary: BROWSER_BIN,
           args: [
             "--headless=new",
+            "--no-sandbox",
             "--user-data-dir=" + PROFILE,
             "--load-extension=" + EXT_DIR,
             "--no-first-run",
@@ -244,6 +280,71 @@ try {
       extUuid = await poll(async () => (await readUuidsPref())?.[addonId] ?? null, 20000);
     }
     ok(!!extUuid, "获取扩展 UUID", "uuid=" + extUuid);
+  }
+
+  if (SUITE === "smoke") {
+    console.log("[e2e] 冒烟套件…");
+    await go(`${DEV}/demo-e2e.user.js?as=html`);
+    await poll(
+      async () => await exec<boolean>(`!!document.querySelector("div[style*='2147483647']")`),
+      8000,
+    );
+    const beforeInstall = await handles();
+    const bannerName = await exec<string>(
+      `return document.querySelector("div[style*='2147483647']").shadowRoot.querySelector(".name")?.textContent ?? ""`,
+    );
+    ok(bannerName.includes("E2E 验证脚本"), "安装横幅识别（text/html 包裹视图）", bannerName);
+    // 元素 API 点击横幅安装按钮 → 安装确认页（扩展页）→ 元素 API 点击确认安装
+    await clickShadowBanner();
+    const installHandle = await poll(async () => {
+      const now = await handles();
+      return now.find((hh) => !beforeInstall.includes(hh)) ?? null;
+    }, 8000);
+    await switchTo(installHandle);
+    await poll(async () => isExtPage(await currentUrl()), 8000);
+    const confirmEl = await poll(async () => await findEl("#app button.primary"), 8000);
+    ok(!!confirmEl, "安装确认页按钮定位（元素 API）");
+    if (confirmEl) await elClick(confirmEl);
+    await sleep(1200);
+    const pageState = await poll(async () => {
+      const h = await handles();
+      for (const hh of h) {
+        try {
+          await switchTo(hh);
+          const u = await currentUrl();
+          if (u.includes("/install/")) {
+            const app = await findEl("#app");
+            return app ? await elText(app) : "no-app";
+          }
+        } catch {
+          // 句柄失效
+        }
+      }
+      return "(install 页已关闭)";
+    }, 8000);
+    console.log("  [dbg] 确认后安装页状态:", JSON.stringify(pageState).slice(0, 160));
+    // 安装页可能自毁：切回首个普通标签页断言注入
+    await switchTo((await handles())[0]).catch(() => {});
+    await go("https://example.com/");
+    console.log("  [dbg] 注入页:", await currentUrl().catch(() => "?"));
+    const smoke = await poll(async () => {
+      return await exec<string>(
+        `return JSON.stringify({ ready: !!window.__infinRunnerReady, demo: !!document.getElementById("infin-demo") })`,
+      );
+    }, 25000).catch(() => null);
+    const parsed = JSON.parse(smoke ?? "{}") as { ready: boolean; demo: boolean };
+    ok(parsed.ready === true, "runner 注入（MAIN world）", smoke ?? "");
+    ok(parsed.demo === true, "用户脚本执行", smoke ?? "");
+    await shot("90-smoke");
+    const failed = failures.length > 0;
+    console.log(`\n[e2e] 结果: ${passed} 通过, ${failed} 失败`);
+    if (sessionId) await wd("DELETE", `/session/${sessionId}`).catch(() => {});
+    driverProc.kill();
+    if (failed) {
+      for (const f of failures) console.log(`  ✗ ${f}`);
+      Deno.exit(1);
+    }
+    Deno.exit(0);
   }
 
   // ---- 1. 安装横幅 → 安装确认页 → 装入 ----
