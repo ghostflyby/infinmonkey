@@ -1,6 +1,6 @@
 /**
- * 检测 .user.js / .user.css 的文本页（或带脚本/样式头的纯文本页），
- * 展示「安装到 InfinMonkey」横幅。
+ * Detects .user.js / .user.css text pages (or plain text pages with a script/style header)
+ * and shows the "Install to InfinMonkey" banner.
  */
 import browser from "webextension-polyfill";
 import { detectKind, parseMeta } from "@infinmonkey/shared/meta";
@@ -13,9 +13,9 @@ interface Found {
 
 function detect(): Found | null {
   const ct = (document as unknown as { contentType?: string }).contentType ?? "";
-  // 浏览器都不会执行「顶层导航到的」JS 文件，会以文本展示；greasyfork 等站点用 text/plain。
-  // text/html 仅在路径本身是 .user.js/.user.css 时放行（dev server 的 ?as=html 包裹视图，
-  // 供 WebDriver 在官方 Firefox 上自动化——其对 text/plain 文档拒绝 execute）。
+  // Browsers never execute top-level navigated JS files; they render them as text. Sites like greasyfork serve text/plain.
+  // text/html is only allowed when the path itself is .user.js/.user.css (the dev server's ?as=html wrapper view,
+  // used to automate the official Firefox with WebDriver, which refuses execute on text/plain documents).
   const wrapView = ct.startsWith("text/html") && /\.user\.(js|css)$/.test(location.pathname);
   const okType = ct.startsWith("text/plain") || ct.includes("javascript") || wrapView;
   if (ct && !okType) return null;
@@ -46,7 +46,7 @@ function showBanner(found: Found): void {
 
   const host = document.createElement("div");
   host.style.cssText = "all:initial;position:fixed;right:20px;bottom:20px;z-index:2147483647";
-  // open 模式：便于自动化测试与用户脚本调试（内容仅限安装横幅，无敏感数据）
+  // open mode: eases automated testing and userscript debugging (content is just the install banner, no sensitive data)
   const shadow = host.attachShadow({ mode: "open" });
 
   const style = document.createElement("style");
@@ -92,7 +92,7 @@ function showBanner(found: Found): void {
     installBtn.textContent = "正在安装…";
     installBtn.style.pointerEvents = "none";
     try {
-      // 内容脚本直接通过 storage 完成 pending → entry（不依赖 bg 消息通道）
+      // The content script completes pending → entry directly via storage (no bg message channel needed)
       const st = (await browser.storage.local.get(["scripts", "styles", "settings"])) as {
         scripts?: ScriptEntry[];
         styles?: StyleEntry[];
@@ -107,7 +107,7 @@ function showBanner(found: Found): void {
         ((e.source.type === "dev" && e.source.url === location.href) || e.code === found.text)
       );
       if (dup) {
-        // 更新已有条目
+        // Update the existing entry
         dup.code = found.text;
         dup.updatedAt = Date.now();
       } else {
@@ -140,8 +140,11 @@ function showBanner(found: Found): void {
           await browser.storage.local.set({ styles: arr });
         }
       }
+      // Language-neutral marker for automation (E2E asserts on this, never on visible text).
+      card.dataset.infinDone = "installed";
       card.innerHTML = `<div class="done">✓ 已安装</div>`;
     } catch (e) {
+      card.dataset.infinDone = "error";
       card.innerHTML = `<div class="done">安装失败：${String((e as Error).message ?? e)}</div>`;
     }
     setTimeout(() => host.remove(), 3000);

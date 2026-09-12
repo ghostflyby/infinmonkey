@@ -31,12 +31,12 @@ import {
   updateCode,
 } from "./store.ts";
 
-// ---- 内存态：菜单命令 / 通知回调 / GM_getTab 数据 ----
+// ---- In-memory state: menu commands / notification callbacks / GM_getTab data ----
 
 interface CommandInfo {
-  /** 注册该命令的 bridge 实例。 */
+  /** The bridge instance that registered this command. */
   nonce: string;
-  /** 尽力而为解析的 tabId（可能为 null：内核 sender/查询受限时）。 */
+  /** Best-effort resolved tabId (may be null when the engine limits sender/tab queries). */
   tabId: number | null;
   scriptId: string;
   title: string;
@@ -44,7 +44,7 @@ interface CommandInfo {
 const menuCommands = new Map<number, CommandInfo>();
 let menuSeq = 1;
 
-/** CreateEntry 幂等令牌 → 已创建条目。 */
+/** CreateEntry idempotency token → created entry. */
 const createTokens = new Map<string, AnyEntry>();
 
 const notificationCallbacks = new Map<
@@ -61,7 +61,7 @@ browser.tabs.onRemoved.addListener((tabId: number) => {
   }
 });
 
-// ---- 消息路由 ----
+// ---- Message routing ----
 
 browser.runtime.onMessage.addListener((msg: unknown, sender: browser.Runtime.MessageSender) => {
   return route(msg, sender) as unknown;
@@ -73,7 +73,7 @@ function route(
 ): Promise<unknown> | unknown {
   if (!isRecord(msg) || typeof msg.type !== "string") return undefined;
   switch (msg.type) {
-    // ----- 心跳（内容脚本维持事件页存活） -----
+    // ----- Heartbeat (content script keeps the event page alive) -----
     case "ping":
       return { ok: true };
     case "FetchText": {
@@ -89,7 +89,7 @@ function route(
       return out.finally(() => clearTimeout(timer));
     }
 
-    // ----- 注入链路 -----
+    // ----- Injection pipeline -----
     case "gmCall":
       return handleGmCall(
         msg as unknown as {
@@ -109,7 +109,7 @@ function route(
       const c = menuCommands.get(msg.commandId as number);
       if (!c) return { ok: false };
       if (c.tabId != null) {
-        // 广播到该 tab 的所有 frame，持有该命令的 runner 自行响应
+        // Broadcast to all frames of the tab; the runner holding the command responds
         browser.tabs.sendMessage(
           c.tabId,
           {
@@ -123,7 +123,7 @@ function route(
       return { ok: true };
     }
 
-    // ----- 管理页 -----
+    // ----- Management pages -----
     case "ListEntries":
       return getDB().then((db) => ({
         scripts: [...db.scripts].sort(byPosition),
@@ -136,7 +136,7 @@ function route(
     case "SetEnabled":
       return handleSetEnabled(msg.id as string, !!msg.enabled);
     case "CreateEntry": {
-      // 幂等令牌：页面侧消息重试时避免重复创建
+      // Idempotency token: avoids duplicate creation when the page side retries the message
       const token = typeof msg.token === "string" ? msg.token : "";
       const existing = token ? createTokens.get(token) : undefined;
       if (existing) return { entry: existing };
@@ -185,7 +185,7 @@ function route(
         return db.settings;
       });
 
-    // ----- 安装流 -----
+    // ----- Install flow -----
     case "StartInstallFromText":
       return startInstallFromText(
         msg.code as string,
@@ -205,7 +205,7 @@ function route(
     case "ConfirmInstall":
       return confirmInstall(msg.pendingId as string, msg.decision as "install" | "cancel");
 
-    // ----- @connect 授权 -----
+    // ----- @connect authorization -----
     case "ConfirmConnectAuth":
       return resolveConnectAuth(
         msg.scriptId as string,
@@ -246,7 +246,7 @@ async function pingDevServer(origin?: string) {
   }
 }
 
-// ---- GM 调用 ----
+// ---- GM calls ----
 
 async function handleGmCall(
   msg: {
@@ -258,7 +258,7 @@ async function handleGmCall(
   },
   _sender: browser.Runtime.MessageSender,
 ) {
-  // 调用上下文以 bridge 的 nonce 标识（部分内核 sender 缺失 tab 信息）
+  // Call context keyed by the bridge nonce (some engines omit tab info in sender)
   const ctxKey = `${msg.nonce ?? "n"}:${msg.scriptId}:${msg.reqId}`;
   const ctx: GmCtx = {
     nonce: String(msg.nonce ?? ""),
@@ -271,11 +271,11 @@ async function handleGmCall(
 }
 
 interface GmCtx {
-  /** bridge 实例标识（每文档唯一）。 */
+  /** Bridge instance id (unique per document). */
   nonce: string;
   scriptId: string;
   ctxKey: string;
-  /** 尽力而为解析的 tabId（sender.tab 或 URL 日志），可能为 null。 */
+  /** Best-effort resolved tabId (sender.tab or URL log); may be null. */
   tabId: number | null;
   url?: string;
 }
@@ -367,7 +367,7 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
     case "download":
       return await handleDownload(scriptId, args as never);
     default:
-      throw new Error(`未知 GM 操作: ${op}`);
+      throw new Error(`Unknown GM op: ${op}`);
   }
 }
 
@@ -440,7 +440,7 @@ async function handlePopupData(tabId: number): Promise<PopupData> {
   };
 }
 
-// ---- 安装流 ----
+// ---- Install flow ----
 
 async function openInstallPage(pendingId: string, openerTabId?: number): Promise<void> {
   await browser.tabs.create({
@@ -490,7 +490,7 @@ async function confirmInstall(pendingId: string, decision: "install" | "cancel")
       }
     }
   }
-  // 去重：同 dev URL 或完全相同代码的条目 → 更新而不是再装一份
+  // Dedupe: same dev URL or identical code → update the entry instead of installing a copy
   if (!entry) {
     const db = await getDB();
     const dup = [...db.scripts, ...db.styles].find((e) =>
@@ -506,7 +506,7 @@ async function confirmInstall(pendingId: string, decision: "install" | "cancel")
   return { entryId: entry.id, canceled: false };
 }
 
-// ---- 检查更新（手动） ----
+// ---- Check for updates (manual) ----
 
 async function checkUpdate(id: string) {
   const entry = await findEntry(id);
@@ -534,7 +534,7 @@ async function checkUpdate(id: string) {
   return { status: "available", version: remoteMeta.version ?? "" };
 }
 
-// ---- 启动 ----
+// ---- Startup ----
 
 void (async () => {
   const db = await getDB();

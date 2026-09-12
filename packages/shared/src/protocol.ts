@@ -1,15 +1,15 @@
 import type { EntrySource, PopupData, PreparedScript, ScriptEntry, Settings } from "./types.ts";
 
-/** 所有发往 background 的请求。发起方：bridge 内容脚本 / options / popup / install / prompt 页。 */
+/** All requests sent to the background. Senders: bridge content script / options / popup / install / prompt pages. */
 export type BgRequest =
-  // 内容脚本注入链路
+  // Content script injection pipeline
   | { type: "GetScriptsForFrame"; url: string; top: boolean }
-  // GM 特权操作（bridge 转发自 MAIN world runner）
+  // GM privileged ops (forwarded by the bridge from the MAIN world runner)
   | { type: "gmCall"; scriptId: string; reqId: number; op: string; args: Record<string, unknown> }
   // popup
   | { type: "GetPopupData"; tabId: number }
   | { type: "DispatchCommand"; commandId: number }
-  // 管理页
+  // Management pages
   | { type: "ListEntries" }
   | { type: "GetEntry"; id: string }
   | { type: "SaveCode"; id: string; code: string }
@@ -25,13 +25,13 @@ export type BgRequest =
   | { type: "ImportAll"; data: unknown; mode: "merge" | "replace" }
   | { type: "GetSettings" }
   | { type: "SetSettings"; patch: Partial<Settings> }
-  // 安装流
+  // Install flow
   | { type: "StartInstallFromText"; code: string; url?: string }
   | { type: "StartInstallFromUrl"; url: string }
   | { type: "OpenOptions" }
   | { type: "GetPendingInstall"; pendingId: string }
   | { type: "ConfirmInstall"; pendingId: string; decision: "install" | "cancel" }
-  // @connect 授权弹窗
+  // @connect authorization prompt
   | {
     type: "ConfirmConnectAuth";
     scriptId: string;
@@ -39,12 +39,12 @@ export type BgRequest =
     scope: "once" | "always" | "deny";
   };
 
-/** background 主动推送的事件。 */
+/** Events pushed by the background. */
 
 export interface FrameScripts {
   frameKey: string;
   scripts: PreparedScript[];
-  /** 本页应生效的样式（runner 以 <style> 同步）。 */
+  /** Styles that should apply on this page (synced by the runner via <style>). */
   styles: { id: string; css: string }[];
 }
 

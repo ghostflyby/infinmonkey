@@ -1,4 +1,4 @@
-/** options 管理面板：列表 / 编辑器 / 设置。 */
+/** Options page: list / editor / settings. */
 import browser from "webextension-polyfill";
 import { RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
 import type { ListEntriesResult } from "@infinmonkey/shared/protocol";
@@ -20,7 +20,7 @@ let editingId: string | null = null;
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 
-// ---- 视图切换 ----
+// ---- View switching ----
 
 function show(viewName: "list" | "editor" | "settings"): void {
   $("#view-list").hidden = viewName !== "list";
@@ -45,7 +45,7 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("#nav button")) {
   });
 }
 
-// ---- 列表 ----
+// ---- List ----
 
 async function loadList(): Promise<void> {
   const res = await msg<ListEntriesResult>({ type: "ListEntries" });
@@ -144,7 +144,7 @@ async function checkUpdate(id: string): Promise<void> {
   else toast(res.message ?? "检查失败", true);
 }
 
-// ---- 编辑器 ----
+// ---- Editor ----
 
 async function openEditor(id: string): Promise<void> {
   const res = await msg<{ entry: AnyEntry | null }>({ type: "GetEntry", id });
@@ -243,7 +243,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// 来源切换
+// Source switching
 for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="ed-src"]')) {
   radio.addEventListener("change", async () => {
     if (!editingId) return;
@@ -349,7 +349,7 @@ async function refreshConnectGrants(): Promise<void> {
   }
 }
 
-// ---- 新建 / 导入 / 导出 ----
+// ---- Create / import / export ----
 
 $("#add-script").addEventListener("click", async () => {
   try {
@@ -429,7 +429,7 @@ async function doExport(): Promise<void> {
 $("#btn-export").addEventListener("click", () => void doExport());
 $("#btn-export2").addEventListener("click", () => void doExport());
 
-// ---- 设置 ----
+// ---- Settings ----
 
 async function loadSettings(): Promise<void> {
   const settings = await msg<{ devOrigin: string }>({ type: "GetSettings" });
@@ -458,13 +458,13 @@ $("#set-dev-ping").addEventListener("click", async () => {
   }
 });
 
-// ---- dev server 状态指示 ----
+// ---- dev server status indicator ----
 
 browser.runtime.onMessage.addListener((m: unknown) => {
   if (!isRecord(m)) return;
   if (m.type === "devStatus") setDevIndicator(m.connected === true);
   if (m?.type === "entriesChanged" && !$("#view-editor").hidden) {
-    // 编辑期间外部变化（如 dev 拉取）不覆盖编辑区，仅列表静默刷新
+    // External changes (e.g. dev fetches) during editing must not clobber the editor; only refresh the list silently
     debounce(() => void loadList(), 500)();
   }
   if (m?.type === "entriesChanged" && $("#view-editor").hidden) {
@@ -483,7 +483,7 @@ void msg<{ ok: boolean }>({ type: "PingDevServer" }).then((r) => setDevIndicator
 show("list");
 void loadList();
 
-// 调试/自动化句柄
+// Debug/automation handles
 (window as unknown as { __imDebug: () => unknown }).__imDebug = () => ({
   editingId,
   view,

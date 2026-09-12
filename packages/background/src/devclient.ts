@@ -3,9 +3,9 @@ import type { ScriptEntry } from "@infinmonkey/shared/types";
 import { fetchDevCode, getDB, setDevCode, updateCode } from "./store.ts";
 
 /**
- * 连接 tools/dev_server.ts 的 WebSocket，把本地文件变化转成：
- * - 样式：拉取新代码 → 所有匹配 frame 免刷新重注入；
- * - 脚本：更新 devCode 缓存 →（可选）自动刷新命中该脚本 @match 的标签页。
+ * Connects to the tools/dev_server.ts WebSocket and turns local file changes into:
+ * - styles: fetch new code → re-inject into all matching frames without a reload;
+ * - scripts: update the devCode cache → (optionally) auto-reload tabs matched by the script's @match.
  */
 class DevClient {
   private ws: WebSocket | null = null;
@@ -38,7 +38,7 @@ class DevClient {
           void this.onChanged(m.files as string[]);
         }
       } catch {
-        // 忽略非 JSON 帧
+        // Ignore non-JSON frames
       }
     };
     this.ws.onclose = () => {
@@ -98,12 +98,12 @@ class DevClient {
       try {
         code = await fetchDevCode(entry.source.url);
       } catch (e) {
-        console.warn("[InfinMonkey] dev 文件变化拉取失败:", entry.source.url, e);
+        console.warn("[InfinMonkey] failed to fetch dev file change:", entry.source.url, e);
       }
       if (!code) continue;
 
       if (entry.kind === "style") {
-        // updateCode 会广播 entriesChanged，bridge 收到后重新拉取并同步页面 <style>
+        // updateCode broadcasts entriesChanged; the bridge re-fetches and syncs the page <style>
         await updateCode(entry.id, code);
       } else {
         await setDevCode(entry.id, code);

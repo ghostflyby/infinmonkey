@@ -1,10 +1,10 @@
 /**
- * 浏览器目标解析：允许开发者用本地配置指向不同浏览器（Firefox 系）。
+ * Browser target resolution: lets developers point at different browsers (Firefox family) via local config.
  *
- * 解析优先级：CLI --browser <名> > 环境变量 INFIN_BROWSER >
- * .browsers.local.json 的 default > 内置默认 "zen"。
+ * Resolution priority: CLI --browser <name> > the INFIN_BROWSER env var >
+ * the default in .browsers.local.json > the built-in default "zen".
  *
- * 本地配置（.browsers.local.json，已 gitignore）示例：
+ * Local config (.browsers.local.json, gitignored) example:
  * {
  *   "default": "nightly",
  *   "browsers": {
@@ -25,13 +25,13 @@ export type BrowserKind = "firefox" | "chromium";
 export interface BrowserConfig {
   /** firefox → web-ext/geckodriver；chromium → --load-extension/chromedriver */
   kind?: BrowserKind;
-  /** 可执行文件路径 */
+  /** Executable path */
   binary: string;
-  /** WebDriver 可执行文件路径覆盖（缺省按 kind 推断） */
+  /** WebDriver executable path override (defaults inferred from kind) */
   driver?: string;
-  /** 运行用 profile 目录（相对仓库根或绝对路径），缺省 .webext/<名字>-profile */
+  /** Profile directory for runs (repo-relative or absolute); defaults to .webext/<name>-profile */
   profile?: string;
-  /** 传给浏览器的附加启动参数（web-ext run 经 -- 透传） */
+  /** Extra launch args passed to the browser (forwarded via web-ext run's --) */
   args?: string[];
 }
 
@@ -42,7 +42,7 @@ interface LocalConfig {
 
 const BUILTIN: Record<string, BrowserConfig> = {
   zen: { binary: "/Applications/Zen.app/Contents/MacOS/zen" },
-  // CI Linux runner 的预装 Firefox（macOS 上若路径不存在，选择该条目会得到友好报错）
+  // Preinstalled Firefox on the CI Linux runner (on macOS, selecting it with a missing path yields a friendly error)
   firefox: { binary: "/usr/bin/firefox" },
   edge: {
     kind: "chromium",
@@ -58,24 +58,24 @@ const BUILTIN: Record<string, BrowserConfig> = {
 const FIREFOX_NAMES = /firefox|zen|librewolf|waterfox|floorp|gecko/i;
 const CHROMIUM_NAMES = /chrome|chromium|edge|brave|arc|opera|vivaldi|dia/i;
 
-/** 从可执行文件路径推断内核类型；显式声明的 kind 优先。 */
+/** Infers the engine kind from the executable path; an explicit kind declaration wins. */
 export function inferKind(binary: string, explicit?: BrowserKind): BrowserKind {
   if (explicit) return explicit;
   const base = binary.toLowerCase();
   if (FIREFOX_NAMES.test(base)) return "firefox";
   if (CHROMIUM_NAMES.test(base)) return "chromium";
-  return "firefox"; // 缺省按 Firefox 处理（历史行为）
+  return "firefox"; // default to Firefox (legacy behavior)
 }
 
 async function readLocal(): Promise<LocalConfig> {
   try {
     return JSON.parse(await Deno.readTextFile(join(ROOT, ".browsers.local.json"))) as LocalConfig;
   } catch {
-    return {}; // 无本地配置属正常
+    return {}; // no local config is normal
   }
 }
 
-/** 从调用参数取 --browser <名>（不存在则忽略）。 */
+/** Takes --browser <name> from the CLI args (ignored if absent). */
 export function cliBrowserName(argv: string[] = Deno.args): string | undefined {
   const i = argv.indexOf("--browser");
   return i >= 0 && argv[i + 1] ? argv[i + 1] : undefined;
@@ -90,8 +90,10 @@ export async function resolveBrowser(
   const cfg = browsers[name];
   if (!cfg) {
     console.error(
-      `[browsers] 未配置浏览器 "${name}"。可用：${Object.keys(browsers).join(", ")}；` +
-        `或在本项目 .browsers.local.json 中新增（已 gitignore）。`,
+      `[browsers] browser "${name}" is not configured. Available: ${
+        Object.keys(browsers).join(", ")
+      };` +
+        `or add an entry in this project's .browsers.local.json (gitignored).`,
     );
     Deno.exit(1);
   }
@@ -99,7 +101,7 @@ export async function resolveBrowser(
     await Deno.stat(cfg.binary);
   } catch {
     console.error(
-      `[browsers] "${name}" 的可执行文件不存在：${cfg.binary}（请检查 .browsers.local.json）`,
+      `[browsers] "${name}" executable does not exist: ${cfg.binary} (check .browsers.local.json)`,
     );
     Deno.exit(1);
   }
@@ -112,7 +114,7 @@ export async function resolveBrowser(
   };
 }
 
-// 作为 CLI 运行时打印解析结果（调试用）
+// When run as a CLI, prints the resolved result (for debugging)
 if (import.meta.main) {
   const { name, kind, cfg, profileAbs } = await resolveBrowser(cliBrowserName());
   console.log(

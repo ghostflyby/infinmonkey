@@ -1,8 +1,8 @@
 /**
- * ISOLATED world 桥（自足版）：直接读取扩展 storage（内容脚本可用、可靠），
- * 在内容侧完成脚本匹配与载荷构建，经 postMessage 交给 MAIN world runner
- * （runner 由 manifest 以 world:"MAIN" 直接声明）。GM 特权调用仍经消息
- * 转发给 background。storage.onChanged 时自动重新同步样式。
+ * ISOLATED world bridge (self-contained): reads extension storage directly (available and reliable in content scripts),
+ * does script matching and payload building on the content side, and hands the payload to the MAIN world runner
+ * (the runner is declared world:"MAIN" directly in the manifest). GM privileged calls are still forwarded
+ * to the background via messages. Styles are re-synced automatically on storage.onChanged.
  */
 import browser from "webextension-polyfill";
 import { DEFAULT_DEV_ORIGIN, PM_TAG } from "@infinmonkey/shared/constants";
@@ -54,7 +54,7 @@ async function deliver(): Promise<void> {
 
     BROADCAST({ dir: "load", frameKey: url, scripts: prepared });
     BROADCAST({ dir: "styles", styles: stylePayload });
-    // 跨世界调试标记（Firefox 隔离世界的 window 属性页面不可见，dataset 共享 ✓）
+    // Cross-world debug marker (in Firefox the page cannot see isolated-world window properties; dataset is shared ✓)
     document.documentElement.dataset.infinBridge = JSON.stringify({
       scripts: prepared.length,
       styles: stylePayload.length,
@@ -72,8 +72,8 @@ const fetchTextWith = async (
   url: string,
   timeoutMs = 8000,
 ): Promise<{ text: string; mime: string }> => {
-  // https 页面取 http 资源必被 mixed content 拦截（实测表现为挂起到超时而非快速失败），
-  // 跳过必败的内容侧 fetch 直接走后台；内容侧 fetch 还受页面 CORS 约束，后台路径无此限制
+  // Fetching http resources from an https page is always blocked by mixed content (observed to hang until timeout rather than fail fast),
+  // so skip the doomed content-side fetch and go straight to the background; content-side fetch is also subject to page CORS, the background path is not
   const mixedContent = location.protocol === "https:" && url.startsWith("http://");
   if (!mixedContent) {
     try {
@@ -94,7 +94,7 @@ const fetchTextWith = async (
   throw new Error("error" in (res as object) ? (res as { error: string }).error : "fetch failed");
 };
 
-/** storage.onChanged：样式与条目即时同步（免刷新） */
+/** storage.onChanged: sync styles and entries immediately (no reload) */
 browser.storage.onChanged.addListener((changes: Record<string, unknown>, area: string) => {
   if (area !== "local") return;
   if (!("styles" in changes)) return;
@@ -133,7 +133,7 @@ window.addEventListener("message", (ev: MessageEvent) => {
     })
     .then((data: unknown) => postRes(id, true, data))
     .catch((e: unknown) => postRes(id, false, (e as Error)?.message ?? String(e)));
-  // GM 调用由调用方在 runner 侧等待，单次发送即可（超时由各 API 语义决定）
+  // The caller awaits the GM call on the runner side, so a single send suffices (timeouts follow each API's semantics)
 });
 
 function postRes(id: number, ok: boolean, data: unknown): void {
@@ -149,7 +149,7 @@ async function setClipboard(text: string, type: string): Promise<void> {
       await navigator.clipboard.writeText(text);
       return;
     } catch {
-      // 回退到 execCommand
+      // Fall back to execCommand
     }
   }
   const ta = document.createElement("textarea");

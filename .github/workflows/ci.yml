@@ -7,7 +7,7 @@ on:
 
 jobs:
   static:
-    name: 静态检查 / 单元测试 / 构建
+    name: Static checks / unit tests / build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,19 +33,19 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: 写入 CI 浏览器配置
+      - name: Write CI browser config
         run: |
           cat > .browsers.local.json <<'JSON'
           { "browsers": { "firefox": { "binary": "/usr/bin/firefox" } } }
           JSON
-      - name: 构建
+      - name: Build
         run: deno run -A packages/tools/build.ts --browser firefox
-      - name: 启动 dev server
+      - name: Start dev server
         run: |
           deno task devserver &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:17321/__infin/health && break; sleep 1; done
-          curl -sf http://127.0.0.1:17321/__infin/health || { echo "devserver 未就绪"; exit 1; }
-      - name: 运行 E2E 冒烟
+          curl -sf http://127.0.0.1:17321/__infin/health || { echo "devserver not ready"; exit 1; }
+      - name: Run E2E smoke
         run: deno run -A packages/tools/e2e.ts --browser firefox --suite smoke
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -61,17 +61,17 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      # CI 一次性环境下载钉死版本的 CfT 浏览器 + 驱动（品牌版 Chrome/Edge 会忽略 --load-extension）
-      - name: 装配 CfT Chrome + chromedriver
+      # One-shot CI environment downloads a pinned CfT browser + driver (branded Chrome/Edge ignores --load-extension)
+      - name: Set up CfT Chrome + chromedriver
         run: deno run -A packages/tools/setup-chromium.ts
-      - name: 构建
+      - name: Build
         run: deno run -A packages/tools/build.ts --browser chrome
-      - name: 启动 dev server
+      - name: Start dev server
         run: |
           deno task devserver &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:17321/__infin/health && break; sleep 1; done
-          curl -sf http://127.0.0.1:17321/__infin/health || { echo "devserver 未就绪"; exit 1; }
-      - name: 运行 E2E 全量
+          curl -sf http://127.0.0.1:17321/__infin/health || { echo "devserver not ready"; exit 1; }
+      - name: Run E2E full
         run: deno run -A packages/tools/e2e.ts --browser cft --suite full
       - uses: actions/upload-artifact@v4
         if: failure()

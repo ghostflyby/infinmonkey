@@ -1,12 +1,12 @@
 /**
- * InfinMonkey 本地映射 dev server。
+ * InfinMonkey local dev-mapping server.
  *
- * 用法：deno task devserver [--dir ./examples] [--port 17321] [--host 127.0.0.1]
+ * Usage: deno task devserver [--dir ./examples] [--port 17321] [--host 127.0.0.1]
  *
- * - GET /<相对路径>            返回文件内容（no-store，脚本实时拉取）
- * - GET /__infin/health        健康检查（扩展「测试连接」用）
- * - GET /__infin/ws            WebSocket：文件变化推送 {type:"changed", files:[...]}
- * - GET /                      文件索引页（可复制映射 URL）
+ * - GET /<relative path>            serves file contents (no-store, fetched live by scripts)
+ * - GET /__infin/health        health check (used by the extension's "test connection")
+ * - GET /__infin/ws            WebSocket: pushes file changes {type:"changed", files:[...]}
+ * - GET /                      file index page (mapping URLs can be copied)
  */
 import { relative, resolve } from "@std/path";
 
@@ -74,8 +74,8 @@ async function serveFile(path: string, asHtml = false): Promise<Response> {
   if (!full.startsWith(ROOT)) return new Response("Forbidden", { status: 403 });
   const stat = await Deno.stat(full).catch(() => null);
   if (!stat?.isFile) return new Response("Not Found", { status: 404 });
-  // ?as=html：以 text/html 包裹源码文本（供 WebDriver 在官方 Firefox 上自动化，
-  // 其对 text/plain 文档拒绝 execute；安装器按 .user.js/.css 路径识别该视图）
+  // ?as=html: wraps the source text as text/html (for WebDriver automation on the official Firefox,
+  // which refuses execute on text/plain documents; the installer recognizes this view by the .user.js/.css path)
   if (asHtml) {
     const text = await Deno.readTextFile(full);
     const escaped = text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -100,10 +100,10 @@ async function indexPage(): Promise<Response> {
   files.sort();
   const rows = files.map((f) => {
     const url = `http://${HOST}:${PORT}/${f}`;
-    const kind = f.endsWith(".user.js") ? "脚本" : f.endsWith(".user.css") ? "样式" : "文件";
+    const kind = f.endsWith(".user.js") ? "script" : f.endsWith(".user.css") ? "style" : "file";
     return `<tr><td>${kind}</td><td><code>/${f}</code></td><td class="acts">
-      <button data-u="${url}">复制 URL</button>
-      <a href="/${f}">打开</a></td></tr>`;
+      <button data-u="${url}">Copy URL</button>
+      <a href="/${f}">Open</a></td></tr>`;
   }).join("");
   const html = `<!doctype html><meta charset="utf-8"><title>InfinMonkey Dev Server</title>
 <style>
@@ -115,12 +115,12 @@ async function indexPage(): Promise<Response> {
   .hint{color:#9a9aa5}
 </style>
 <h1>🐵 InfinMonkey Dev Server</h1>
-<p class="hint">根目录 <code>${ROOT}</code>。把下面的 URL 填到脚本/样式的「本地映射」里；文件保存后会自动推送扩展。</p>
-<table><tr><td>类型</td><td>路径</td><td></td></tr>${rows}</table>
+<p class="hint">Root directory <code>${ROOT}</code>. Paste the URLs below into a script/style's "local mapping"; saved files are pushed to the extension automatically.</p>
+<table><tr><td>Type</td><td>Path</td><td></td></tr>${rows}</table>
 <script>
 document.addEventListener('click', (e) => {
   const u = e.target?.dataset?.u;
-  if (u) { navigator.clipboard.writeText(u); e.target.textContent = '已复制'; setTimeout(() => e.target.textContent = '复制 URL', 1200); }
+  if (u) { navigator.clipboard.writeText(u); e.target.textContent = 'Copied'; setTimeout(() => e.target.textContent = 'Copy URL', 1200); }
 });
 </script>`;
   return new Response(html, {
@@ -163,7 +163,7 @@ function handle(req: Request): Response | Promise<Response> {
   if (url.pathname === "/") return indexPage();
   const rel = safePath(url.pathname);
   if (!rel) return new Response("Bad Request", { status: 400 });
-  // 仅真实导航（Accept: text/html）返回包裹视图；扩展后台的 fetch（Accept: */*）拿原始代码
+  // Only real navigations (Accept: text/html) get the wrapped view; extension background fetches (Accept: */*) get the raw code
   const wantsHtml = url.searchParams.get("as") === "html" &&
     (req.headers.get("accept") ?? "").includes("text/html");
   return serveFile(rel, wantsHtml);
@@ -188,16 +188,16 @@ function startWatch(): void {
           dirty.clear();
           if (files.length) {
             broadcastChanged(files);
-            console.log(`[devserver] 变更推送: ${files.join(", ")}`);
+            console.log(`[devserver] pushed changes: ${files.join(", ")}`);
           }
         }, 300);
       }
     })();
   } catch (e) {
-    console.warn("[devserver] 文件监听启动失败:", e);
+    console.warn("[devserver] file watcher failed to start:", e);
   }
 }
 
-console.log(`[devserver] 根目录: ${ROOT}`);
+console.log(`[devserver] root: ${ROOT}`);
 Deno.serve({ port: PORT, hostname: HOST }, handle);
 startWatch();

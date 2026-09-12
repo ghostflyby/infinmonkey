@@ -1,7 +1,7 @@
 import { assert } from "@std/assert";
 import { globToRegExp, matchPatternToRegExp, urlMatchesMeta } from "@infinmonkey/shared/matcher";
 
-Deno.test("matchPatternToRegExp: 标准模式", () => {
+Deno.test("matchPatternToRegExp: standard patterns", () => {
   const r1 = matchPatternToRegExp("https://example.com/*")!;
   assert(r1.test("https://example.com/"));
   assert(r1.test("https://example.com/a/b?c=1"));
@@ -22,13 +22,13 @@ Deno.test("matchPatternToRegExp: 标准模式", () => {
   assert(!r4.test("https://x/"));
 });
 
-Deno.test("matchPatternToRegExp: 无通配路径允许查询串", () => {
+Deno.test("matchPatternToRegExp: non-wildcard path allows query strings", () => {
   const r = matchPatternToRegExp("https://example.com/path")!;
   assert(r.test("https://example.com/path?x=1"));
   assert(!r.test("https://example.com/other"));
 });
 
-Deno.test("globToRegExp: glob 与 /regex/ 形式", () => {
+Deno.test("globToRegExp: glob and /regex/ forms", () => {
   const g = globToRegExp("*.example.com/*")!;
   assert(g.test("https://www.example.com/a"));
   assert(g.test("http://example.com/"));
@@ -42,7 +42,7 @@ Deno.test("globToRegExp: glob 与 /regex/ 形式", () => {
   assert(globToRegExp("/bad[(/") === null);
 });
 
-Deno.test("urlMatchesMeta: 正负组合与默认全站", () => {
+Deno.test("urlMatchesMeta: positive/negative combos and default all-sites", () => {
   const meta = {
     matches: ["https://example.com/*"],
     includes: [] as string[],
@@ -52,12 +52,12 @@ Deno.test("urlMatchesMeta: 正负组合与默认全站", () => {
   assert(!urlMatchesMeta("https://example.com/private/x", meta));
   assert(!urlMatchesMeta("https://other.com/", meta));
 
-  // 都没声明 → 对网页协议默认全站
+  // Nothing declared → all web protocols by default
   const all = { matches: [], includes: [], excludes: [] };
   assert(urlMatchesMeta("https://anything.example/", all));
   assert(!urlMatchesMeta("moz-extension://abc/x", all));
 
-  // 只有 include
+  // include only
   const inc = { matches: [], includes: ["*.wiki*"], excludes: [] };
   assert(urlMatchesMeta("https://zh.wikipedia.org/x", inc));
   assert(!urlMatchesMeta("https://example.com/", inc));

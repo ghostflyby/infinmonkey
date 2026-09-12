@@ -1,4 +1,4 @@
-/** 安装确认页：展示元数据 + 代码预览，确认写入。 */
+/** Install confirm page: shows metadata + code preview, then writes on confirm. */
 import { RUNTIME_NAME } from "@infinmonkey/shared/constants";
 import type { AnyEntry, PendingInstall } from "@infinmonkey/shared/types";
 import { h, msg } from "../dom.ts";
@@ -99,7 +99,7 @@ function render(
 }
 
 function isLocalDev(url: string): boolean {
-  // dev server 默认监听回环地址；展示用判定，最终来源由 background 写入
+  // The dev server listens on loopback by default; display-only heuristic, the authoritative source is written by the background
   return /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(url);
 }
 
@@ -109,7 +109,7 @@ async function done(pendingId: string, decision: "install" | "cancel"): Promise<
   document.body.textContent = decision === "install" ? "已安装，可以关闭此页面。" : "已取消。";
   window.close();
 }
-/** 复用 background 的解析器不可行（页面打包独立），这里做轻量展示用解析。 */
+/** Reusing the background parser is not feasible (pages bundle separately); a lightweight display-only parse lives here. */
 function parseMetaForView(code: string) {
   const targets: string[] = [];
   const grants: string[] = [];
@@ -167,7 +167,7 @@ function parseMetaForView(code: string) {
         break;
     }
   }
-  // @-moz-document 目标
+  // @-moz-document targets
   for (const m of code.matchAll(/@-moz-document[^{]*/g)) {
     for (const t of m[0].matchAll(/\b(domain|url|url-prefix|regexp)\s*\(([^)]*)\)/g)) {
       targets.push(`${t[1]}: ${t[2].replace(/['"]/g, "").trim()}`);
@@ -176,7 +176,7 @@ function parseMetaForView(code: string) {
   return { name, version, author, description, runAt, targets, grants, requires, connects };
 }
 
-// ---- opener 中继：供 opener 标签页（dev server 视图）以 postMessage 驱动确认 ----
+// ---- opener relay: lets the opener tab (dev server view) drive confirmation via postMessage ----
 if (window.opener) {
   const post = (m: Record<string, unknown>): void => window.opener?.postMessage(m, "*");
   post({ __infinE2EReady: true });
@@ -193,12 +193,12 @@ if (window.opener) {
   });
 }
 
-// ---- opener postMessage 中继 ----
-// dev server 视图（opener 标签页）可通过 postMessage 驱动本页：
-//   { __infinE2E: true, __infinReadApp: true }            → 回传页面文本
-//   { __infinE2E: true, __infinClickConfirm: true }       → 点击确认安装
-//   { __infinE2E: true, __infinClickManage: true }        → 打开管理面板
-// 并回传 { __infinE2EReady: true } / { __infinInstalled: true }。
+// ---- opener postMessage relay ----
+// The dev server view (opener tab) can drive this page via postMessage:
+//   { __infinE2E: true, __infinReadApp: true }            → responds with the page text
+//   { __infinE2E: true, __infinClickConfirm: true }       → clicks confirm install
+//   { __infinE2E: true, __infinClickManage: true }        → opens the options page
+// and replies with { __infinE2EReady: true } / { __infinInstalled: true }.
 if (window.opener) {
   const post = (m: Record<string, unknown>): void => window.opener?.postMessage(m, "*");
   post({ __infinE2EReady: true, app: document.getElementById("app")?.textContent ?? "" });

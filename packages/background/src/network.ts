@@ -10,7 +10,7 @@ export function abortXhr(ctxKey: string): void {
   activeXhrs.get(ctxKey)?.abort(new Error("aborted"));
 }
 
-/** @connect 严格模式：声明命中 / 用户永久授权 / 本地回环地址放行。 */
+/** @connect strict mode: declared match / user permanent grant / loopback addresses allowed. */
 function isConnectAllowed(connects: string[], grants: string[], host: string): boolean {
   const h = host.toLowerCase();
   if (h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]") return true;
@@ -31,7 +31,7 @@ const authWaiters = new Map<string, Array<(ok: boolean) => void>>();
 const authWindows = new Map<string, number | undefined>();
 const sessionGrants = new Set<string>();
 
-/** 弹出一次性授权窗口；同一 (脚本, 域名) 的并发请求复用同一个窗口的结果。 */
+/** Opens a one-time authorization prompt; concurrent requests for the same (script, domain) reuse one prompt's result. */
 function requestConnectAuth(scriptId: string, domain: string): Promise<boolean> {
   const key = `${scriptId}:${domain}`;
   const waiters = authWaiters.get(key) ?? [];
@@ -44,7 +44,7 @@ function requestConnectAuth(scriptId: string, domain: string): Promise<boolean> 
   browser.windows.create({ url, type: "popup", width: 460, height: 260 })
     .then((win: browser.Windows.Window | undefined) => authWindows.set(key, win?.id))
     .catch((e: unknown) => {
-      console.warn("[InfinMonkey] 授权窗口创建失败:", e);
+      console.warn("[InfinMonkey] failed to open auth prompt:", e);
       authWaiters.delete(key);
       waiters.forEach((r) => r(false));
     });
@@ -95,13 +95,15 @@ export async function handleXhr(ctxKey: string, scriptId: string, args: XhrArgs)
   try {
     url = new URL(args.url);
   } catch {
-    throw new Error(`GM_xmlhttpRequest: URL 无效 "${args.url}"（需绝对地址）`);
+    throw new Error(`GM_xmlhttpRequest: invalid URL "${args.url}" (absolute URL required)`);
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("GM_xmlhttpRequest: 仅支持 http/https");
+    throw new Error("GM_xmlhttpRequest: only http/https is supported");
   }
   if (!(await connectAllowedOrAsk(scriptId, url.hostname))) {
-    throw new Error(`GM_xmlhttpRequest: 域名 "${url.hostname}" 未被 @connect 允许（已弹出授权）`);
+    throw new Error(
+      `GM_xmlhttpRequest: domain "${url.hostname}" not allowed by @connect (auth prompt shown)`,
+    );
   }
 
   const ctrl = new AbortController();
@@ -174,7 +176,7 @@ function decodeData(d: unknown): BodyInit | null {
       type: o.mime || "application/octet-stream",
     });
   }
-  throw new Error("GM_xmlhttpRequest: 不支持的 data 类型（仅字符串/二进制）");
+  throw new Error("GM_xmlhttpRequest: unsupported data type (string/binary only)");
 }
 
 // ---- GM_download ----
@@ -187,13 +189,15 @@ export async function handleDownload(
   try {
     url = new URL(args.url);
   } catch {
-    throw new Error(`GM_download: URL 无效 "${args.url}"`);
+    throw new Error(`GM_download: invalid URL "${args.url}"`);
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("GM_download: 仅支持 http/https");
+    throw new Error("GM_download: only http/https is supported");
   }
   if (!(await connectAllowedOrAsk(scriptId, url.hostname))) {
-    throw new Error(`GM_download: 域名 "${url.hostname}" 未被 @connect 允许（已弹出授权）`);
+    throw new Error(
+      `GM_download: domain "${url.hostname}" not allowed by @connect (auth prompt shown)`,
+    );
   }
   const res = await fetch(url.href, { credentials: "include" });
   if (!res.ok) throw new Error(`GM_download: HTTP ${res.status}`);
@@ -214,4 +218,4 @@ export async function handleDownload(
   return { downloadId };
 }
 
-// 仅供测试
+// For testing only

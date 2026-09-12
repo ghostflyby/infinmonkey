@@ -1,4 +1,4 @@
-/** 轻量 DOM 工具与消息封装（扩展页面共用）。 */
+/** Lightweight DOM helpers and messaging wrapper (shared by extension pages). */
 import browser from "webextension-polyfill";
 import type { BgRequest } from "@infinmonkey/shared/protocol";
 
@@ -10,7 +10,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (typeof v === "function") {
-      // "onclick" → "click" 等映射
+      // "onclick" → "click" style mappings
       el.addEventListener(k.startsWith("on") ? k.slice(2) : k, v as EventListener);
     } else if (v === true) el.setAttribute(k, "");
     else if (v !== false && v != null) el.setAttribute(k, String(v));
@@ -23,8 +23,8 @@ export function h<K extends keyof HTMLElementTagNameMap>(
 }
 
 /**
- * 带「超时 + 重试」的消息发送：部分内核（实测 Zen MV3 事件页）会间歇性
- * 丢弃/挂起 runtime 消息，这里通过重试兜底。
+ * Message sending with timeout + retry: some engines (observed on the Zen MV3 event page) intermittently
+ * drop or hang runtime messages; retrying works around that.
  */
 export async function msg<T = unknown>(req: BgRequest, retries = 4, timeoutMs = 5000): Promise<T> {
   let lastErr: unknown = null;
@@ -34,19 +34,19 @@ export async function msg<T = unknown>(req: BgRequest, retries = 4, timeoutMs = 
       const raced = await Promise.race([
         p,
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("消息超时")), timeoutMs)
+          setTimeout(() => reject(new Error("Message timed out")), timeoutMs)
         ),
       ]);
       return raced;
     } catch (e) {
       lastErr = e;
-      // 真正的业务错误（如条目不存在）不重试：背景页直接以 reject 传输的可能性低，
-      // 但为简单起见仅对超时类错误重试。
-      if (!String((e as Error)?.message ?? e).includes("消息超时")) throw e;
+      // Real business errors (e.g. entry not found) are not retried: the background is unlikely to transfer them as a reject,
+      // but for simplicity only timeout-type errors are retried.
+      if (!String((e as Error)?.message ?? e).includes("Message timed out")) throw e;
     }
     await new Promise((r) => setTimeout(r, 400));
   }
-  throw lastErr ?? new Error("消息发送失败");
+  throw lastErr ?? new Error("Failed to send message");
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;

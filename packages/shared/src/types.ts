@@ -5,7 +5,7 @@ interface ResourceRef {
   url: string;
 }
 
-/** 解析后的元数据，脚本与样式共用一套结构。 */
+/** Parsed metadata, one structure shared by scripts and styles. */
 export interface ScriptMeta {
   name: string;
   namespace?: string;
@@ -23,7 +23,7 @@ export interface ScriptMeta {
   matches: string[];
   includes: string[];
   excludes: string[];
-  /** 原始 @grant 列表，可能含 "none"。 */
+  /** Raw @grant list, may contain "none". */
   grants: string[];
   connects: string[];
   requires: string[];
@@ -53,10 +53,10 @@ interface BaseEntry {
 
 export interface ScriptEntry extends BaseEntry {
   kind: "script";
-  /** @connect 之外由用户批准的额外域名（永久授权）。 */
+  /** Extra domains approved by the user beyond @connect (permanent grants). */
   connectGrants: string[];
   values: Record<string, unknown>;
-  /** dev 映射脚本最近一次成功拉取的代码，拉取失败时兜底。 */
+  /** Code from the last successful fetch of a dev-mapped script; fallback when a fetch fails. */
   devCode?: string;
 }
 
@@ -73,7 +73,7 @@ export interface ResourcePayload {
   text: string;
 }
 
-/** background 交给 MAIN world runner 的就绪脚本。 */
+/** Ready-to-run script handed by the background to the MAIN world runner. */
 export interface PreparedScript {
   id: string;
   name: string;
@@ -92,7 +92,7 @@ export interface PreparedScript {
   metaPlain: Record<string, unknown>;
   headerRaw: string;
   devUrl?: string;
-  /** GM_*Value 同步 API 的初始快照。 */
+  /** Initial snapshot for the synchronous GM_*Value APIs. */
   values: Record<string, unknown>;
 }
 
@@ -127,7 +127,7 @@ export interface PendingInstall {
   kind: "script" | "style";
   code: string;
   url?: string;
-  /** 非空表示「检查更新」触发的替换安装。 */
+  /** Non-empty means a replacement install triggered by "check for updates". */
   replaceId?: string;
   createdAt: number;
 }

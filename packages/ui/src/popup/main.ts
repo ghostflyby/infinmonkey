@@ -1,4 +1,4 @@
-/** popup：本页生效的脚本/样式 + 菜单命令。 */
+/** Popup: scripts/styles active on this page + menu commands. */
 import browser from "webextension-polyfill";
 import type { PopupData } from "@infinmonkey/shared/types";
 import { h, msg } from "../dom.ts";
