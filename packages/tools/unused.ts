@@ -1,13 +1,13 @@
 /**
- * 未使用导出检测：扫描各成员 src 下的导出符号，
- * 统计其在「其他文件」中的引用次数（含测试）。
+ * Unused export detection: scans exported symbols under each member's src,
+ * counting references in "other files" (tests included).
  *
- * 输出两类：
- *   [死代码]  外部无引用、文件内部也无使用 → 可直接删除
- *   [可收窄]  外部无引用但文件内部在用 → export 关键字多余，可改为私有
+ * Reports two categories:
+ *   [dead]     no external references and unused within its own file → safe to delete
+ *   [narrow]   no external references but used within its file → the export keyword is redundant, make it private
  *
- * 已知局限：仅做词法级匹配；通过字符串动态访问的成员不在检测范围。
- * 用法：deno task unused
+ * Known limitation: lexical matching only; members accessed dynamically via strings are out of scope.
+ * Usage: deno task unused
  */
 import { dirname, fromFileUrl, join, relative } from "@std/path";
 
@@ -34,7 +34,7 @@ for (const f of files) {
   linesOf.set(f, text.split("\n"));
 }
 
-// 收集导出符号
+// Collect exported symbols
 const EXPORT_RE =
   /export (?:default )?(?:async )?(?:function|const|class|type|interface|enum) (\w+)|export \{([^}]+)\}/g;
 const symbols = new Map<string, { file: string; line: number }>();
@@ -52,7 +52,7 @@ for (const [file, text] of content) {
   }
 }
 
-// 统计引用
+// Count references
 let dead = 0;
 let narrow = 0;
 for (const [name, loc] of symbols) {
@@ -65,18 +65,20 @@ for (const [name, loc] of symbols) {
     const lines = linesOf.get(file)!;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      if (i + 1 === loc.line && isOwner) continue; // 跳过导出声明行本身
+      if (i + 1 === loc.line && isOwner) continue; // skip the export declaration line itself
       const hits = line.match(new RegExp(`\\b${name}\\b`, "g"))?.length ?? 0;
       if (hits > 0) isOwner ? (internal += hits) : (external += hits);
     }
   }
   const rel = relative(PACKAGES, loc.file);
   if (external === 0 && internal === 0) {
-    console.log(`[死代码] ${name}  (${rel}:${loc.line})`);
+    console.log(`[dead] ${name}  (${rel}:${loc.line})`);
     dead++;
   } else if (external === 0) {
-    console.log(`[可收窄] ${name}  (${rel}:${loc.line})  仅文件内部使用 ${internal} 次`);
+    console.log(
+      `[narrow] ${name}  (${rel}:${loc.line})  used only within its file ${internal} time(s)`,
+    );
     narrow++;
   }
 }
-console.log(`\n导出符号 ${symbols.size} 个：死代码 ${dead}，可收窄 ${narrow}`);
+console.log(`\n${symbols.size} exported symbols: ${dead} dead, ${narrow} narrowable`);

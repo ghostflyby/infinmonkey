@@ -48,7 +48,7 @@ export function globToRegExp(glob: string): RegExp | null {
 }
 
 function globBody(g: string): string {
-  // 先处理 "*."：按用户脚本管理器惯例，*.example.com 同时匹配裸域 example.com。
+  // Handle "*." first: per userscript manager convention, *.example.com also matches the bare domain example.com.
   const STAR_DOT = "\x00";
   const s = g.split("*.").join(STAR_DOT);
   let out = "";
@@ -65,7 +65,7 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** 判断 URL 是否命中某条目（@match / @include 命中且不被 @exclude 拦下；两者皆空时默认全站，GM 传统语义）。 */
+/** Whether a URL hits an entry (@match/@include hit and not blocked by @exclude; when both are empty, matches everywhere — GM legacy semantics). */
 export function urlMatchesMeta(
   url: string,
   meta: Pick<ScriptMeta, "matches" | "includes" | "excludes">,
@@ -81,7 +81,7 @@ export function urlMatchesMeta(
     if (r) positives.push(r);
   }
   if (positives.length === 0) {
-    // 无任何声明：仅对网页协议默认生效，避免在扩展页等环境误跑。
+    // No declarations at all: only enabled on web protocols by default, to avoid running on extension pages and the like.
     return /^(https?|file|ftp):/.test(href);
   }
   if (!positives.some((r) => r.test(href))) return false;

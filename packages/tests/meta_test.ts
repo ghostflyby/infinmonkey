@@ -1,14 +1,15 @@
 import { assert, assertEquals } from "@std/assert";
 import { detectKind, extractHeader, parseHeaderPairs, parseMeta } from "@infinmonkey/shared/meta";
 
-Deno.test("parseMeta: 完整脚本头", () => {
+Deno.test("parseMeta: full script header", () => {
+  // xx-XX is a synthetic placeholder tag: locale-suffix parsing is language-agnostic.
   const code = `// ==UserScript==
 // @name         Test Script
-// @name:zh-CN   测试脚本
+// @name:xx-XX   Placeholder Name
 // @namespace    https://example.com/ns
 // @version      1.2.3
 // @description  A test
-// @description:zh-CN 一个测试
+// @description:xx-XX Placeholder description
 // @author       someone
 // @match        https://example.com/*
 // @match        https://*.example.org/foo*
@@ -27,10 +28,10 @@ Deno.test("parseMeta: 完整脚本头", () => {
 console.log('hi');`;
   const m = parseMeta(code, "fallback");
   assertEquals(m.name, "Test Script");
-  assertEquals(m.nameLocales["zh-CN"], "测试脚本");
+  assertEquals(m.nameLocales["xx-XX"], "Placeholder Name");
   assertEquals(m.version, "1.2.3");
   assertEquals(m.description, "A test");
-  assertEquals(m.descriptionLocales["zh-CN"], "一个测试");
+  assertEquals(m.descriptionLocales["xx-XX"], "Placeholder description");
   assertEquals(m.runAt, "document-start");
   assert(m.noframes);
   assertEquals(m.matches, ["https://example.com/*", "https://*.example.org/foo*"]);
@@ -44,7 +45,7 @@ console.log('hi');`;
   assert(m.headerFound);
 });
 
-Deno.test("parseMeta: UserStyle 头（块注释形式）", () => {
+Deno.test("parseMeta: UserStyle header (block comment form)", () => {
   const code = `/* ==UserStyle==
 @name         Dark Mode
 @namespace    infinmonkey
@@ -64,7 +65,7 @@ Deno.test("parseMeta: UserStyle 头（块注释形式）", () => {
   assert(m.headerFound);
 });
 
-Deno.test("parseMeta: 无头与空 grant none", () => {
+Deno.test("parseMeta: no header and empty grant none", () => {
   const noHeader = parseMeta("alert(1)");
   assert(!noHeader.headerFound);
   assertEquals(noHeader.runAt, "document-end");
@@ -73,13 +74,13 @@ Deno.test("parseMeta: 无头与空 grant none", () => {
   assertEquals(g.grants, ["none"]);
 });
 
-Deno.test("extractHeader kind 判定", () => {
+Deno.test("extractHeader kind detection", () => {
   assertEquals(extractHeader("// ==UserScript==\n// @name a\n// ==/UserScript==")?.kind, "script");
   assertEquals(extractHeader("/* ==UserStyle==\n@name a\n==/UserStyle== */")?.kind, "style");
   assertEquals(extractHeader("nothing"), null);
 });
 
-Deno.test("parseHeaderPairs: 块注释星号前缀", () => {
+Deno.test("parseHeaderPairs: block comment asterisk prefix", () => {
   const pairs = parseHeaderPairs("@name X\n* @version 1.0\n  @flag");
   assertEquals(pairs.length, 3);
   assertEquals(pairs[0], { key: "name", value: "X" });

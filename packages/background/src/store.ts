@@ -46,7 +46,7 @@ function broadcastEntriesChanged(): void {
   browser.runtime.sendMessage({ type: "entriesChanged" }).catch(() => {});
 }
 
-/** 诊断用：最近一次后台链路错误（e2e/排查时从扩展页读取）。 */
+/** Diagnostics: most recent background pipeline error (read from extension pages during e2e/debugging). */
 export async function reportError(where: string, e: unknown): Promise<void> {
   const msg = `[${where}] ${String((e as Error)?.stack ?? e)}`;
   console.error("[InfinMonkey]", msg);
@@ -55,7 +55,7 @@ export async function reportError(where: string, e: unknown): Promise<void> {
 
 export function fetchDevCode(url: string, timeoutMs = 2500): Promise<string> {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(new Error("dev server 超时")), timeoutMs);
+  const t = setTimeout(() => ctrl.abort(new Error("dev server timeout")), timeoutMs);
   return fetch(url, { cache: "no-store", signal: ctrl.signal })
     .then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -128,7 +128,7 @@ export async function findEntry(id: string): Promise<AnyEntry | undefined> {
 export async function updateCode(id: string, code: string): Promise<AnyEntry | undefined> {
   const entry = await findEntry(id);
   if (!entry) return undefined;
-  // 类型守卫：编辑器状态错乱时，防止把带样式头的代码写进脚本条目（或反之）；无头代码放行
+  // Type guard: if editor state is out of sync, prevent writing style-headed code into a script entry (or vice versa); headerless code passes through
   const header = extractHeader(code);
   if (header && header.kind !== entry.kind) {
     await reportError("updateCode:kind-mismatch", `${entry.kind} ← ${header.kind}`);
@@ -181,7 +181,7 @@ export async function deleteEntry(id: string): Promise<boolean> {
   return true;
 }
 
-// ---- GM 存储族 ----
+// ---- GM storage APIs ----
 
 export async function getValue(
   scriptId: string,
@@ -198,7 +198,7 @@ export async function setValue(
   value: unknown,
 ): Promise<{ oldValue: unknown; newValue: unknown }> {
   const entry = await findEntry(scriptId);
-  if (!entry || entry.kind !== "script") throw new Error("脚本不存在");
+  if (!entry || entry.kind !== "script") throw new Error("script not found");
   const oldValue = key in entry.values ? entry.values[key] : undefined;
   entry.values[key] = value;
   await persist();
@@ -247,7 +247,7 @@ export async function revokeConnectGrant(scriptId: string, domain: string): Prom
   await persist();
 }
 
-// ---- 安装队列 ----
+// ---- Pending install queue ----
 
 export async function putPendingInstall(
   p: Omit<PendingInstall, "id" | "createdAt">,
@@ -255,7 +255,7 @@ export async function putPendingInstall(
   const db = await getDB();
   const id = randomId();
   db.pending[id] = { ...p, id, createdAt: Date.now() };
-  // 清理超过 1 天的残留
+  // Clean up leftovers older than 1 day
   for (const [k, v] of Object.entries(db.pending)) {
     if (Date.now() - v.createdAt > 86_400_000) delete db.pending[k];
   }
@@ -277,7 +277,7 @@ export async function getPendingInstall(id: string): Promise<PendingInstall | un
   return (await getDB()).pending[id];
 }
 
-// ---- 导入 / 导出 ----
+// ---- Import / export ----
 
 export async function exportAll() {
   const db = await getDB();

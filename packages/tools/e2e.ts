@@ -1,10 +1,10 @@
 /**
- * InfinMonkey E2E：WebDriver 冒烟/全量（Firefox 系=geckodriver，Chromium 系=chromedriver）。
- * 前置：对应 dist 已构建（dist/firefox 或 dist/chrome）；dev server 运行于 127.0.0.1:17321。
- * 用法：deno run -A packages/tools/e2e.ts [--browser <名>] [--suite smoke|full]
- *   --browser 走 browsers.ts 解析（CLI > INFIN_BROWSER > .browsers.local.json > zen），
- *   驱动可执行文件取条目 driver 字段，缺省按内核类型取 PATH 上的 geckodriver/chromedriver。
- *   --suite smoke 只跑安装链路 + 注入核心（CI Firefox 腿），full 追加 GM_xhr/剪贴板。
+ * InfinMonkey E2E: WebDriver smoke/full suites (Firefox family=geckodriver, Chromium family=chromedriver).
+ * Prerequisites: the matching dist built (dist/firefox or dist/chrome); dev server running on 127.0.0.1:17321.
+ * Usage: deno run -A packages/tools/e2e.ts [--browser <name>] [--suite smoke|full]
+ *   --browser resolves via browsers.ts (CLI > INFIN_BROWSER > .browsers.local.json > zen),
+ *   the driver executable comes from the entry's driver field, defaulting to geckodriver/chromedriver on PATH per engine kind.
+ *   --suite smoke runs only the install flow + injection core (the CI Firefox leg); full adds GM_xhr/clipboard.
  */
 import { dirname, fromFileUrl, join } from "@std/path";
 import { cliBrowserName, resolveBrowser } from "./browsers.ts";
@@ -43,7 +43,7 @@ async function wd(method: string, path: string, body?: unknown): Promise<unknown
   let j: { value?: unknown } = {};
   try {
     j = JSON.parse(text) as { value?: unknown };
-  } catch { /* 非 JSON 响应原样进错误信息 */ }
+  } catch { /* non-JSON responses go into the error message as-is */ }
   if (res.status >= 400) {
     const msg = (j.value as { message?: string } | undefined)?.message ?? text.slice(0, 400);
     throw new Error(`${method} ${path} → ${res.status}: ${msg}`);
@@ -70,8 +70,8 @@ async function screenshot(tag: string): Promise<void> {
   } catch { /* ignore */ }
 }
 
-/** 轮询 execute 直到真值或超时（页面未加载完/元素未出现时 WebDriver 会抛错，一并重试；
- * false/'' 视为未就绪继续等——横幅这类「出现型」断言在 load 完成后可能晚几百 ms 才生效）。 */
+/** Polls execute until truthy or timeout (WebDriver throws while the page is loading or the element is absent; those errors are retried too;
+ * false/'' is treated as not-ready and keeps waiting — "appearance" assertions like the banner can land a few hundred ms after load). */
 async function poll(deadlineMs: number, script: string): Promise<unknown> {
   const dl = Date.now() + deadlineMs;
   while (Date.now() < dl) {
@@ -92,7 +92,7 @@ function argAfter(flag: string): string | undefined {
 // ---- main ----
 const suite = argAfter("--suite") ?? "full";
 if (suite !== "smoke" && suite !== "full") {
-  console.error(`[e2e] 未知 --suite "${suite}"（可选 smoke | full）`);
+  console.error(`[e2e] unknown --suite "${suite}" (choose smoke | full)`);
   Deno.exit(1);
 }
 const smoke = suite === "smoke";
@@ -105,7 +105,7 @@ console.log(`[e2e] browser=${name} kind=${kind} suite=${suite}`);
 await Deno.mkdir(SHOTS, { recursive: true });
 try {
   await Deno.remove(PROFILE, { recursive: true });
-} catch { /* 不存在 */ }
+} catch { /* not found */ }
 await Deno.mkdir(PROFILE, { recursive: true });
 
 let driverLog: Deno.FsFile | undefined;
@@ -115,7 +115,7 @@ try {
     create: true,
     truncate: true,
   });
-} catch { /* 截图目录都能建，这里失败就用 null */ }
+} catch { /* if even the screenshot dir fails, fall back to null */ }
 
 console.log(`[e2e] ${driverBin}…`);
 const proc = new Deno.Command(driverBin, {
@@ -127,14 +127,14 @@ const proc = new Deno.Command(driverBin, {
 }).spawn();
 if (proc.stderr) {
   if (driverLog) {
-    // 排空 stderr 落盘（driver 启动失败的根因只在这里），会话结束随进程终止
+    // Drain stderr to disk (driver startup failures only show there); the process dies with the session
     void proc.stderr.pipeTo(driverLog.writable).catch(() => {});
   } else {
     void proc.stderr.cancel().catch(() => {});
   }
 }
 
-// 等 driver 就绪（替代盲等，就绪判断走 WebDriver /status）
+// Wait for the driver to be ready (instead of blind waiting; readiness via WebDriver /status)
 {
   const dl = Date.now() + 15000;
   let up = false;
@@ -145,11 +145,11 @@ if (proc.stderr) {
         up = true;
         break;
       }
-    } catch { /* 未监听，重试 */ }
+    } catch { /* not listening yet, retry */ }
     await sleep(200);
   }
   if (!up) {
-    console.error(`[e2e] ${driverBin} 未在 ${BASE} 就绪`);
+    console.error(`[e2e] ${driverBin} not ready on ${BASE}`);
     Deno.exit(1);
   }
 }
@@ -158,14 +158,14 @@ try {
   console.log("[e2e] session…");
   const caps = kind === "firefox"
     ? {
-      // profile 交给 geckodriver 建一次性临时 profile（CI 的 snap Firefox 读不了隐藏目录）
+      // Let geckodriver create a one-shot temp profile (the CI snap Firefox cannot read hidden dirs)
       alwaysMatch: {
         browserName: "firefox",
         "moz:firefoxOptions": { binary: cfg.binary, args: ["-headless"] },
       },
     }
     : {
-      // 新无头模式才支持扩展；-disable-extensions-except 保证只有被测扩展
+      // Only the new headless mode supports extensions; -disable-extensions-except keeps only the extension under test
       alwaysMatch: {
         browserName: "chrome",
         "goog:chromeOptions": {
@@ -186,7 +186,7 @@ try {
     };
   const sess = await wd("POST", "/session", { capabilities: caps });
   sid = (sess as { sessionId: string }).sessionId;
-  if (!sid) throw new Error("session 响应无 sessionId");
+  if (!sid) throw new Error("session response has no sessionId");
 
   if (kind === "firefox") {
     console.log("[e2e] addon install…");
@@ -198,7 +198,7 @@ try {
 
   // ---- 1. Banner install ----
   console.log("[e2e] 1. banner install…");
-  // ?as=html：官方 Firefox 拒绝对 text/plain 文档 execute，走 dev server 的 html 包裹视图
+  // ?as=html: the official Firefox refuses execute on text/plain documents, so use the dev server's html wrapper view
   await nav(DEV + "/demo-e2e.user.js?as=html");
   const banner = await poll(10000, "return !!document.querySelector(\"div[style*='2147483647']\")");
   ok(banner === true, "install banner shown");
@@ -208,16 +208,13 @@ try {
   await exec(
     "document.querySelector(\"div[style*='2147483647']\")?.shadowRoot?.querySelector('.install')?.click()",
   );
-  // 安装结果直接读横幅回显（✓ 已安装 / 安装失败：<原因>）；横幅 3s 后自毁，轮询窗口要短
-  const doneT = await poll(
+  // Read the install result from the banner's data-infin-done marker (language-neutral);
+  // the banner self-destructs after 3s, so keep the polling window short
+  const doneState = await poll(
     5000,
-    `return document.querySelector("div[style*='2147483647']")?.shadowRoot?.querySelector('.done')?.textContent ?? ''`,
+    `return document.querySelector("div[style*='2147483647']")?.shadowRoot?.querySelector('[data-infin-done]')?.dataset.infinDone ?? ''`,
   );
-  ok(
-    typeof doneT === "string" && doneT.includes("已安装"),
-    "banner install persisted",
-    String(doneT),
-  );
+  ok(doneState === "installed", "banner install persisted", String(doneState));
   await sleep(2000);
 
   // ---- 2. example.com: injection + GM ----
@@ -225,7 +222,7 @@ try {
   await nav("https://example.com/");
   const r = await poll(
     20000,
-    // 门控：demo 元素出现前返回空串（falsy 让 poll 继续等），出现后一次性回传全部观感
+    // Gating: return an empty string until the demo element appears (falsy keeps poll waiting), then return all observations at once
     `return document.getElementById('infin-demo') ? JSON.stringify({` +
       `t:document.getElementById('infin-demo').textContent.slice(0,40),` +
       `p:getComputedStyle(document.getElementById('infin-demo')).position,` +
@@ -243,7 +240,7 @@ try {
       injPos = o.p;
       bridgeMark = o.b ?? "";
       bridgeErr = o.e ?? "";
-    } catch { /* 注入超时 */ }
+    } catch { /* injection timed out */ }
   }
   const inj = demoText.length > 0;
   ok(

@@ -1,4 +1,4 @@
-/** @connect 授权弹窗：用户选择后回传 background，等待中的请求随即放行或拒绝。 */
+/** @connect authorization prompt: the user's choice is sent back to the background, which then allows or denies the pending request. */
 import { h, msg } from "../dom.ts";
 
 const params = new URLSearchParams(location.search);

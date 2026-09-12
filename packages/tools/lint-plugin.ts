@@ -1,10 +1,10 @@
 /**
- * InfinMonkey deno lint 插件。
+ * InfinMonkey deno lint plugin.
  *
- * 规则 no-leaf-exports：content/inject 是被 manifest 直接声明的叶子 bundle
- * （IIFE 产物），不应出现任何形式的 export——它们之间不存在互相导入，
- * 导出只可能是死代码或错误的跨上下文引用。跨文件 unused-export 分析
- * 因 lint 插件缺少 finalize 钩子无法表达，见 `deno task unused`。
+ * Rule no-leaf-exports: content/inject are leaf bundles declared directly by the manifest
+ * (IIFE artifacts) and must not contain any form of export — they never import each other,
+ * so an export can only be dead code or a mistaken cross-context reference. Cross-file unused-export analysis
+ * cannot be expressed because lint plugins lack a finalize hook; see `deno task unused`.
  */
 interface ReportContext {
   filename: string;
@@ -12,7 +12,8 @@ interface ReportContext {
 }
 
 const LEAF_RE = /[\\/](content|inject)[\\\/]src[\\/]/;
-const LEAF_MSG = "叶子 bundle（content/inject）不允许导出内容：它们被 manifest 直接声明为独立入口";
+const LEAF_MSG =
+  "leaf bundle (content/inject) must not export anything: they are declared as standalone entries by the manifest";
 
 export default {
   name: "infinmonkey-lint",

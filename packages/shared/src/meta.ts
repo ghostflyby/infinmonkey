@@ -1,7 +1,7 @@
 import type { RunAt, ScriptMeta } from "./types.ts";
 
 /**
- * 同时兼容脚本（// ==UserScript==）与样式（/ * ==UserStyle== * /）两种头注释。
+ * Handles both the script (// ==UserScript==) and style (/ * ==UserStyle== * /) header comment forms.
  */
 const HEADER_RE =
   /(?:^|\n)[ \t]*(?:\/\/|\/\*)[ \t]*==+(UserScript|UserStyle)==+[ \t]*\r?\n([\s\S]*?)\r?\n?[ \t]*(?:\/\/[ \t]*)?==+\/\1==+[ \t]*(?:\*\/)?/i;
@@ -24,7 +24,7 @@ interface HeaderPair {
   value: string;
 }
 
-/** 解析头块内的 @key value 行，兼容 // 与 / * * / 两种注释前缀。 */
+/** Parses @key value lines inside the header block, accepting both // and / * * / comment prefixes. */
 export function parseHeaderPairs(block: string): HeaderPair[] {
   const out: HeaderPair[] = [];
   for (const line of block.split(/\r?\n/)) {

@@ -1,8 +1,8 @@
 /**
- * 启动开发浏览器：构建 → 解析浏览器配置（--browser / INFIN_BROWSER /
- * .browsers.local.json / 默认 zen）→ web-ext 以临时方式装载扩展。
+ * Launches a dev browser: build → resolve the browser config (--browser / INFIN_BROWSER /
+ * .browsers.local.json / default zen) → web-ext loads the extension temporarily.
  *
- * 用法：deno task run [--browser <名>]
+ * Usage: deno task run [--browser <name>]
  */
 import { join } from "@std/path";
 import { cliBrowserName, resolveBrowser, ROOT } from "./browsers.ts";
@@ -10,7 +10,7 @@ import { cliBrowserName, resolveBrowser, ROOT } from "./browsers.ts";
 const { name, kind, cfg, profileAbs } = await resolveBrowser(cliBrowserName());
 const buildTarget = kind === "chromium" ? "chrome" : "firefox";
 
-// 1) 构建
+// 1) Build
 const build = new Deno.Command(Deno.execPath(), {
   args: ["run", "-A", "packages/tools/build.ts", "--browser", buildTarget],
   stdout: "inherit",
@@ -19,11 +19,11 @@ const build = new Deno.Command(Deno.execPath(), {
 const built = await build.output();
 if (!built.success) Deno.exit(1);
 
-// 2) profile 目录
+// 2) Profile directory
 await Deno.mkdir(profileAbs, { recursive: true });
 
 if (kind === "chromium") {
-  // Chromium 系：--load-extension 直接装载 unpacked 扩展（无 web-ext 自动重载）
+  // Chromium family: load the unpacked extension directly via --load-extension (no web-ext auto-reload)
   console.log(`[launch] Chromium "${name}": ${cfg.binary}`);
   const proc = new Deno.Command(cfg.binary, {
     args: [
@@ -40,7 +40,7 @@ if (kind === "chromium") {
   const st = await proc.output();
   if (!st.success) Deno.exit(st.code);
 } else {
-  // Firefox 系：web-ext run（-- 之后的参数透传给浏览器）
+  // Firefox family: web-ext run (args after -- are forwarded to the browser)
   const webextArgs = [
     "run",
     "-A",
@@ -56,7 +56,7 @@ if (kind === "chromium") {
   ];
   if (cfg.args?.length) webextArgs.push("--", ...cfg.args);
 
-  console.log(`[launch] Firefox 系 "${name}": ${cfg.binary}`);
+  console.log(`[launch] Firefox family "${name}": ${cfg.binary}`);
   const proc = new Deno.Command(Deno.execPath(), {
     args: webextArgs,
     stdin: "inherit",

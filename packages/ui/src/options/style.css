@@ -24,7 +24,7 @@ body {
   color: var(--text);
 }
 
-/* ---- 侧栏 ---- */
+/* ---- Sidebar ---- */
 #sidebar {
   width: 216px;
   flex: none;
@@ -123,7 +123,7 @@ body {
   padding: 0 6px;
 }
 
-/* ---- 主区 ---- */
+/* ---- Main area ---- */
 #main {
   flex: 1;
   overflow: auto;
@@ -239,7 +239,7 @@ button.danger {
   border-color: var(--accent);
 }
 
-/* 开关 */
+/* Toggle switch */
 .switch {
   position: relative;
   width: 34px;
@@ -285,7 +285,7 @@ button.danger {
   border-radius: 4px;
 }
 
-/* ---- 编辑器 ---- */
+/* ---- Editor ---- */
 .ed-head {
   display: flex;
   align-items: center;
@@ -411,7 +411,7 @@ button.danger {
   flex: 1;
 }
 
-/* ---- 设置 ---- */
+/* ---- Settings ---- */
 .setting-row {
   display: flex;
   gap: 10px;

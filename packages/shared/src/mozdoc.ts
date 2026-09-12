@@ -11,7 +11,7 @@ interface TargetSpec {
 
 interface StyleChunk {
   css: string;
-  /** null 表示无条件（对启用该样式的所有页面生效）。 */
+  /** null means unconditional (applies on every page while the style is enabled). */
   targets: TargetSpec[] | null;
 }
 
@@ -28,7 +28,7 @@ export function splitUserStyle(css: string): StyleChunk[] {
       break;
     }
     plain += css.slice(i, at);
-    // 选择器列表：扫描到配平括号后的第一个 '{'
+    // Selector list: scan up to the first '{' after balanced brackets
     let k = at + KEY.length;
     let paren = 0;
     while (k < css.length && (paren > 0 || css[k] !== "{")) {
@@ -36,7 +36,7 @@ export function splitUserStyle(css: string): StyleChunk[] {
       else if (css[k] === ")") paren--;
       k++;
     }
-    // 找到配对的 '}'
+    // Found the matching '}'
     let depth = 0;
     let e = k;
     for (; e < css.length; e++) {
@@ -48,7 +48,7 @@ export function splitUserStyle(css: string): StyleChunk[] {
       }
     }
     if (k >= css.length || e >= css.length) {
-      // 结构不完整：原样保留，交由浏览器忽略
+      // Malformed structure: keep as-is and let the browser ignore it
       plain += css.slice(at);
       break;
     }
@@ -98,7 +98,7 @@ export function targetsMatch(targets: TargetSpec[] | null, url: string): boolean
   try {
     host = new URL(url).hostname.toLowerCase();
   } catch {
-    // 非 URL（如 about:blank）只可能命中 regexp/url 精确匹配
+    // Non-URLs (e.g. about:blank) can only hit exact regexp/url matches
   }
   return targets.some((t) => {
     switch (t.type) {

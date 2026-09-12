@@ -59,7 +59,7 @@ async function toPrepared(
   let code = s.code;
   if (s.source.type === "dev") {
     try {
-      // dev 映射源是本地 dev server，超时收紧（取不到就用缓存代码，注入不应被网络拖死）
+      // Dev-mapped sources hit the local dev server: use a tighter timeout (fall back to cached code; injection must not hang on the network)
       code = (await fetchText(s.source.url, 3000)).text;
       s.devCode = code;
     } catch (e) {

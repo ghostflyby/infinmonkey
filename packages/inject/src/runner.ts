@@ -1,8 +1,8 @@
 /**
- * MAIN world 运行时：由 background 以 scripting.executeScript({world:'MAIN'}) 注入。
- * 接收 bridge 转交的脚本载荷，在页面上下文中求值，并通过 postMessage 把
- * GM 特权操作桥接回 ISOLATED 内容脚本。此文件运行在页面上下文——
- * 不得 import 任何扩展 API。
+ * MAIN world runtime: injected by the background via scripting.executeScript({world:'MAIN'}).
+ * Receives script payloads handed over by the bridge, evaluates them in the page context, and bridges
+ * GM privileged ops back to the ISOLATED content script via postMessage. This file runs in the page context —
+ * it must not import any extension API.
  */
 import { PM_TAG, RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
 import type { PreparedScript } from "@infinmonkey/shared/types";
@@ -31,7 +31,7 @@ function main(): void {
     { key: string | null; fn: (k: string, ov: unknown, nv: unknown, remote: boolean) => void }
   >();
   const styleEls = new Map<string, HTMLStyleElement>();
-  /** 每个脚本的 GM 存储快照（valueChanged 事件同步更新）。 */
+  /** GM storage snapshot per script (kept in sync via valueChanged events). */
   const scriptStores = new Map<string, Record<string, unknown>>();
   const scriptOfListener = new Map<number, string>();
   let seq = 0;
@@ -67,7 +67,7 @@ function main(): void {
       if (d.ok) p.resolve(d.data);
       else {p.reject(
           Object.assign(
-            new Error(String(d.error ?? "未知错误")),
+            new Error(String(d.error ?? "Unknown error")),
             typeof d.errorExt === "object" ? d.errorExt : {},
           ),
         );}
@@ -86,7 +86,7 @@ function main(): void {
           try {
             l.fn(String(d.key), d.oldValue, d.newValue, String(d.senderKey) !== frameKey);
           } catch (e) {
-            console.error("[InfinMonkey] valueChangeListener 异常:", e);
+            console.error("[InfinMonkey] valueChangeListener threw:", e);
           }
         }
       } else if (d.type === "gmCallback") {
@@ -96,13 +96,13 @@ function main(): void {
         try {
           cb?.(typeof d.notificationId === "string" ? d.notificationId : undefined);
         } catch (e) {
-          console.error("[InfinMonkey] 回调异常:", e);
+          console.error("[InfinMonkey] callback threw:", e);
         }
       }
     }
   });
 
-  /** 样式同步：增/改/删由 data 对比决定，免除刷新即可生效。 */
+  /** Style sync: add/change/remove decided by diffing data; takes effect without reload. */
   function syncStyles(list: { id: string; css: string }[]): void {
     const keep = new Set(list.map((s) => s.id));
     for (const [id, el] of styleEls) {
@@ -159,16 +159,16 @@ function main(): void {
     try {
       fn.call(window, ...sb.args);
       console.debug(
-        `%c[InfinMonkey]%c ${s.name}${s.devUrl ? " (dev)" : ""} 已运行`,
+        `%c[InfinMonkey]%c ${s.name}${s.devUrl ? " (dev)" : ""} started`,
         "color:#e91e63;font-weight:bold",
         "",
       );
     } catch (e) {
-      console.error(`[InfinMonkey] 运行错误: ${s.name}`, e);
+      console.error(`[InfinMonkey] runtime error: ${s.name}`, e);
     }
   }
 
-  /** Trusted Types 环境兜底：尝试创建默认策略，让 new Function 可以工作。 */
+  /** Trusted Types fallback: try to create a default policy so that new Function works. */
   function createEvalFunction(
     params: string[],
     code: string,
@@ -182,7 +182,7 @@ function main(): void {
       try {
         g.__infinTTPolicy = tt.createPolicy("infinmonkey", { createScript: (x: string) => x });
       } catch {
-        // 页面限制了策略名单，无法创建
+        // The page restricts the policy allowlist; cannot create one
       }
     }
     const pol = g.__infinTTPolicy as { createScript: (s: string) => string } | undefined;
@@ -190,7 +190,7 @@ function main(): void {
       const body = pol ? pol.createScript(code) : code;
       return new Function(...params, body) as (...a: unknown[]) => unknown;
     } catch (e) {
-      console.error("[InfinMonkey] 编译失败（可能被页面 Trusted Types 拦截）:", e);
+      console.error("[InfinMonkey] compile failed (possibly blocked by page Trusted Types):", e);
       return null;
     }
   }
@@ -211,7 +211,7 @@ function main(): void {
       return blobToBinary(data);
     }
     if (typeof data === "object") {
-      // 普通对象 → 表单编码（与 TM 行为一致）
+      // Plain object → form-encoded (matches TM behavior)
       const sp = new URLSearchParams();
       for (const [k, v] of Object.entries(data as Record<string, unknown>)) sp.append(k, String(v));
       return sp.toString();
@@ -248,8 +248,8 @@ function main(): void {
       script: s.metaPlain,
     };
 
-    // GM_*Value 族按 TM/VM 惯例为同步 API：使用随载荷预载的本地快照，
-    // 写操作更新快照后异步同步到扩展存储；GM.* 点式 API 提供异步形态。
+    // The GM_*Value family follows the TM/VM convention of synchronous APIs: use the local snapshot preloaded with the payload;
+    // writes update the snapshot and sync to extension storage asynchronously; the GM.* dotted APIs provide async forms.
     const valueStore: Record<string, unknown> = { ...(s.values ?? {}) };
     scriptStores.set(s.id, valueStore);
 
@@ -507,7 +507,7 @@ function main(): void {
       return { abort };
     };
 
-    // ---- 组装参数（按 @grant 声明白名单注入） ----
+    // ---- Assemble arguments (injected per the @grant allowlist) ----
     const impls: Array<[string, unknown]> = [
       ["GM_addValueChangeListener", addValueChangeListener],
       ["GM_removeValueChangeListener", removeValueChangeListener],
@@ -532,7 +532,7 @@ function main(): void {
 
     const gmDot: Record<string, unknown> = {
       info: GM_info,
-      // GM4 点式 API 为异步形态
+      // GM4 dotted APIs provide async forms
       getValue: (k: string, d?: unknown) => Promise.resolve(getValue(k, d)),
       setValue: (k: string, v: unknown) => Promise.resolve(setValue(k, v)),
       deleteValue: (k: string) => Promise.resolve(deleteValue(k)),
@@ -569,7 +569,7 @@ function main(): void {
         hasDot = true;
         const short = gname.slice(3);
         if (short !== "info" && !(short in gmDot)) {
-          console.warn(`[InfinMonkey] 未知 grant: ${gname}`);
+          console.warn(`[InfinMonkey] unknown grant: ${gname}`);
         }
       }
     }

@@ -1,10 +1,10 @@
 /**
- * 构建脚本：deno bundle 打包 + 分浏览器 manifest 生成 + 静态资源拷贝。
- * 用法：deno run -A tools/build.ts [--browser firefox|chrome|all] [--zip]
+ * Build script: deno bundle packaging + per-browser manifest generation + static asset copying.
+ * Usage: deno run -A tools/build.ts [--browser firefox|chrome|all] [--zip]
  */
 import { dirname, fromFileUrl, join, relative } from "@std/path";
 
-// packages/tools/ → 仓库根
+// packages/tools/ → repo root
 const ROOT = dirname(fromFileUrl(import.meta.url)) + "/../..";
 const DIST = join(ROOT, "dist");
 const PACKAGES = join(ROOT, "packages");
@@ -20,7 +20,7 @@ const targets = browserArg === "all" ? ["firefox", "chrome"] : [browserArg];
 
 const GECKO_ID = "{3f7d2a91-6b5e-4c8a-9d20-51e8f0b7c642}";
 
-// [包内源文件, dist 相对输出]（dist 布局须与 manifest 引用一致）
+// [in-package source file, dist-relative output] (dist layout must match manifest references)
 const ENTRIES: [string, string][] = [
   ["background/src/main.ts", "background/main.js"],
   ["content/src/bridge.ts", "content/bridge.js"],
@@ -33,7 +33,7 @@ const ENTRIES: [string, string][] = [
 ];
 
 async function copyStatic(to: string) {
-  // 页面 html/css（ui 成员的 src 为页面根）
+  // Page html/css (the ui member's src is the pages root)
   const uiSrc = join(PACKAGES, "ui/src");
   for await (const p of walk(uiSrc)) {
     if (!/\.(html|css)$/.test(p)) continue;
@@ -42,9 +42,9 @@ async function copyStatic(to: string) {
     await Deno.mkdir(dirname(dest), { recursive: true });
     await Deno.copyFile(p, dest);
   }
-  // 许可证随包分发
+  // License ships with the package
   await Deno.copyFile(join(ROOT, "LICENSE"), join(to, "LICENSE"));
-  // 图标
+  // Icons
   const iconDir = join(ROOT, "assets/icons");
   await Deno.mkdir(join(to, "icons"), { recursive: true });
   for await (const p of walk(iconDir)) {
@@ -98,7 +98,7 @@ function manifest(browser: "firefox" | "chrome"): Record<string, unknown> {
         run_at: "document_start",
         all_frames: true,
       },
-      // runner 直接以 MAIN world 声明，注入不依赖 background 的 tab 解析（Zen 内核 sender 缺陷兜底）
+      // The runner is declared MAIN world directly; injection does not depend on background tab resolution (works around the Zen engine sender defect)
       {
         matches: ["<all_urls>"],
         js: ["inject/runner.js"],
@@ -133,7 +133,7 @@ for (const browser of targets as ("firefox" | "chrome")[]) {
   await Deno.remove(out, { recursive: true }).catch(() => {});
   await Deno.mkdir(out, { recursive: true });
 
-  // deno bundle（oxc）：TS 直打包、npm 走全局缓存、输出无 import/export 的经典脚本
+  // deno bundle (oxc): bundles TS directly, resolves npm from the global cache, emits a classic script without import/export
   for (const [entryRel, outRel] of ENTRIES) {
     const entry = join(PACKAGES, entryRel);
     const outFile = join(out, outRel);
@@ -153,7 +153,7 @@ for (const browser of targets as ("firefox" | "chrome")[]) {
     });
     const st = cmd.outputSync();
     if (!st.success) {
-      console.error(`[build] deno bundle 失败 (${outRel})`);
+      console.error(`[build] deno bundle failed (${outRel})`);
       Deno.exit(1);
     }
   }
@@ -169,12 +169,12 @@ for (const browser of targets as ("firefox" | "chrome")[]) {
     await Deno.remove(zip).catch(() => {});
     const cmd = new Deno.Command("zip", { args: ["-rq", zip, "."], cwd: out });
     const st = await cmd.output();
-    if (!st.success) console.error("[build] zip 失败");
+    if (!st.success) console.error("[build] zip failed");
   }
 
   const files: string[] = [];
   for await (const p of walk(out)) files.push(relative(out, p));
-  console.log(`[build] dist/${browser}: ${files.length} 个文件`);
+  console.log(`[build] dist/${browser}: ${files.length} files`);
 }
 
-console.log("[build] 完成");
+console.log("[build] done");
