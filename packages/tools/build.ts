@@ -1,5 +1,6 @@
 /**
- * Build script: deno bundle packaging + per-browser manifest generation + static asset copying.
+ * Build script: deno bundle packaging + manifest assembly (shared fields from packages/manifest.json,
+ * per-browser overrides below) + static asset copying.
  * Usage: deno run -A tools/build.ts [--browser firefox|chrome|all] [--zip]
  */
 import { dirname, fromFileUrl, join, relative } from "@std/path";
@@ -8,7 +9,14 @@ import { dirname, fromFileUrl, join, relative } from "@std/path";
 const ROOT = dirname(fromFileUrl(import.meta.url)) + "/../..";
 const DIST = join(ROOT, "dist");
 const PACKAGES = join(ROOT, "packages");
-const VERSION = "0.1.0";
+
+// Shared manifest fields live in packages/manifest.json; browser-specific fields are merged in per target (BROWSER_SPECIFIC below).
+// The MAIN-world runner content_script there is deliberate: injection must not depend on
+// background tab resolution (works around the Zen engine sender defect).
+const SHARED_MANIFEST: Record<string, unknown> = JSON.parse(
+  await Deno.readTextFile(join(PACKAGES, "manifest.json")),
+);
+const VERSION = SHARED_MANIFEST.version as string;
 
 const args = new Set(Deno.args);
 let browserArg = "all";
@@ -17,8 +25,6 @@ if (bi >= 0 && Deno.args[bi + 1]) browserArg = Deno.args[bi + 1];
 const doZip = args.has("--zip");
 
 const targets = browserArg === "all" ? ["firefox", "chrome"] : [browserArg];
-
-const GECKO_ID = "{3f7d2a91-6b5e-4c8a-9d20-51e8f0b7c642}";
 
 // [in-package source file, dist-relative output] (dist layout must match manifest references)
 const ENTRIES: [string, string][] = [
@@ -61,71 +67,21 @@ async function* walk(dir: string): AsyncGenerator<string> {
   }
 }
 
-function icons() {
-  const o: Record<string, string> = {};
-  for (const s of [16, 32, 48, 128]) o[String(s)] = `icons/icon-${s}.png`;
-  return o;
-}
+const GECKO_ID = "{3f7d2a91-6b5e-4c8a-9d20-51e8f0b7c642}";
 
-function manifest(browser: "firefox" | "chrome"): Record<string, unknown> {
-  const base: Record<string, unknown> = {
-    manifest_version: 3,
-    name: "InfinMonkey",
-    version: VERSION,
-    description: "用户脚本与用户样式管理器：MV3 运行时 + 本地文件映射调试。",
-    icons: icons(),
-    action: {
-      default_title: "InfinMonkey",
-      default_popup: "popup/popup.html",
-      default_icon: icons(),
-    },
-    options_ui: { page: "options/index.html", open_in_tab: true },
-    permissions: [
-      "storage",
-      "unlimitedStorage",
-      "scripting",
-      "tabs",
-      "webNavigation",
-      "notifications",
-      "downloads",
-      "clipboardWrite",
-    ],
-    host_permissions: ["<all_urls>"],
-    content_scripts: [
-      {
-        matches: ["<all_urls>"],
-        js: ["content/bridge.js"],
-        run_at: "document_start",
-        all_frames: true,
-      },
-      // The runner is declared MAIN world directly; injection does not depend on background tab resolution (works around the Zen engine sender defect)
-      {
-        matches: ["<all_urls>"],
-        js: ["inject/runner.js"],
-        run_at: "document_start",
-        all_frames: true,
-        world: "MAIN",
-      },
-      {
-        matches: ["http://*/*", "https://*/*"],
-        js: ["content/installer.js"],
-        run_at: "document_idle",
-        all_frames: false,
-      },
-    ],
-  };
-  if (browser === "firefox") {
-    return {
-      ...base,
-      background: { scripts: ["background/main.js"] },
-      browser_specific_settings: { gecko: { id: GECKO_ID, strict_min_version: "128.0" } },
-    };
-  }
-  return {
-    ...base,
+const BROWSER_SPECIFIC: Record<"firefox" | "chrome", Record<string, unknown>> = {
+  firefox: {
+    background: { scripts: ["background/main.js"] },
+    browser_specific_settings: { gecko: { id: GECKO_ID, strict_min_version: "128.0" } },
+  },
+  chrome: {
     background: { service_worker: "background/main.js" },
     minimum_chrome_version: "111",
-  };
+  },
+};
+
+function manifest(browser: "firefox" | "chrome"): Record<string, unknown> {
+  return { ...SHARED_MANIFEST, ...BROWSER_SPECIFIC[browser] };
 }
 
 for (const browser of targets as ("firefox" | "chrome")[]) {

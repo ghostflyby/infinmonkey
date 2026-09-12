@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "InfinMonkey",
+  "version": "0.1.0",
+  "description": "用户脚本与用户样式管理器：MV3 运行时 + 本地文件映射调试。",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "InfinMonkey",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "options_ui": { "page": "options/index.html", "open_in_tab": true },
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "scripting",
+    "tabs",
+    "webNavigation",
+    "notifications",
+    "downloads",
+    "clipboardWrite"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/bridge.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["inject/runner.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content/installer.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
