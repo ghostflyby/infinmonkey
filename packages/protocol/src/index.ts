@@ -164,6 +164,8 @@ export interface OpMap {
     result: EntryResult;
   };
   updateCode: { payload: { id: string; code: string; meta?: unknown }; result: EntryResult };
+  /** Mirror upsert from the extension: full entry, id preserved. */
+  putEntry: { payload: { entry: WireEntry }; result: EntryResult };
   updateMeta: { payload: { id: string; meta: unknown }; result: EntryResult };
   setEnabled: { payload: { id: string; enabled: boolean }; result: EntryResult };
   reorderEntries: { payload: { ids: string[] }; result: ReorderResult };
