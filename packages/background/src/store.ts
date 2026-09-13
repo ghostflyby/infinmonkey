@@ -18,6 +18,15 @@ interface DB {
   pending: Record<string, PendingInstall>;
 }
 
+export type StoreMutation = { type: "upsert"; entry: AnyEntry } | { type: "delete"; id: string };
+
+/** Fired after every successful local mutation; native.ts mirrors these to the companion app. */
+export const storeEvents = new EventTarget();
+
+export function emitStoreMutation(m: StoreMutation): void {
+  storeEvents.dispatchEvent(new CustomEvent("mutation", { detail: m }));
+}
+
 let cache: DB | null = null;
 
 export async function getDB(): Promise<DB> {
@@ -26,7 +35,11 @@ export async function getDB(): Promise<DB> {
   cache = {
     scripts: (all.scripts as ScriptEntry[]) ?? [],
     styles: (all.styles as StyleEntry[]) ?? [],
-    settings: { devOrigin: DEFAULT_DEV_ORIGIN, ...(all.settings as Partial<Settings> | undefined) },
+    settings: {
+      devOrigin: DEFAULT_DEV_ORIGIN,
+      storageBackend: "local",
+      ...(all.settings as Partial<Settings> | undefined),
+    },
     pending: (all.pending as Record<string, PendingInstall>) ?? {},
   };
   return cache;
@@ -117,6 +130,7 @@ export async function createEntry(
   }
   await persist();
   await broadcastEntriesChanged();
+  emitStoreMutation({ type: "upsert", entry });
   return entry;
 }
 
@@ -143,6 +157,7 @@ export async function updateCode(id: string, code: string): Promise<AnyEntry | u
   if (entry.kind === "script" && entry.source.type === "dev") entry.devCode = code;
   await persist();
   await broadcastEntriesChanged();
+  emitStoreMutation({ type: "upsert", entry });
   return entry;
 }
 
@@ -152,6 +167,7 @@ export async function setEnabled(id: string, enabled: boolean): Promise<AnyEntry
   entry.enabled = enabled;
   await persist();
   await broadcastEntriesChanged();
+  emitStoreMutation({ type: "upsert", entry });
   return entry;
 }
 
@@ -166,6 +182,7 @@ export async function setSource(id: string, source: EntrySource): Promise<AnyEnt
   }
   await persist();
   await broadcastEntriesChanged();
+  emitStoreMutation({ type: "upsert", entry });
   return entry;
 }
 
@@ -178,6 +195,7 @@ export async function deleteEntry(id: string): Promise<boolean> {
   if (db.scripts.length + db.styles.length === before) return false;
   await persist();
   await broadcastEntriesChanged();
+  emitStoreMutation({ type: "delete", id });
   return true;
 }
 
@@ -202,6 +220,7 @@ export async function setValue(
   const oldValue = key in entry.values ? entry.values[key] : undefined;
   entry.values[key] = value;
   await persist();
+  emitStoreMutation({ type: "upsert", entry });
   return { oldValue, newValue: value };
 }
 
@@ -216,6 +235,7 @@ export async function deleteValue(
   if (existed) {
     delete entry.values[key];
     await persist();
+    emitStoreMutation({ type: "upsert", entry });
   }
   return { existed, oldValue };
 }
@@ -238,6 +258,7 @@ export async function addConnectGrant(scriptId: string, domain: string): Promise
   const d = domain.toLowerCase();
   if (!entry.connectGrants.includes(d)) entry.connectGrants.push(d);
   await persist();
+  emitStoreMutation({ type: "upsert", entry });
 }
 
 export async function revokeConnectGrant(scriptId: string, domain: string): Promise<void> {
@@ -245,6 +266,7 @@ export async function revokeConnectGrant(scriptId: string, domain: string): Prom
   if (!entry || entry.kind !== "script") return;
   entry.connectGrants = entry.connectGrants.filter((d) => d !== domain.toLowerCase());
   await persist();
+  emitStoreMutation({ type: "upsert", entry });
 }
 
 // ---- Pending install queue ----
@@ -319,5 +341,33 @@ export async function importAll(
   }
   await persist();
   await broadcastEntriesChanged();
+  for (const e of [...db.scripts, ...db.styles]) emitStoreMutation({ type: "upsert", entry: e });
   return count;
+}
+
+// ---- Mirror helpers (native sync applies remote state without reflection) ----
+
+/** Replace-or-insert an entry exactly as given; no mutation events are emitted. */
+export async function mirrorUpsert(entry: AnyEntry): Promise<void> {
+  const db = await getDB();
+  const list = entry.kind === "script" ? db.scripts : db.styles;
+  const idx = list.findIndex((e) => e.id === entry.id);
+  if (idx >= 0) list[idx] = entry;
+  else {
+    (list as AnyEntry[]).push(entry);
+    if (entry.position === 0) entry.position = nextPosition(list);
+  }
+  await persist();
+  await broadcastEntriesChanged();
+}
+
+/** Remove an entry by id; no mutation events are emitted. */
+export async function mirrorDelete(id: string): Promise<void> {
+  const db = await getDB();
+  const before = db.scripts.length + db.styles.length;
+  db.scripts = db.scripts.filter((s) => s.id !== id);
+  db.styles = db.styles.filter((s) => s.id !== id);
+  if (db.scripts.length + db.styles.length === before) return;
+  await persist();
+  await broadcastEntriesChanged();
 }

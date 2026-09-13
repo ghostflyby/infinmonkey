@@ -28,7 +28,9 @@
     "webNavigation",
     "notifications",
     "downloads",
-    "clipboardWrite"
+    "clipboardWrite",
+    "nativeMessaging",
+    "alarms"
   ],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [

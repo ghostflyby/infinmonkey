@@ -432,12 +432,39 @@ $("#btn-export2").addEventListener("click", () => void doExport());
 // ---- Settings ----
 
 async function loadSettings(): Promise<void> {
-  const settings = await msg<{ devOrigin: string }>({ type: "GetSettings" });
+  const settings = await msg<{ devOrigin: string; storageBackend: "local" | "native" }>({
+    type: "GetSettings",
+  });
   ($("#set-dev-origin") as HTMLInputElement).value = settings.devOrigin;
+  ($("#set-native-enabled") as HTMLInputElement).checked = settings.storageBackend === "native";
+  void refreshNativeStatus();
   $("#about").textContent = `${RUNTIME_NAME} v${RUNTIME_VERSION} · MV3 运行时 · Firefox ${
     browser.runtime.getBrowserInfo ? "✓" : "✗"
   }`;
 }
+
+async function refreshNativeStatus(): Promise<void> {
+  const status = $("#set-native-status");
+  const r = await msg<{ connected: boolean; pending: number; supported: boolean }>({
+    type: "GetNativeStatus",
+  });
+  if (!r.supported) {
+    status.textContent = "当前浏览器不支持";
+    status.className = "err";
+    return;
+  }
+  status.textContent = r.connected
+    ? `✓ 已连接${r.pending > 0 ? ` · ${r.pending} 条待同步` : ""}`
+    : "✗ 未连接（应用未运行或未安装）";
+  status.className = r.connected ? "ok" : "err";
+}
+
+$("#set-native-enabled").addEventListener("change", async (ev) => {
+  const enabled = (ev.target as HTMLInputElement).checked;
+  await msg({ type: "SetSettings", patch: { storageBackend: enabled ? "native" : "local" } });
+  toast(enabled ? "已启用 Native App 同步" : "已关闭 Native App 同步");
+  await refreshNativeStatus();
+});
 
 $("#set-dev-ping").addEventListener("click", async () => {
   const origin = ($("#set-dev-origin") as HTMLInputElement).value.trim().replace(/\/$/, "");

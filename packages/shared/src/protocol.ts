@@ -24,6 +24,7 @@ export type BgRequest =
   | { type: "ExportAll" }
   | { type: "ImportAll"; data: unknown; mode: "merge" | "replace" }
   | { type: "GetSettings" }
+  | { type: "GetNativeStatus" }
   | { type: "SetSettings"; patch: Partial<Settings> }
   // Install flow
   | { type: "StartInstallFromText"; code: string; url?: string }
