@@ -1,7 +1,11 @@
 /**
  * Build script: deno bundle packaging + manifest assembly (shared fields from packages/manifest.json,
  * per-browser overrides below) + static asset copying.
- * Usage: deno run -A tools/build.ts [--browser firefox|chrome|all] [--zip]
+ * Usage: deno run -A tools/build.ts [--browser firefox|chrome|safari|all] [--zip]
+ *
+ * The safari target is a plain dist output like the others; the root-level InfinMonkey.xcodeproj
+ * references dist/safari directly (inside its project container) and its extension targets copy
+ * the entries into the appex via the native Copy Bundle Resources phase.
  */
 import { dirname, fromFileUrl, join, relative } from "@std/path";
 
@@ -24,7 +28,15 @@ const bi = Deno.args.indexOf("--browser");
 if (bi >= 0 && Deno.args[bi + 1]) browserArg = Deno.args[bi + 1];
 const doZip = args.has("--zip");
 
-const targets = browserArg === "all" ? ["firefox", "chrome"] : [browserArg];
+type Browser = "firefox" | "chrome" | "safari";
+const BROWSERS: Browser[] = ["firefox", "chrome", "safari"];
+const targets: Browser[] = browserArg === "all" ? ["firefox", "chrome"] : [browserArg as Browser];
+for (const t of targets) {
+  if (!BROWSERS.includes(t)) {
+    console.error(`[build] unknown browser "${t}" (expected: ${BROWSERS.join(", ")}, all)`);
+    Deno.exit(1);
+  }
+}
 
 // [in-package source file, dist-relative output] (dist layout must match manifest references)
 const ENTRIES: [string, string][] = [
@@ -69,7 +81,10 @@ async function* walk(dir: string): AsyncGenerator<string> {
 
 const GECKO_ID = "{3f7d2a91-6b5e-4c8a-9d20-51e8f0b7c642}";
 
-const BROWSER_SPECIFIC: Record<"firefox" | "chrome", Record<string, unknown>> = {
+// Safari: service_worker background and MAIN-world content scripts both require Safari 16.4+.
+// Safari has no manifest-level minimum-version key (minimum_chrome_version is Chromium-only),
+// so the floor is documented here instead of declared in the manifest.
+const BROWSER_SPECIFIC: Record<Browser, Record<string, unknown>> = {
   firefox: {
     background: { scripts: ["background/main.js"] },
     browser_specific_settings: { gecko: { id: GECKO_ID, strict_min_version: "128.0" } },
@@ -78,13 +93,16 @@ const BROWSER_SPECIFIC: Record<"firefox" | "chrome", Record<string, unknown>> = 
     background: { service_worker: "background/main.js" },
     minimum_chrome_version: "111",
   },
+  safari: {
+    background: { service_worker: "background/main.js" },
+  },
 };
 
-function manifest(browser: "firefox" | "chrome"): Record<string, unknown> {
+function manifest(browser: Browser): Record<string, unknown> {
   return { ...SHARED_MANIFEST, ...BROWSER_SPECIFIC[browser] };
 }
 
-for (const browser of targets as ("firefox" | "chrome")[]) {
+for (const browser of targets) {
   const out = join(DIST, browser);
   await Deno.remove(out, { recursive: true }).catch(() => {});
   await Deno.mkdir(out, { recursive: true });
