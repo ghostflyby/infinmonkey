@@ -572,7 +572,7 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey.Extension;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID).Extension";
 				PRODUCT_NAME = "InfinMonkey Extension";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -605,7 +605,7 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey.Extension;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID).Extension";
 				PRODUCT_NAME = "InfinMonkey Extension";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -644,7 +644,7 @@
 					"-framework",
 					WebKit,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID)";
 				PRODUCT_NAME = InfinMonkey;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -682,7 +682,7 @@
 					"-framework",
 					WebKit,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID)";
 				PRODUCT_NAME = InfinMonkey;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -719,7 +719,7 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey.Extension;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID).Extension";
 				PRODUCT_NAME = "InfinMonkey Extension";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -754,7 +754,7 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey.Extension;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID).Extension";
 				PRODUCT_NAME = "InfinMonkey Extension";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -792,7 +792,7 @@
 					"-framework",
 					WebKit,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID)";
 				PRODUCT_NAME = InfinMonkey;
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
@@ -831,7 +831,7 @@
 					"-framework",
 					WebKit,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID)";
 				PRODUCT_NAME = InfinMonkey;
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
@@ -847,7 +847,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				APP_GROUP_ID = "$(TeamIdentifierPrefix)group.$(BASE_BUNDLE_ID)";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BASE_BUNDLE_ID = dev.ghostflyby.InfinMonkey;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -909,7 +911,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				APP_GROUP_ID = "$(TeamIdentifierPrefix)group.$(BASE_BUNDLE_ID)";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BASE_BUNDLE_ID = dev.ghostflyby.InfinMonkey;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
