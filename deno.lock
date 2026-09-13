@@ -4,7 +4,7 @@
     "jsr:@std/assert@^1.0.13": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@std/internal@^1.0.14": "1.0.14",
-    "jsr:@std/path@^1.1.0": "1.1.6",
+    "jsr:@std/path@^1.1.6": "1.1.6",
     "npm:web-ext@10.6.0": "10.6.0",
     "npm:webextension-polyfill@0.12.0": "0.12.0"
   },
@@ -1678,7 +1678,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@^1.0.13",
-      "jsr:@std/path@^1.1.0",
+      "jsr:@std/path@^1.1.6",
       "npm:webextension-polyfill@0.12.0"
     ]
   }
