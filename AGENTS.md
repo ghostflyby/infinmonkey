@@ -29,6 +29,13 @@ as non-empty; E2E asserts on DOM markers/attributes (e.g. `data-infin-done`), ne
 3. **Bundle with `deno bundle`**, not esbuild or other third-party bundlers.
 4. **Never download browsers or other large binaries without asking first.** E2E browsers/drivers
    come from local config (`.browsers.local.json`, gitignored) or the CI setup script.
+5. **No `rsync`.** Copy operations in Xcode build script phases use plain `cp`/`rm`.
+
+## Swift conventions
+
+Swift code in `apple/` (the Apple-native app) is formatted with swift-format using its default
+configuration (no `.swift-format` override file): `deno task swift:fmt` formats in place,
+`deno task swift:lint` checks.
 
 ## Validation
 

@@ -1,9 +1,13 @@
 node_modules/
 dist/
 .webext/
-.safari/
 *.zip
 .DS_Store
 .e2e/
 .idea/
 .browsers.local.json
+
+# Xcode: personal state and build products
+xcuserdata/
+DerivedData/
+build/

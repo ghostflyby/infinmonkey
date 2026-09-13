@@ -1,0 +1,1011 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		ECBE70733055A77C00072D70 /* InfinMonkey Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = ECBE70723055A77C00072D70 /* InfinMonkey Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		ECBE707D3055A77C00072D70 /* InfinMonkey Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = ECBE707C3055A77C00072D70 /* InfinMonkey Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		ECBE70C23055A77C00072D70 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECBE70C13055A77C00072D70 /* SafariWebExtensionHandler.swift */; };
+		ECBE70C33055A77C00072D70 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECBE70C13055A77C00072D70 /* SafariWebExtensionHandler.swift */; };
+		ECBE70D03055A77C00072D70 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70C53055A77C00072D70 /* manifest.json */; };
+		ECBE70D13055A77C00072D70 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70C63055A77C00072D70 /* LICENSE */; };
+		ECBE70D23055A77C00072D70 /* background in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70C73055A77C00072D70 /* background */; };
+		ECBE70D33055A77C00072D70 /* content in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70C83055A77C00072D70 /* content */; };
+		ECBE70D43055A77C00072D70 /* inject in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70C93055A77C00072D70 /* inject */; };
+		ECBE70D53055A77C00072D70 /* options in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CA3055A77C00072D70 /* options */; };
+		ECBE70D63055A77C00072D70 /* popup in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CB3055A77C00072D70 /* popup */; };
+		ECBE70D73055A77C00072D70 /* install in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CC3055A77C00072D70 /* install */; };
+		ECBE70D83055A77C00072D70 /* prompt in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CD3055A77C00072D70 /* prompt */; };
+		ECBE70D93055A77C00072D70 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CE3055A77C00072D70 /* icons */; };
+		ECBE70E03055A77C00072D70 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70C53055A77C00072D70 /* manifest.json */; };
+		ECBE70E13055A77C00072D70 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70C63055A77C00072D70 /* LICENSE */; };
+		ECBE70E23055A77C00072D70 /* background in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70C73055A77C00072D70 /* background */; };
+		ECBE70E33055A77C00072D70 /* content in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70C83055A77C00072D70 /* content */; };
+		ECBE70E43055A77C00072D70 /* inject in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70C93055A77C00072D70 /* inject */; };
+		ECBE70E53055A77C00072D70 /* options in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CA3055A77C00072D70 /* options */; };
+		ECBE70E63055A77C00072D70 /* popup in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CB3055A77C00072D70 /* popup */; };
+		ECBE70E73055A77C00072D70 /* install in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CC3055A77C00072D70 /* install */; };
+		ECBE70E83055A77C00072D70 /* prompt in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CD3055A77C00072D70 /* prompt */; };
+		ECBE70E93055A77C00072D70 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CE3055A77C00072D70 /* icons */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		ECBE70743055A77C00072D70 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = ECBE70393055A77A00072D70 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ECBE70713055A77C00072D70;
+			remoteInfo = "InfinMonkey Extension (iOS)";
+		};
+		ECBE707E3055A77C00072D70 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = ECBE70393055A77A00072D70 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ECBE707B3055A77C00072D70;
+			remoteInfo = "InfinMonkey Extension (macOS)";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		ECBE70A53055A77C00072D70 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				ECBE70733055A77C00072D70 /* InfinMonkey Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECBE70AF3055A77C00072D70 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				ECBE707D3055A77C00072D70 /* InfinMonkey Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		ECBE70553055A77C00072D70 /* InfinMonkey.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = InfinMonkey.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECBE70673055A77C00072D70 /* InfinMonkey.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = InfinMonkey.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECBE70723055A77C00072D70 /* InfinMonkey Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "InfinMonkey Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECBE707C3055A77C00072D70 /* InfinMonkey Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "InfinMonkey Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECBE70C13055A77C00072D70 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		ECBE70C53055A77C00072D70 /* manifest.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
+		ECBE70C63055A77C00072D70 /* LICENSE */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		ECBE70C73055A77C00072D70 /* background */ = {isa = PBXFileReference; lastKnownFileType = folder; path = background; sourceTree = "<group>"; };
+		ECBE70C83055A77C00072D70 /* content */ = {isa = PBXFileReference; lastKnownFileType = folder; path = content; sourceTree = "<group>"; };
+		ECBE70C93055A77C00072D70 /* inject */ = {isa = PBXFileReference; lastKnownFileType = folder; path = inject; sourceTree = "<group>"; };
+		ECBE70CA3055A77C00072D70 /* options */ = {isa = PBXFileReference; lastKnownFileType = folder; path = options; sourceTree = "<group>"; };
+		ECBE70CB3055A77C00072D70 /* popup */ = {isa = PBXFileReference; lastKnownFileType = folder; path = popup; sourceTree = "<group>"; };
+		ECBE70CC3055A77C00072D70 /* install */ = {isa = PBXFileReference; lastKnownFileType = folder; path = install; sourceTree = "<group>"; };
+		ECBE70CD3055A77C00072D70 /* prompt */ = {isa = PBXFileReference; lastKnownFileType = folder; path = prompt; sourceTree = "<group>"; };
+		ECBE70CE3055A77C00072D70 /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; path = icons; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		ECBE70A03055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey (iOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets.xcassets,
+				InfinMonkeyApp.swift,
+			);
+			target = ECBE70543055A77C00072D70 /* InfinMonkey (iOS) */;
+		};
+		ECBE70A43055A77C00072D70 /* Exceptions for "apple/iOS (Extension)" folder in "InfinMonkey Extension (iOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = ECBE70713055A77C00072D70 /* InfinMonkey Extension (iOS) */;
+		};
+		ECBE70A93055A77C00072D70 /* Exceptions for "apple/iOS (App)" folder in "InfinMonkey (iOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = ECBE70543055A77C00072D70 /* InfinMonkey (iOS) */;
+		};
+		ECBE70AA3055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey (macOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets.xcassets,
+				InfinMonkeyApp.swift,
+			);
+			target = ECBE70663055A77C00072D70 /* InfinMonkey (macOS) */;
+		};
+		ECBE70AE3055A77C00072D70 /* Exceptions for "apple/macOS (Extension)" folder in "InfinMonkey Extension (macOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = ECBE707B3055A77C00072D70 /* InfinMonkey Extension (macOS) */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		ECBE703D3055A77A00072D70 /* apple/Shared (App) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				ECBE70A03055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey (iOS)" target */,
+				ECBE70AA3055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey (macOS)" target */,
+			);
+			path = "apple/Shared (App)";
+			sourceTree = "<group>";
+		};
+		ECBE70573055A77C00072D70 /* apple/iOS (App) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				ECBE70A93055A77C00072D70 /* Exceptions for "apple/iOS (App)" folder in "InfinMonkey (iOS)" target */,
+			);
+			path = "apple/iOS (App)";
+			sourceTree = "<group>";
+		};
+		ECBE70683055A77C00072D70 /* apple/macOS (App) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "apple/macOS (App)";
+			sourceTree = "<group>";
+		};
+		ECBE70763055A77C00072D70 /* apple/iOS (Extension) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				ECBE70A43055A77C00072D70 /* Exceptions for "apple/iOS (Extension)" folder in "InfinMonkey Extension (iOS)" target */,
+			);
+			path = "apple/iOS (Extension)";
+			sourceTree = "<group>";
+		};
+		ECBE70803055A77C00072D70 /* apple/macOS (Extension) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				ECBE70AE3055A77C00072D70 /* Exceptions for "apple/macOS (Extension)" folder in "InfinMonkey Extension (macOS)" target */,
+			);
+			path = "apple/macOS (Extension)";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		ECBE70523055A77C00072D70 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECBE70643055A77C00072D70 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECBE706F3055A77C00072D70 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECBE70793055A77C00072D70 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		ECBE70383055A77A00072D70 = {
+			isa = PBXGroup;
+			children = (
+				ECBE703D3055A77A00072D70 /* apple/Shared (App) */,
+				ECBE70683055A77C00072D70 /* apple/macOS (App) */,
+				ECBE70573055A77C00072D70 /* apple/iOS (App) */,
+				ECBE70463055A77C00072D70 /* apple/Shared (Extension) */,
+				ECBE70803055A77C00072D70 /* apple/macOS (Extension) */,
+				ECBE70763055A77C00072D70 /* apple/iOS (Extension) */,
+				ECBE70C43055A77C00072D70 /* Resources (dist/safari) */,
+				ECBE70563055A77C00072D70 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		ECBE70463055A77C00072D70 /* apple/Shared (Extension) */ = {
+			isa = PBXGroup;
+			children = (
+				ECBE70C13055A77C00072D70 /* SafariWebExtensionHandler.swift */,
+			);
+			path = "apple/Shared (Extension)";
+			sourceTree = "<group>";
+		};
+		ECBE70563055A77C00072D70 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				ECBE70553055A77C00072D70 /* InfinMonkey.app */,
+				ECBE70673055A77C00072D70 /* InfinMonkey.app */,
+				ECBE70723055A77C00072D70 /* InfinMonkey Extension.appex */,
+				ECBE707C3055A77C00072D70 /* InfinMonkey Extension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		ECBE70C43055A77C00072D70 /* Resources (dist/safari) */ = {
+			isa = PBXGroup;
+			children = (
+				ECBE70C53055A77C00072D70 /* manifest.json */,
+				ECBE70C63055A77C00072D70 /* LICENSE */,
+				ECBE70C73055A77C00072D70 /* background */,
+				ECBE70C83055A77C00072D70 /* content */,
+				ECBE70C93055A77C00072D70 /* inject */,
+				ECBE70CA3055A77C00072D70 /* options */,
+				ECBE70CB3055A77C00072D70 /* popup */,
+				ECBE70CC3055A77C00072D70 /* install */,
+				ECBE70CD3055A77C00072D70 /* prompt */,
+				ECBE70CE3055A77C00072D70 /* icons */,
+			);
+			name = "Resources (dist/safari)";
+			path = dist/safari;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		ECBE70543055A77C00072D70 /* InfinMonkey (iOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ECBE70A63055A77C00072D70 /* Build configuration list for PBXNativeTarget "InfinMonkey (iOS)" */;
+			buildPhases = (
+				ECBE70513055A77C00072D70 /* Sources */,
+				ECBE70523055A77C00072D70 /* Frameworks */,
+				ECBE70533055A77C00072D70 /* Resources */,
+				ECBE70A53055A77C00072D70 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				ECBE70753055A77C00072D70 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				ECBE70573055A77C00072D70 /* apple/iOS (App) */,
+			);
+			name = "InfinMonkey (iOS)";
+			packageProductDependencies = (
+			);
+			productName = "InfinMonkey (iOS)";
+			productReference = ECBE70553055A77C00072D70 /* InfinMonkey.app */;
+			productType = "com.apple.product-type.application";
+		};
+		ECBE70663055A77C00072D70 /* InfinMonkey (macOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ECBE70B03055A77C00072D70 /* Build configuration list for PBXNativeTarget "InfinMonkey (macOS)" */;
+			buildPhases = (
+				ECBE70633055A77C00072D70 /* Sources */,
+				ECBE70643055A77C00072D70 /* Frameworks */,
+				ECBE70653055A77C00072D70 /* Resources */,
+				ECBE70AF3055A77C00072D70 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				ECBE707F3055A77C00072D70 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				ECBE70683055A77C00072D70 /* apple/macOS (App) */,
+			);
+			name = "InfinMonkey (macOS)";
+			packageProductDependencies = (
+			);
+			productName = "InfinMonkey (macOS)";
+			productReference = ECBE70673055A77C00072D70 /* InfinMonkey.app */;
+			productType = "com.apple.product-type.application";
+		};
+		ECBE70713055A77C00072D70 /* InfinMonkey Extension (iOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ECBE70A13055A77C00072D70 /* Build configuration list for PBXNativeTarget "InfinMonkey Extension (iOS)" */;
+			buildPhases = (
+				ECBE70F03055A77C00072D70 /* Build Extension Resources (deno) */,
+				ECBE706E3055A77C00072D70 /* Sources */,
+				ECBE706F3055A77C00072D70 /* Frameworks */,
+				ECBE70703055A77C00072D70 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				ECBE70763055A77C00072D70 /* apple/iOS (Extension) */,
+			);
+			name = "InfinMonkey Extension (iOS)";
+			packageProductDependencies = (
+			);
+			productName = "InfinMonkey Extension (iOS)";
+			productReference = ECBE70723055A77C00072D70 /* InfinMonkey Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		ECBE707B3055A77C00072D70 /* InfinMonkey Extension (macOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ECBE70AB3055A77C00072D70 /* Build configuration list for PBXNativeTarget "InfinMonkey Extension (macOS)" */;
+			buildPhases = (
+				ECBE70F13055A77C00072D70 /* Build Extension Resources (deno) */,
+				ECBE70783055A77C00072D70 /* Sources */,
+				ECBE70793055A77C00072D70 /* Frameworks */,
+				ECBE707A3055A77C00072D70 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				ECBE70803055A77C00072D70 /* apple/macOS (Extension) */,
+			);
+			name = "InfinMonkey Extension (macOS)";
+			packageProductDependencies = (
+			);
+			productName = "InfinMonkey Extension (macOS)";
+			productReference = ECBE707C3055A77C00072D70 /* InfinMonkey Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		ECBE70393055A77A00072D70 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					ECBE70543055A77C00072D70 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					ECBE70663055A77C00072D70 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					ECBE70713055A77C00072D70 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					ECBE707B3055A77C00072D70 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = ECBE703C3055A77A00072D70 /* Build configuration list for PBXProject "InfinMonkey" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = ECBE70383055A77A00072D70;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = ECBE70563055A77C00072D70 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				ECBE70543055A77C00072D70 /* InfinMonkey (iOS) */,
+				ECBE70663055A77C00072D70 /* InfinMonkey (macOS) */,
+				ECBE70713055A77C00072D70 /* InfinMonkey Extension (iOS) */,
+				ECBE707B3055A77C00072D70 /* InfinMonkey Extension (macOS) */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		ECBE70533055A77C00072D70 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECBE70653055A77C00072D70 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECBE70703055A77C00072D70 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ECBE70D03055A77C00072D70 /* manifest.json in Resources */,
+				ECBE70D13055A77C00072D70 /* LICENSE in Resources */,
+				ECBE70D23055A77C00072D70 /* background in Resources */,
+				ECBE70D33055A77C00072D70 /* content in Resources */,
+				ECBE70D43055A77C00072D70 /* inject in Resources */,
+				ECBE70D53055A77C00072D70 /* options in Resources */,
+				ECBE70D63055A77C00072D70 /* popup in Resources */,
+				ECBE70D73055A77C00072D70 /* install in Resources */,
+				ECBE70D83055A77C00072D70 /* prompt in Resources */,
+				ECBE70D93055A77C00072D70 /* icons in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECBE707A3055A77C00072D70 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ECBE70E03055A77C00072D70 /* manifest.json in Resources */,
+				ECBE70E13055A77C00072D70 /* LICENSE in Resources */,
+				ECBE70E23055A77C00072D70 /* background in Resources */,
+				ECBE70E33055A77C00072D70 /* content in Resources */,
+				ECBE70E43055A77C00072D70 /* inject in Resources */,
+				ECBE70E53055A77C00072D70 /* options in Resources */,
+				ECBE70E63055A77C00072D70 /* popup in Resources */,
+				ECBE70E73055A77C00072D70 /* install in Resources */,
+				ECBE70E83055A77C00072D70 /* prompt in Resources */,
+				ECBE70E93055A77C00072D70 /* icons in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		ECBE70F03055A77C00072D70 /* Build Extension Resources (deno) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Build Extension Resources (deno)";
+			outputPaths = (
+				"$(SRCROOT)/dist/safari/manifest.json",
+				"$(SRCROOT)/dist/safari/LICENSE",
+				"$(SRCROOT)/dist/safari/background",
+				"$(SRCROOT)/dist/safari/content",
+				"$(SRCROOT)/dist/safari/inject",
+				"$(SRCROOT)/dist/safari/options",
+				"$(SRCROOT)/dist/safari/popup",
+				"$(SRCROOT)/dist/safari/install",
+				"$(SRCROOT)/dist/safari/prompt",
+				"$(SRCROOT)/dist/safari/icons",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nif command -v deno >/dev/null 2>&1; then\n    DENO=\"deno\"\nelif [ -x \"$HOME/.deno/bin/deno\" ]; then\n    DENO=\"$HOME/.deno/bin/deno\"\nelif [ -x /opt/homebrew/bin/deno ]; then\n    DENO=\"/opt/homebrew/bin/deno\"\nelse\n    echo \"error: deno not found (checked PATH, ~/.deno/bin, /opt/homebrew/bin)\" >&2\n    exit 1\nfi\ncd \"$SRCROOT\"\n\"$DENO\" run -A packages/tools/build.ts --browser safari\n";
+		};
+		ECBE70F13055A77C00072D70 /* Build Extension Resources (deno) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Build Extension Resources (deno)";
+			outputPaths = (
+				"$(SRCROOT)/dist/safari/manifest.json",
+				"$(SRCROOT)/dist/safari/LICENSE",
+				"$(SRCROOT)/dist/safari/background",
+				"$(SRCROOT)/dist/safari/content",
+				"$(SRCROOT)/dist/safari/inject",
+				"$(SRCROOT)/dist/safari/options",
+				"$(SRCROOT)/dist/safari/popup",
+				"$(SRCROOT)/dist/safari/install",
+				"$(SRCROOT)/dist/safari/prompt",
+				"$(SRCROOT)/dist/safari/icons",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nif command -v deno >/dev/null 2>&1; then\n    DENO=\"deno\"\nelif [ -x \"$HOME/.deno/bin/deno\" ]; then\n    DENO=\"$HOME/.deno/bin/deno\"\nelif [ -x /opt/homebrew/bin/deno ]; then\n    DENO=\"/opt/homebrew/bin/deno\"\nelse\n    echo \"error: deno not found (checked PATH, ~/.deno/bin, /opt/homebrew/bin)\" >&2\n    exit 1\nfi\ncd \"$SRCROOT\"\n\"$DENO\" run -A packages/tools/build.ts --browser safari\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		ECBE70513055A77C00072D70 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECBE70633055A77C00072D70 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECBE706E3055A77C00072D70 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ECBE70C23055A77C00072D70 /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECBE70783055A77C00072D70 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				ECBE70C33055A77C00072D70 /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		ECBE70753055A77C00072D70 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ECBE70713055A77C00072D70 /* InfinMonkey Extension (iOS) */;
+			targetProxy = ECBE70743055A77C00072D70 /* PBXContainerItemProxy */;
+		};
+		ECBE707F3055A77C00072D70 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ECBE707B3055A77C00072D70 /* InfinMonkey Extension (macOS) */;
+			targetProxy = ECBE707E3055A77C00072D70 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		ECBE70A23055A77C00072D70 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "apple/iOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "InfinMonkey Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey.Extension;
+				PRODUCT_NAME = "InfinMonkey Extension";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		ECBE70A33055A77C00072D70 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "apple/iOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "InfinMonkey Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey.Extension;
+				PRODUCT_NAME = "InfinMonkey Extension";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		ECBE70A73055A77C00072D70 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "apple/iOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = InfinMonkey;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey;
+				PRODUCT_NAME = InfinMonkey;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		ECBE70A83055A77C00072D70 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "apple/iOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = InfinMonkey;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey;
+				PRODUCT_NAME = InfinMonkey;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		ECBE70AC3055A77C00072D70 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "apple/macOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "InfinMonkey Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey.Extension;
+				PRODUCT_NAME = "InfinMonkey Extension";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+			};
+			name = Debug;
+		};
+		ECBE70AD3055A77C00072D70 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "apple/macOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "InfinMonkey Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey.Extension;
+				PRODUCT_NAME = "InfinMonkey Extension";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+			};
+			name = Release;
+		};
+		ECBE70B13055A77C00072D70 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = InfinMonkey;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey;
+				PRODUCT_NAME = InfinMonkey;
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+			};
+			name = Debug;
+		};
+		ECBE70B23055A77C00072D70 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = InfinMonkey;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = dev.ghostflyby.InfinMonkey;
+				PRODUCT_NAME = InfinMonkey;
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+			};
+			name = Release;
+		};
+		ECBE70B53055A77C00072D70 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		ECBE70B63055A77C00072D70 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		ECBE703C3055A77A00072D70 /* Build configuration list for PBXProject "InfinMonkey" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECBE70B53055A77C00072D70 /* Debug */,
+				ECBE70B63055A77C00072D70 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ECBE70A13055A77C00072D70 /* Build configuration list for PBXNativeTarget "InfinMonkey Extension (iOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECBE70A23055A77C00072D70 /* Debug */,
+				ECBE70A33055A77C00072D70 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ECBE70A63055A77C00072D70 /* Build configuration list for PBXNativeTarget "InfinMonkey (iOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECBE70A73055A77C00072D70 /* Debug */,
+				ECBE70A83055A77C00072D70 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ECBE70AB3055A77C00072D70 /* Build configuration list for PBXNativeTarget "InfinMonkey Extension (macOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECBE70AC3055A77C00072D70 /* Debug */,
+				ECBE70AD3055A77C00072D70 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ECBE70B03055A77C00072D70 /* Build configuration list for PBXNativeTarget "InfinMonkey (macOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECBE70B13055A77C00072D70 /* Debug */,
+				ECBE70B23055A77C00072D70 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = ECBE70393055A77A00072D70 /* Project object */;
+}
