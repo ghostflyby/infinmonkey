@@ -1,0 +1,12 @@
+# Dependabot version updates: deno.json/deno.lock dependencies (npm + jsr
+# imports, supported since the 2026-06 changelog) and workflow actions.
+version: 2
+updates:
+  - package-ecosystem: deno
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
