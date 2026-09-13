@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "id": "req-1",
+  "ok": true,
+  "result": {
+    "proto": 1,
+    "app": "InfinMonkey",
+    "platform": "macos",
+    "rev": 7,
+    "entries": [
+      {
+        "id": "e1",
+        "kind": "script",
+        "name": "Demo",
+        "version": "1.0",
+        "enabled": true,
+        "position": 1,
+        "updatedAt": 1730000000000,
+        "metaStale": false
+      }
+    ]
+  }
+}

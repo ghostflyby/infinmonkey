@@ -1,0 +1,6 @@
+{
+  "v": 1,
+  "id": "req-9",
+  "ok": false,
+  "error": { "code": "notFound", "message": "entry not found" }
+}

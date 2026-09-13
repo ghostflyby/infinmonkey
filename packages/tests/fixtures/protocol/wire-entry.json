@@ -1,0 +1,14 @@
+{
+  "id": "e1",
+  "kind": "script",
+  "enabled": true,
+  "position": 3,
+  "installedAt": 1729990000000,
+  "updatedAt": 1730000000000,
+  "code": "// ==UserScript==\n// @name Demo\n// ==/UserScript==\n",
+  "meta": { "name": "Demo", "runAt": "document-end", "matches": ["<all_urls>"] },
+  "source": { "type": "inline" },
+  "connectGrants": ["api.example.org"],
+  "values": { "token": "abc" },
+  "metaStale": false
+}
