@@ -5,12 +5,20 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege; cancel superseded runs on the same ref.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   static:
     name: Static checks / unit tests / build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -20,7 +28,9 @@ jobs:
       - run: deno test -A
       - run: deno task unused
       - run: deno task build
-      - uses: actions/upload-artifact@v4
+      # Keep the safari bundle from rotting (pure deno bundling, no Xcode needed)
+      - run: deno task build:safari
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -29,7 +39,7 @@ jobs:
     name: E2E（Firefox / geckodriver）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -47,7 +57,7 @@ jobs:
           curl -sf http://127.0.0.1:17321/__infin/health || { echo "devserver not ready"; exit 1; }
       - name: Run E2E smoke
         run: deno run -A packages/tools/e2e.ts --browser firefox --suite smoke
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: e2e-firefox
@@ -57,7 +67,7 @@ jobs:
     name: E2E（Chrome for Testing / chromedriver）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -73,7 +83,7 @@ jobs:
           curl -sf http://127.0.0.1:17321/__infin/health || { echo "devserver not ready"; exit 1; }
       - name: Run E2E full
         run: deno run -A packages/tools/e2e.ts --browser cft --suite full
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: e2e-chromium
