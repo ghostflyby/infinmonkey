@@ -20,7 +20,7 @@
     ]
   },
   "imports": {
-    "@std/assert": "jsr:@std/assert@^1.0.13",
+    "@std/assert": "jsr:@std/assert@^1.0.19",
     "@std/path": "jsr:@std/path@^1.1.0",
     "webextension-polyfill": "npm:webextension-polyfill@0.12.0"
   },
