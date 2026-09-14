@@ -2,13 +2,12 @@ import XCTest
 
 @testable import InfinMonkeyCore
 
-private func tempStore() -> NativeStore {
-  let root = FileManager.default.temporaryDirectory
+func temporaryRoot() -> URL {
+  FileManager.default.temporaryDirectory
     .appendingPathComponent("infinmonkey-tests-\(UUID().uuidString)", isDirectory: true)
-  return NativeStore(layout: StoreLayout(root: root))
 }
 
-private func scriptCode(name: String = "Demo") -> String {
+func scriptCode(name: String = "Demo") -> String {
   """
   // ==UserScript==
   // @name \(name)
@@ -18,197 +17,274 @@ private func scriptCode(name: String = "Demo") -> String {
   """
 }
 
+func demoMeta(name: String = "Demo") -> ScriptMeta {
+  var meta = ScriptMeta()
+  meta.name = name
+  meta.headerFound = true
+  return meta
+}
+
+func valuesBlob(_ object: [String: Any]) -> Data {
+  try! JSONSerialization.data(withJSONObject: object)
+}
+
+/// Reads a value's description back out of an opaque blob.
+func valueDescription(_ blob: Data?, _ key: String) -> String? {
+  guard let blob, let object = try? JSONSerialization.jsonObject(with: blob) as? [String: Any]
+  else {
+    return nil
+  }
+  return object[key].map { String(describing: $0) }
+}
+
 final class NativeStoreTests: XCTestCase {
 
-  func testCreateAndListRoundTrip() throws {
-    let store = tempStore()
-    let entry = try store.createEntry(
-      kind: .script, code: scriptCode(), meta: ["name": "Demo"], source: ["type": "inline"],
-      enabled: true, values: ["token": "abc"])
+  func testCreateAndListRoundTrip() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let entry = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
+      values: valuesBlob(["token": "abc"]))
 
-    let listed = try store.listEntries()
-    XCTAssertEqual(listed.entries.count, 1)
-    let full = listed.entries[0]
+    let snapshot = try await store.snapshot()
+    XCTAssertEqual(snapshot.entries.count, 1)
+    let full = snapshot.entries[0]
     XCTAssertEqual(full.record.id, entry.record.id)
     XCTAssertEqual(full.code, scriptCode())
-    XCTAssertEqual(full.values["token"] as? String, "abc")
+    XCTAssertEqual(valueDescription(full.values, "token"), "abc")
+    XCTAssertFalse(full.record.metaStale)
   }
 
-  func testCodeFileLayoutOnDisk() throws {
-    let store = tempStore()
-    let entry = try store.createEntry(
-      kind: .style, code: "body{}", meta: ["name": "S"], source: ["type": "inline"], enabled: true,
+  func testCodeFileLayoutOnDisk() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let entry = try await store.create(
+      kind: .style, code: "body{}", meta: demoMeta(name: "S"), source: .inline, enabled: true,
       values: nil)
     XCTAssertEqual(entry.record.fileName, "\(entry.record.id).user.css")
     XCTAssertTrue(
-      FileManager.default.fileExists(
-        atPath: store.layout.entriesDir.appendingPathComponent(entry.record.fileName).path))
+      FileManager.default.fileExists(atPath: store.layout.codeURL(entry.record).path))
+    XCTAssertNil(entry.values, "styles have no values file")
   }
 
-  func testExternalEditMarksMetaStale() throws {
-    let store = tempStore()
-    let entry = try store.createEntry(
-      kind: .script, code: scriptCode(), meta: ["name": "Demo"], source: ["type": "inline"],
-      enabled: true, values: nil)
+  func testUnparsedMetaRoundTripsAsEmptyObject() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let entry = try await store.create(
+      kind: .script, code: scriptCode(), meta: .unparsed, source: .inline, enabled: true,
+      values: nil)
 
-    // Simulate an external editor writing new content behind the store's back.
-    let root = store.layout.root
-    let file = root.appendingPathComponent("entries").appendingPathComponent(entry.record.fileName)
-    try Data(Data("/* rewritten */".utf8)).write(to: file)
+    XCTAssertTrue(entry.record.meta.isUnparsed)
+    XCTAssertTrue(entry.record.metaStale, "unparsed metadata means the extension must parse it")
 
-    let after = try store.getEntry(id: entry.record.id)
+    // A fresh read from disk keeps the marker, so the extension still parses it.
+    let reloaded = try await store.entry(id: entry.record.id)
+    XCTAssertTrue(reloaded.record.meta.isUnparsed)
+  }
+
+  func testExternalEditMarksMetaStale() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let entry = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
+      values: nil)
+
+    // Simulate an editor writing behind the store's back.
+    try Data("/* rewritten */".utf8).write(to: store.layout.codeURL(entry.record))
+
+    let after = try await store.entry(id: entry.record.id)
     XCTAssertTrue(after.record.metaStale)
 
-    // Extension re-parses and pushes fresh meta → flag clears.
-    let fixed = try store.updateMeta(id: entry.record.id, meta: ["name": "Renamed"])
+    // The extension re-parses and pushes fresh metadata; the flag clears.
+    let fixed = try await store.updateMeta(id: entry.record.id, meta: demoMeta(name: "Renamed"))
     XCTAssertFalse(fixed.record.metaStale)
-    XCTAssertEqual(fixed.record.summary.name, "Renamed")
+    XCTAssertEqual(fixed.record.meta.name, "Renamed")
   }
 
-  func testOrphanFileIsAdoptedAndMissingFileIsTombstoned() throws {
-    let store = tempStore()
-    let layout = store.layout.root
-    let first = try store.createEntry(
-      kind: .script, code: scriptCode(), meta: ["name": "Demo"], source: ["type": "inline"],
-      enabled: true, values: nil)
+  func testOrphanFileIsAdoptedAndMissingFileIsTombstoned() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let first = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
+      values: nil)
 
-    // Orphan: a file dropped in by the user, no index record.
-    let orphanName = "dropped-in.user.js"
-    try Data("// ==UserScript==\n// @name Dropped\n// ==/UserScript==\n".utf8)
-      .write(to: layout.appendingPathComponent("entries").appendingPathComponent(orphanName))
+    // A file with no index record.
+    let orphan = store.layout.entriesDir.appendingPathComponent("dropped-in.user.js")
+    try Data("// ==UserScript==\n// @name Dropped\n// ==/UserScript==\n".utf8).write(to: orphan)
+    // A record whose file vanished.
+    try FileManager.default.removeItem(at: store.layout.codeURL(first.record))
 
-    // Deletion behind the store's back.
-    try FileManager.default.removeItem(
-      at: layout.appendingPathComponent("entries").appendingPathComponent(first.record.fileName))
-
-    let listed = try store.listEntries()
-    let ids = Set(listed.entries.map(\.record.id))
+    let snapshot = try await store.snapshot()
+    let ids = Set(snapshot.entries.map(\.record.id))
     XCTAssertTrue(ids.contains("dropped-in"), "orphan should be adopted")
     XCTAssertFalse(ids.contains(first.record.id), "vanished record should be dropped")
 
-    let changes = try store.getChanges(sinceRev: 0)
+    let adopted = try XCTUnwrap(snapshot.entries.first { $0.record.id == "dropped-in" })
+    XCTAssertTrue(adopted.record.metaStale, "adopted code has not been parsed yet")
+    XCTAssertTrue(adopted.record.meta.isUnparsed)
+
+    let changes = try await store.changes(sinceRev: 0)
     XCTAssertTrue(changes.deletedIds.contains(first.record.id))
     XCTAssertTrue(changes.upserts.contains { $0.record.id == "dropped-in" })
   }
 
-  func testValuesCrudAndRevisionMonotonicity() throws {
-    let store = tempStore()
-    let entry = try store.createEntry(
-      kind: .script, code: scriptCode(), meta: ["name": "Demo"], source: ["type": "inline"],
-      enabled: true, values: nil)
-    let id = entry.record.id
+  func testRevisionAdvancesPerMutation() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let entry = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
+      values: nil)
 
-    try store.setValue(id: id, key: "k", value: ["nested": 1])
-    let stored = try store.getValues(id: id)["k"] as? [String: Int]
-    XCTAssertEqual(stored, ["nested": 1])
+    let revAfterCreate = try await store.currentRev()
+    _ = try await store.setEnabled(id: entry.record.id, enabled: false)
+    let revAfterDisable = try await store.currentRev()
+    XCTAssertGreaterThan(revAfterDisable, revAfterCreate)
 
-    let revAfterSet = try store.hello(sinceRev: nil).rev
-    let existed = try store.deleteValue(id: id, key: "k")
-    XCTAssertTrue(existed)
-    let revAfterDelete = try store.hello(sinceRev: nil).rev
-    XCTAssertGreaterThan(revAfterDelete, revAfterSet)
-    XCTAssertTrue(try store.getValues(id: id).isEmpty)
-
-    XCTAssertThrowsError(try store.setValue(id: "missing", key: "k", value: 1))
+    // A no-op write must not advance the revision: clients watch it to decide
+    // whether they need to sync.
+    _ = try await store.setEnabled(id: entry.record.id, enabled: false)
+    let revAfterNoOp = try await store.currentRev()
+    XCTAssertEqual(revAfterNoOp, revAfterDisable)
   }
 
-  func testChangesStreamReportsUpsertsAndDeletes() throws {
-    let store = tempStore()
-    let a = try store.createEntry(
-      kind: .script, code: scriptCode(), meta: ["name": "A"], source: ["type": "inline"],
-      enabled: true, values: nil)
-    let rev1 = try store.hello(sinceRev: nil).rev
-    let b = try store.createEntry(
-      kind: .style, code: "p{}", meta: ["name": "B"], source: ["type": "inline"], enabled: true,
+  func testChangesStreamReportsUpsertsAndDeletes() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let a = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(name: "A"), source: .inline, enabled: true,
       values: nil)
-    try store.setEnabled(id: a.record.id, enabled: false)
-    try store.deleteEntry(id: b.record.id)
+    let rev1 = try await store.currentRev()
+    let b = try await store.create(
+      kind: .style, code: "p{}", meta: demoMeta(name: "B"), source: .inline, enabled: true,
+      values: nil)
+    _ = try await store.setEnabled(id: a.record.id, enabled: false)
+    _ = try await store.delete(id: b.record.id)
 
-    let changes = try store.getChanges(sinceRev: rev1)
+    let changes = try await store.changes(sinceRev: rev1)
     XCTAssertTrue(changes.upserts.contains { $0.record.id == a.record.id && !$0.record.enabled })
     XCTAssertTrue(changes.deletedIds.contains(b.record.id))
+    XCTAssertFalse(changes.upserts.contains { $0.record.id == b.record.id })
   }
 
-  func testExportImportRoundTripPreservesIdentity() throws {
-    let store = tempStore()
-    let entry = try store.createEntry(
-      kind: .script, code: scriptCode(), meta: ["name": "Demo", "version": "1.0"],
-      source: ["type": "inline"], enabled: true, values: ["k": 42])
-    try store.createEntry(
-      kind: .style, code: "b{}", meta: ["name": "S"], source: ["type": "inline"], enabled: false,
+  func testPutUpsertsByIdAndKeepsPosition() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let existing = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
       values: nil)
 
-    let bundle = try store.exportAll()
-    let other = tempStore()
-    let count = try other.importAll(bundle: bundle, mode: "merge")
+    let mirror = FullEntry(
+      record: EntryRecord(
+        id: existing.record.id, kind: .script, enabled: false, position: 0, installedAt: 1,
+        updatedAt: 2, rev: 0, codeSha: "", metaStale: false, meta: demoMeta(name: "Mirror"),
+        source: .inline),
+      code: "console.log(2)",
+      values: valuesBlob(["k": "v"]))
+
+    _ = try await store.put(entry: mirror)
+
+    let snapshot = try await store.snapshot()
+    XCTAssertEqual(snapshot.entries.count, 1, "put must replace, not append")
+    let stored = snapshot.entries[0]
+    XCTAssertEqual(stored.code, "console.log(2)")
+    XCTAssertEqual(stored.record.position, existing.record.position, "position is store-owned")
+    XCTAssertEqual(valueDescription(stored.values, "k"), "v")
+
+    // An id that cannot be a file name is rejected rather than sanitized silently.
+    let bad = FullEntry(
+      record: EntryRecord(
+        id: "x/y", kind: .script, enabled: true, position: 0, installedAt: 0, updatedAt: 0,
+        rev: 0, codeSha: "", metaStale: false, meta: .unparsed, source: .inline),
+      code: "", values: nil)
+    do {
+      _ = try await store.put(entry: bad)
+      XCTFail("expected badRequest for an unusable id")
+    } catch let error as StoreError {
+      guard case .badRequest = error else { return XCTFail("unexpected error \(error)") }
+    }
+  }
+
+  func testExportImportRoundTripPreservesIdentityAndValues() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let entry = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(name: "Demo"), source: .inline,
+      enabled: true, values: valuesBlob(["k": 42]))
+    _ = try await store.create(
+      kind: .style, code: "b{}", meta: demoMeta(name: "S"), source: .inline, enabled: false,
+      values: nil)
+
+    let bundle = try await store.exportBundle()
+    XCTAssertEqual(bundle.scripts.count, 1)
+    XCTAssertEqual(bundle.styles.count, 1)
+
+    let other = NativeStore(root: temporaryRoot())
+    let count = try await other.importBundle(bundle, mode: .merge)
     XCTAssertEqual(count, 2)
 
-    let imported = try other.getEntry(id: entry.record.id)
+    let imported = try await other.entry(id: entry.record.id)
     XCTAssertEqual(imported.code, scriptCode())
-    XCTAssertEqual(imported.values["k"] as? Int, 42)
-    XCTAssertEqual(imported.record.summary.version, "1.0")
+    XCTAssertEqual(valueDescription(imported.values, "k"), "42")
+    XCTAssertEqual(imported.record.meta.name, "Demo")
   }
 
-  func testImportReplaceWipesExistingEntries() throws {
-    let store = tempStore()
-    _ = try store.createEntry(
-      kind: .script, code: scriptCode(), meta: ["name": "Old"], source: ["type": "inline"],
+  func testImportReplaceWipesExistingEntries() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    _ = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(name: "Old"), source: .inline,
       enabled: true, values: nil)
-    let bundle: [String: Any] = [
-      "scripts": [
-        [
-          "id": "repl-1", "kind": "script", "enabled": true, "position": 1,
-          "code": "console.log(2)", "meta": ["name": "New"], "source": ["type": "inline"],
-        ]
-      ],
-      "styles": [[String: Any]](),
-    ]
-    let count = try store.importAll(bundle: bundle, mode: "replace")
+
+    let replacement = FullEntry(
+      record: EntryRecord(
+        id: "repl-1", kind: .script, enabled: true, position: 1, installedAt: 0, updatedAt: 0,
+        rev: 0, codeSha: "", metaStale: false, meta: demoMeta(name: "New"), source: .inline),
+      code: "console.log(2)", values: nil)
+    let count = try await store.importBundle(
+      ExportBundle(version: "0.1.0", exportedAt: 0, scripts: [replacement], styles: []),
+      mode: .replace)
+
     XCTAssertEqual(count, 1)
-    XCTAssertEqual(try store.listEntries().entries.count, 1)
-    XCTAssertEqual(try store.listEntries().entries[0].record.id, "repl-1")
+    let snapshot = try await store.snapshot()
+    XCTAssertEqual(snapshot.entries.count, 1)
+    XCTAssertEqual(snapshot.entries[0].record.id, "repl-1")
   }
 
-  func testPutEntryUpsertsById() throws {
-    let store = tempStore()
-    let wire: [String: Any] = [
-      "id": "mirror-1", "kind": "script", "enabled": true, "position": 1,
-      "installedAt": Int64(1729990000000), "updatedAt": Int64(1730000000000),
-      "code": "console.log(1)", "meta": ["name": "Mirror"], "source": ["type": "inline"],
-      "values": ["k": "v"],
-    ]
-    let put = try store.putEntry(entry: wire)
-    XCTAssertEqual(put.record.id, "mirror-1")
-
-    // Second put with the same id replaces in place (no duplicate, id kept).
-    var updated = wire
-    updated["code"] = "console.log(2)"
-    updated["updatedAt"] = Int64(1730000001000)
-    let put2 = try store.putEntry(entry: updated)
-    XCTAssertEqual(put2.record.id, "mirror-1")
-    let listed = try store.listEntries()
-    XCTAssertEqual(listed.entries.count, 1)
-    XCTAssertEqual(listed.entries[0].code, "console.log(2)")
-
-    XCTAssertThrowsError(try store.putEntry(entry: ["id": "x/y"]))
-  }
-
-  func testCrossInstanceVisibilityViaFlock() throws {
-    let layout = StoreLayout(
-      root: FileManager.default.temporaryDirectory
-        .appendingPathComponent("infinmonkey-tests-\(UUID().uuidString)", isDirectory: true))
-    let a = NativeStore(layout: layout)
-    let b = NativeStore(layout: layout)
-
-    let entry = try a.createEntry(
-      kind: .script, code: scriptCode(), meta: ["name": "Demo"], source: ["type": "inline"],
+  func testReorderAssignsContiguousPositions() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let a = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(name: "A"), source: .inline, enabled: true,
+      values: nil)
+    let b = try await store.create(
+      kind: .script, code: scriptCode(name: "B"), meta: demoMeta(name: "B"), source: .inline,
       enabled: true, values: nil)
-    try b.setEnabled(id: entry.record.id, enabled: false)
 
-    // Instance a observes b's mutation on next read.
-    let seen = try a.getEntry(id: entry.record.id)
+    try await store.reorder(ids: [b.record.id, a.record.id])
+    let snapshot = try await store.snapshot()
+    XCTAssertEqual(snapshot.entries.map(\.record.id), [b.record.id, a.record.id])
+    XCTAssertEqual(snapshot.entries.map(\.record.position), [1, 2])
+  }
+
+  func testCrossInstanceVisibilityThroughFileLock() async throws {
+    let root = temporaryRoot()
+    let a = NativeStore(root: root)
+    let b = NativeStore(root: root)
+
+    let entry = try await a.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
+      values: nil)
+    _ = try await b.setEnabled(id: entry.record.id, enabled: false)
+
+    // Instance a sees what instance b wrote, because every read reloads.
+    let seen = try await a.entry(id: entry.record.id)
     XCTAssertFalse(seen.record.enabled)
-    XCTAssertEqual(try b.listEntries().entries.count, 1)
+  }
+
+  func testCorruptIndexIsReportedNotRebuilt() async throws {
+    let root = temporaryRoot()
+    let store = NativeStore(root: root)
+    _ = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
+      values: nil)
+
+    try Data("{ not json".utf8).write(to: store.layout.indexURL)
+
+    do {
+      _ = try await store.snapshot()
+      XCTFail("expected the store to refuse an unreadable index")
+    } catch let error as StoreError {
+      guard case .corruptIndex = error else { return XCTFail("unexpected error \(error)") }
+    }
   }
 
   func testIdSanitization() {

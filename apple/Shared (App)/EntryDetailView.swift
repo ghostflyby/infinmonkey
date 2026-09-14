@@ -11,7 +11,8 @@ struct EntryDetailView: View {
   @State private var version = ""
   @State private var entryDescription = ""
   @State private var loadedId: String?
-  @State private var values: [String: String] = [:]
+  @State private var valueKeys: [String] = []
+  @State private var hasValues = false
   @State private var metaStale = false
   @State private var kind: EntryKind = .script
   @State private var dirty = false
@@ -30,9 +31,9 @@ struct EntryDetailView: View {
         }
       }
 
-      if kind == .script && !values.isEmpty {
-        Section("GM 数据（\(values.count)）") {
-          ForEach(values.keys.sorted(), id: \.self) { key in
+      if kind == .script && hasValues {
+        Section("GM 数据（\(valueKeys.count)）") {
+          ForEach(valueKeys, id: \.self) { key in
             Text(key)
               .font(.system(.caption, design: .monospaced))
               .lineLimit(1)
@@ -49,10 +50,12 @@ struct EntryDetailView: View {
 
       Section {
         Button("保存修改") {
-          model.saveMetaSummary(
-            id: entryId, name: name, version: version, description: entryDescription)
-          model.saveCode(id: entryId, code: code)
-          dirty = false
+          Task {
+            await model.save(
+              id: entryId, code: code, name: name, version: version,
+              description: entryDescription)
+            dirty = false
+          }
         }
         .disabled(!dirty)
 
@@ -63,36 +66,37 @@ struct EntryDetailView: View {
     }
     .formStyle(.grouped)
     .navigationTitle(name.isEmpty ? "详情" : name)
-    .onAppear(perform: load)
-    .onChange(of: entryId) { _, _ in load() }
+    .task { await load() }
+    .onChange(of: entryId) { _, _ in Task { await load() } }
     .onChange(of: model.rev) { _, _ in
-      // Keep metaStale/values fresh after native or extension-side changes,
-      // but never clobber in-flight edits.
-      if !dirty { load() }
+      // Keep metaStale/values fresh after extension-side changes, but never
+      // clobber edits that are in flight.
+      if !dirty { Task { await load() } }
     }
     .confirmationDialog("确定删除「\(name)」？", isPresented: $confirmDelete, titleVisibility: .visible) {
       Button("删除", role: .destructive) {
-        model.delete(entryId)
+        Task { await model.delete(entryId) }
       }
     }
   }
 
-  private func load() {
-    guard let entry = model.loadEntry(id: entryId) else { return }
+  private func load() async {
+    guard let entry = await model.loadEntry(id: entryId) else { return }
     if dirty && loadedId == entryId { return }
     code = entry.code
-    name = entry.record.summary.name
-    version = entry.record.summary.version ?? ""
-    entryDescription = entry.record.summary.description ?? ""
+    name = entry.record.meta.isUnparsed ? "" : entry.record.meta.displayName
+    version = entry.record.meta.version ?? ""
+    entryDescription = entry.record.meta.description ?? ""
     metaStale = entry.record.metaStale
     kind = entry.record.kind
-    values = entry.values.mapValues { value in
-      switch value {
-      case let s as String: return s
-      case let n as NSNumber: return n.stringValue
-      default: return String(describing: value)
-      }
+    // Display only: the store carries GM values as opaque bytes, so the keys
+    // are read here purely to show what the script has stored. Unreadable
+    // values simply render as absent.
+    let parsed = entry.values.flatMap { data -> [String: Any]? in
+      (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
+    valueKeys = (parsed?.keys.sorted()) ?? []
+    hasValues = !valueKeys.isEmpty
     loadedId = entryId
     dirty = false
   }

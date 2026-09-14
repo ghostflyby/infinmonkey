@@ -1,37 +1,56 @@
+import Foundation
 import InfinMonkeyCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-let storeAppGroupId = "group.dev.ghostflyby.InfinMonkey"
-
-/// App-side facade over the shared per-file store. The app and the extension
-/// handler are separate processes; every user action re-reads state so the UI
-/// always reflects the latest on-disk store.
+/// The app's view model: observable state plus calls into the Core library.
+///
+/// It holds no storage logic of its own — every operation forwards to
+/// `LibraryService`, which is where the testable behavior lives. Refreshes
+/// re-read the store because the extension is a separate process and may have
+/// changed anything while this window was inactive.
 @Observable
+@MainActor
 final class StoreModel {
-  var summaries: [EntrySummary] = []
-  var rev = 0
+  private(set) var summaries: [EntrySummary] = []
+  private(set) var rev = 0
   var lastError: String?
-  var storagePath = ""
+  private(set) var storagePath = ""
+
   var importPresented = false
   var exportPresented = false
 
-  private let store: NativeStore
+  private let library: LibraryService
 
-  init() {
-    let layout = StoreLayout.resolve(appGroupId: storeAppGroupId)
-    self.store = NativeStore(layout: layout)
-    self.storagePath = layout.root.path
+  init(library: LibraryService? = nil) {
+    let service = library ?? Self.makeDefaultLibrary()
+    self.library = service
+    self.storagePath = service.storagePath
+    if let error = service.locationError {
+      self.lastError = error
+    }
   }
 
-  func refresh() {
+  private static func makeDefaultLibrary() -> LibraryService {
     do {
-      let result = try store.hello(sinceRev: nil)
-      summaries = result.entries.sorted { $0.position < $1.position }
-      rev = result.rev
+      return try LibraryService()
+    } catch {
+      // A missing app group key is a build fault; surface it instead of
+      // silently writing into a per-process container.
+      return LibraryService.unavailable(error: "\(error)")
+    }
+  }
+
+  // MARK: - Queries
+
+  func refresh() async {
+    do {
+      let snapshot = try await library.summaries()
+      summaries = snapshot.entries
+      rev = snapshot.rev
       lastError = nil
     } catch {
-      lastError = String(describing: error)
+      lastError = Self.describe(error)
     }
   }
 
@@ -39,119 +58,76 @@ final class StoreModel {
     summaries.first { $0.id == id }
   }
 
-  func loadEntry(id: String) -> FullEntry? {
-    try? store.getEntry(id: id)
-  }
-
-  func setEnabled(_ id: String, _ enabled: Bool) {
-    _ = try? store.setEnabled(id: id, enabled: enabled)
-    refresh()
-  }
-
-  func delete(_ id: String) {
-    _ = try? store.deleteEntry(id: id)
-    refresh()
-  }
-
-  func saveCode(id: String, code: String) {
-    _ = try? store.updateCode(id: id, code: code, meta: nil)
-    refresh()
-  }
-
-  func saveMetaSummary(id: String, name: String, version: String, description: String) {
-    guard let entry = loadEntry(id: id) else { return }
-    var meta = entry.record.meta
-    meta["name"] = name
-    if version.isEmpty { meta.removeValue(forKey: "version") } else { meta["version"] = version }
-    if description.isEmpty {
-      meta.removeValue(forKey: "description")
-    } else {
-      meta["description"] = description
+  func loadEntry(id: String) async -> FullEntry? {
+    do {
+      return try await library.entry(id: id)
+    } catch {
+      lastError = Self.describe(error)
+      return nil
     }
-    _ = try? store.updateMeta(id: id, meta: meta)
-    refresh()
   }
 
-  func create(kind: EntryKind) {
-    let code = kind == .script ? StoreModel.scriptScaffold : StoreModel.styleScaffold
-    let meta: [String: Any] = ["name": kind == .script ? "新脚本" : "新样式"]
-    _ = try? store.createEntry(
-      kind: kind, code: code, meta: meta, source: ["type": "inline"], enabled: true,
-      values: kind == .script ? [:] : nil)
-    refresh()
+  // MARK: - Mutations
+
+  func setEnabled(_ id: String, _ enabled: Bool) async {
+    await perform { try await self.library.setEnabled(id: id, enabled: enabled) }
   }
 
-  func importFile(at url: URL) {
+  func delete(_ id: String) async {
+    await perform { _ = try await self.library.delete(id: id) }
+  }
+
+  func save(id: String, code: String, name: String, version: String, description: String) async {
+    await perform {
+      _ = try await self.library.saveCode(id: id, code: code)
+      try await self.library.saveMetadata(
+        id: id, name: name, version: version, description: description)
+    }
+  }
+
+  func create(kind: EntryKind) async {
+    await perform { _ = try await self.library.create(kind: kind) }
+  }
+
+  func importFile(at url: URL) async {
     let scoped = url.startAccessingSecurityScopedResource()
     defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-    guard let data = try? Data(contentsOf: url) else {
-      lastError = "无法读取导入文件"
-      return
-    }
-    let name = url.lastPathComponent
-    if name.hasSuffix(".json"), let bundle = try? JSONSerialization.jsonObject(with: data),
-      let dict = bundle as? [String: Any]
-    {
-      _ = try? store.importAll(bundle: dict, mode: "merge")
-    } else if let kind = StoreLayout.kind(ofFileName: name),
-      let code = String(data: data, encoding: .utf8)
-    {
-      _ = try? store.createEntry(
-        kind: kind, code: code, meta: [:], source: ["type": "inline"], enabled: true,
-        values: kind == .script ? [:] : nil)
-    } else {
-      lastError = "无法识别的文件类型：" + name
-    }
-    refresh()
+    await perform { try await self.library.importFile(at: url) }
   }
 
-  func exportBundle() -> ExportDocument {
-    let bundle = (try? store.exportAll()) ?? [:]
-    let pretty =
-      (try? JSONSerialization.data(withJSONObject: bundle, options: [.prettyPrinted, .sortedKeys]))
-      ?? Data()
-    return ExportDocument(json: pretty)
+  func exportData() async -> Data {
+    (try? await library.exportData()) ?? Data()
   }
 
-  // MARK: - Scaffolds
+  // MARK: - Helpers
 
-  static let scriptScaffold = """
-    // ==UserScript==
-    // @name 新脚本
-    // @namespace infinmonkey
-    // @version 0.1.0
-    // @description 由 InfinMonkey 创建
-    // @match https://example.org/*
-    // @grant none
-    // ==/UserScript==
-
-    (function () {
-      'use strict';
-    })();
-    """
-
-  static let styleScaffold = """
-    /* ==UserStyle==
-    @name 新样式
-    @namespace infinmonkey
-    @version 0.1.0
-    @description 由 InfinMonkey 创建
-    ==/UserStyle== */
-
-    body {
-      /* your styles here */
+  private func perform(_ body: () async throws -> Void) async {
+    do {
+      try await body()
+      await refresh()
+    } catch {
+      lastError = Self.describe(error)
     }
-    """
-}
+  }
 
-extension StoreModel {
-  /// .css as a static UTType member is macOS 15+; resolve by extension instead.
+  private static func describe(_ error: Error) -> String {
+    if let error = error as? StoreError {
+      switch error {
+      case .notFound: return "条目不存在"
+      case .badRequest(let message), .io(let message), .corruptIndex(let message): return message
+      }
+    }
+    return String(describing: error)
+  }
+
+  /// File types the importer accepts.
   static var importTypes: [UTType] {
+    // `.css` as a static member is macOS 15+; resolve it by extension instead.
     [.json, .javaScript, UTType(filenameExtension: "css") ?? .data]
   }
 }
 
-/// FileDocument wrapper for the export bundle.
+/// FileDocument wrapper so SwiftUI's exporter can write the bundle.
 struct ExportDocument: FileDocument {
   static var readableContentTypes: [UTType] { [.json] }
 

@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
   @Environment(StoreModel.self) private var model
   @Environment(\.scenePhase) private var scenePhase
+  @State private var exportData = Data()
 
   var body: some View {
     @Bindable var model = model
@@ -20,26 +21,26 @@ struct ContentView: View {
       isPresented: $model.importPresented,
       allowedContentTypes: StoreModel.importTypes
     ) { result in
-      if case .success(let url) = result { model.importFile(at: url) }
+      if case .success(let url) = result { Task { await model.importFile(at: url) } }
     }
     .fileExporter(
       isPresented: $model.exportPresented,
-      document: model.exportBundle(),
+      document: ExportDocument(json: exportData),
       contentType: .json,
       defaultFilename: "infinmonkey-export.json"
     ) { _ in }
     .onChange(of: scenePhase) { _, phase in
       // The extension may have changed the store while we were backgrounded.
-      if phase == .active { model.refresh() }
+      if phase == .active { Task { await model.refresh() } }
     }
-    .onAppear { model.refresh() }
+    .task { await model.refresh() }
   }
 
   @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
     ToolbarItemGroup {
       Menu {
-        Button("新建脚本") { model.create(kind: .script) }
-        Button("新建样式") { model.create(kind: .style) }
+        Button("新建脚本") { Task { await model.create(kind: .script) } }
+        Button("新建样式") { Task { await model.create(kind: .style) } }
       } label: {
         Label("新建", systemImage: "plus")
       }
@@ -49,12 +50,15 @@ struct ContentView: View {
         Label("导入", systemImage: "square.and.arrow.down")
       }
       Button {
-        model.exportPresented = true
+        Task {
+          exportData = await model.exportData()
+          model.exportPresented = true
+        }
       } label: {
         Label("导出", systemImage: "square.and.arrow.up")
       }
       Button {
-        model.refresh()
+        Task { await model.refresh() }
       } label: {
         Label("刷新", systemImage: "arrow.clockwise")
       }
@@ -72,7 +76,7 @@ struct EntryListView: View {
           EntryRow(summary: entry)
         }
         .contextMenu {
-          Button("删除", role: .destructive) { model.delete(entry.id) }
+          Button("删除", role: .destructive) { Task { await model.delete(entry.id) } }
         }
       }
     }
@@ -102,9 +106,9 @@ struct EntryRow: View {
         .foregroundStyle(.tint)
         .frame(width: 24)
       VStack(alignment: .leading) {
-        Text(summary.summary.name)
+        Text(summary.name)
           .fontWeight(.medium)
-        if let version = summary.summary.version {
+        if let version = summary.version {
           Text("v" + version)
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -120,7 +124,7 @@ struct EntryRow: View {
         "",
         isOn: Binding(
           get: { summary.enabled },
-          set: { model.setEnabled(summary.id, $0) }
+          set: { enabled in Task { await model.setEnabled(summary.id, enabled) } }
         )
       )
       .toggleStyle(.switch)
