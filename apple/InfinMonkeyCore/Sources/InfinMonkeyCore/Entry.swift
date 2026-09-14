@@ -9,54 +9,79 @@ public enum EntryKind: String, Codable, Sendable, CaseIterable {
 /// packages/shared/src/types.ts.
 ///
 /// A closed set with known structure, so it is modeled rather than carried
-/// opaquely. The wire shape keeps the TypeScript discriminator:
+/// opaquely. The wire shape is an **internally tagged** union, keeping the
+/// TypeScript discriminator alongside its payload:
 /// `{"type":"inline"}` or `{"type":"dev","url":"...","autoReload":true}`.
+///
+/// That shape is not a stylistic choice. Swift's synthesized enum coding emits an
+/// *externally tagged* union instead (`{"dev":{"url":…}}`, plus a redundant
+/// `{"inline":{}}` for the payload-free case), and the other two implementations
+/// cannot read it: `System.Text.Json` has first-class support for internal
+/// tagging (`[JsonPolymorphic]`, and it rejects an untagged payload outright),
+/// while TypeScript narrows on `source.type === "dev"`. Internal tagging is the
+/// one form that is idiomatic in all three, and it matches the frame envelope,
+/// which already carries `v`/`id`/`type` side by side.
+///
+/// The members live on a payload struct so synthesis writes them: adding a member
+/// is a change in one place, rather than another line in a hand-written coder.
 public enum EntrySource: Sendable, Equatable {
   case inline
-  case dev(url: String, autoReload: Bool)
+  case dev(Dev)
 
-  private enum CodingKeys: String, CodingKey {
-    case type, url, autoReload
-  }
+  /// Payload of the `dev` case.
+  public struct Dev: Codable, Sendable, Equatable {
+    public var url: String
+    /// Required, matching the TypeScript type: every construction site sends it.
+    public var autoReload: Bool
 
-  private enum Kind: String, Codable {
-    case inline, dev
+    public init(url: String, autoReload: Bool) {
+      self.url = url
+      self.autoReload = autoReload
+    }
   }
 }
 
 extension EntrySource: Codable {
-  /// Hand-written because the wire shape is the TypeScript discriminated union
-  /// (`{"type":"dev","url":…}`), which synthesis does not produce: for an enum
-  /// with associated values it emits a nested object keyed by case name
-  /// (`{"dev":{"url":…}}`). The two are not interchangeable, and the extension
-  /// reads the former.
+  /// Reads only the discriminator. `JSONDecoder` ignores members it does not
+  /// know, so this tolerates the payload sitting beside it.
+  private struct Discriminator: Codable {
+    var type: String
+  }
+
+  /// Hand-written for the discriminator only; both cases then decode from the
+  /// same decoder — `try X(from: decoder)` does not consume it.
+  ///
+  /// An unrecognized tag is an error rather than a fallback: a sender that
+  /// invents a source kind is telling us it expects behavior we do not have.
   public init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    switch try container.decode(Kind.self, forKey: .type) {
-    case .inline:
+    switch try Discriminator(from: decoder).type {
+    case "inline":
       self = .inline
-    case .dev:
-      self = .dev(
-        url: try container.decode(String.self, forKey: .url),
-        autoReload: try container.decodeIfPresent(Bool.self, forKey: .autoReload) ?? false)
+    case "dev":
+      self = .dev(try Dev(from: decoder))
+    default:
+      throw DecodingError.dataCorrupted(
+        .init(
+          codingPath: decoder.codingPath,
+          debugDescription: "unknown EntrySource discriminator"))
     }
   }
 
+  /// Encodes the discriminator and the payload into the same object. Writing both
+  /// to one encoder merges them, which is what keeps the tag a sibling of the
+  /// payload instead of a wrapper.
+  ///
+  /// The payload must not declare a `type` member: a later write to the same
+  /// encoder silently overwrites an earlier one, so a name collision would
+  /// replace the discriminator.
   public func encode(to encoder: Encoder) throws {
-    var container = encoder.container(keyedBy: CodingKeys.self)
     switch self {
     case .inline:
-      try container.encode(Kind.inline, forKey: .type)
-    case .dev(let url, let autoReload):
-      try container.encode(Kind.dev, forKey: .type)
-      try container.encode(url, forKey: .url)
-      try container.encode(autoReload, forKey: .autoReload)
+      try Discriminator(type: "inline").encode(to: encoder)
+    case .dev(let payload):
+      try Discriminator(type: "dev").encode(to: encoder)
+      try payload.encode(to: encoder)
     }
-  }
-
-  public var isDev: Bool {
-    if case .dev = self { return true }
-    return false
   }
 }
 

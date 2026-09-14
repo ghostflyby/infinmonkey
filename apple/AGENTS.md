@@ -67,6 +67,31 @@ graph it is given, so the value cannot change after construction.
 `NSExtensionItem.userInfo`, which is Objective-C typed — wrap it in a `JSONBody` at that boundary and
 nothing past it sees a dictionary.
 
+## Discriminated unions are internally tagged
+
+Where a value can be one of several shapes, the discriminator is a **sibling** of the payload, not a
+wrapper around it:
+
+```json
+{"type": "inline"}                              // not {"inline": {}}
+{"type": "dev", "url": "u", "autoReload": true} // not {"dev": {"url": "u"}}
+```
+
+The frame envelope already works this way (`v`/`id`/`type` side by side), and it is the only form
+that is idiomatic in every implementation:
+
+- **Swift** synthesis emits the *external* form for enums with associated values (`{"dev":{…}}`, and
+  a redundant `{"inline":{}}`), so the tagged form is hand-written — see `EntrySource`.
+- **TypeScript** narrows on `source.type === "dev"`.
+- **System.Text.Json** (the planned Windows side) supports internal tagging as a first-class feature
+  (`[JsonPolymorphic(TypeDiscriminatorPropertyName = "type")]` + `[JsonDerivedType]`) and **rejects**
+  an untagged payload with `NotSupportedException`.
+
+Keep payload members on a `Codable` struct so synthesis writes them; only the tag itself needs code.
+Two rules when hand-writing it: the payload must not declare a member named after the discriminator
+(writing both to one encoder merges them, and a later write silently overwrites an earlier one), and
+an unrecognized tag must fail rather than fall back.
+
 `meta` falls under rule 1: the app shows name, version, and description, so it needs the structure.
 It is `ScriptMeta?`, and **the absence of the value is what means "not parsed yet"** — there is no
 flag inside it and no placeholder name. `{}` on the wire is the same statement, so it decodes to
