@@ -65,6 +65,10 @@ struct WireEntry: Codable, Sendable, Equatable {
     case connectGrants, values, metaStale
   }
 
+  /// `meta` needs the shared convention (empty object means "nothing parsed"),
+  /// which synthesis cannot delegate; the remaining members are a one-to-one
+  /// mapping. Required members use `decode`, matching the contract: a missing
+  /// one fails the request rather than defaulting.
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     // Required by the contract: absent or wrongly typed fails the request.
@@ -81,7 +85,7 @@ struct WireEntry: Codable, Sendable, Equatable {
     self.values = try container.decodeIfPresent(JSONBody.self, forKey: .values)
     self.metaStale = try container.decodeIfPresent(Bool.self, forKey: .metaStale)
     // Present by contract, but `{}` is how "nothing parsed" is spelled.
-    self.meta = try Self.decodeMeta(container)
+    self.meta = try ScriptMeta.decodeOptional(from: container, forKey: .meta)
   }
 
   func encode(to encoder: Encoder) throws {
@@ -97,42 +101,8 @@ struct WireEntry: Codable, Sendable, Equatable {
     try container.encodeIfPresent(connectGrants, forKey: .connectGrants)
     try container.encodeIfPresent(values, forKey: .values)
     try container.encodeIfPresent(metaStale, forKey: .metaStale)
-    // Always an object: the extension reads `meta` unconditionally. Absence is
-    // written as a genuinely empty object — encoding a default-valued
-    // `ScriptMeta` would emit every member and read back as a parsed value.
-    if let meta {
-      try container.encode(meta, forKey: .meta)
-    } else {
-      try container.encode([String: String](), forKey: .meta)
-    }
-  }
-
-  /// `{}` is the wire spelling of "nothing has parsed this code" — no real parse
-  /// result is empty, since the parser emits every member.
-  private static func decodeMeta(_ container: KeyedDecodingContainer<CodingKeys>) throws
-    -> ScriptMeta?
-  {
-    guard container.contains(.meta) else { return nil }
-    if (try? container.decode(EmptyJSONObject.self, forKey: .meta)) != nil { return nil }
-    return try container.decode(ScriptMeta.self, forKey: .meta)
-  }
-}
-
-/// Decodes only from an empty JSON object; any other shape throws.
-private struct EmptyJSONObject: Decodable {
-  private struct AnyKey: CodingKey {
-    var stringValue: String
-    var intValue: Int? { nil }
-    init?(stringValue: String) { self.stringValue = stringValue }
-    init?(intValue: Int) { return nil }
-  }
-
-  init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: AnyKey.self)
-    guard container.allKeys.isEmpty else {
-      throw DecodingError.dataCorrupted(
-        .init(codingPath: decoder.codingPath, debugDescription: "object is not empty"))
-    }
+    // Always an object: the extension reads `meta` unconditionally.
+    try ScriptMeta.encodeOptional(meta, to: &container, forKey: .meta)
   }
 }
 

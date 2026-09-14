@@ -28,6 +28,12 @@ public struct ResourceRef: Codable, Sendable, Equatable {
 /// default) and strict about *malformed* ones: a stated field with the wrong
 /// type is an error.
 ///
+/// The leniency is required, not defensive: a metadata object may legitimately
+/// carry only the members a sender had. The shared contract fixtures do exactly
+/// that (`wire-entry.json` sends three of the fourteen), and synthesis cannot
+/// express it — a non-optional member whose key is absent throws during
+/// decoding even when the property has a default value.
+///
 /// "Not parsed yet" is represented by the *absence* of this value (`ScriptMeta?`),
 /// not by a flag inside it. An empty `{}` decodes to `nil` — no real parse result
 /// is ever empty, because `parseMeta()` always emits every field — and `nil`
@@ -189,32 +195,64 @@ public struct ScriptMeta: Codable, Sendable, Equatable {
       headerFound: try container.decodeIfPresent(Bool.self, forKey: .headerFound) ?? false)
   }
 
-  public func encode(to encoder: Encoder) throws {
-    var container = encoder.container(keyedBy: CodingKeys.self)
-    try container.encode(name, forKey: .name)
-    try container.encodeIfPresent(namespace, forKey: .namespace)
-    try container.encodeIfPresent(version, forKey: .version)
-    try container.encodeIfPresent(description, forKey: .description)
-    try container.encodeIfPresent(author, forKey: .author)
-    try container.encodeIfPresent(homepageURL, forKey: .homepageURL)
-    try container.encodeIfPresent(supportURL, forKey: .supportURL)
-    try container.encodeIfPresent(iconURL, forKey: .iconURL)
-    try container.encodeIfPresent(updateURL, forKey: .updateURL)
-    try container.encodeIfPresent(downloadURL, forKey: .downloadURL)
-    try container.encodeIfPresent(license, forKey: .license)
-    try container.encode(runAt, forKey: .runAt)
-    try container.encode(noframes, forKey: .noframes)
-    try container.encode(matches, forKey: .matches)
-    try container.encode(includes, forKey: .includes)
-    try container.encode(excludes, forKey: .excludes)
-    try container.encode(grants, forKey: .grants)
-    try container.encode(connects, forKey: .connects)
-    try container.encode(requires, forKey: .requires)
-    try container.encode(resources, forKey: .resources)
-    try container.encode(nameLocales, forKey: .nameLocales)
-    try container.encode(descriptionLocales, forKey: .descriptionLocales)
-    try container.encode(others, forKey: .others)
-    try container.encode(headerRaw, forKey: .headerRaw)
-    try container.encode(headerFound, forKey: .headerFound)
+}
+
+// MARK: - How optional metadata appears in JSON
+
+extension ScriptMeta {
+  /// Reads an optional metadata member.
+  ///
+  /// Absence and an **empty object** both mean "nothing has parsed this code
+  /// yet". Absence is the index's spelling (the member is omitted) and also
+  /// covers a sender that has no metadata; `{}` is the spelling the extension's
+  /// contract uses where the member must be present and always an object.
+  ///
+  /// A non-empty object must decode as metadata: a malformed one is an error,
+  /// never a silent nil. The check is exact rather than a guess about member
+  /// values — an empty object can only mean "nothing parsed", because a real
+  /// parse result always carries the members above.
+  static func decodeOptional<K: CodingKey>(
+    from container: KeyedDecodingContainer<K>,
+    forKey key: K
+  ) throws -> ScriptMeta? {
+    guard container.contains(key) else { return nil }
+    if (try? container.decode(EmptyJSONObject.self, forKey: key)) != nil { return nil }
+    return try container.decode(ScriptMeta.self, forKey: key)
+  }
+
+  /// Writes an optional metadata member in the form the wire contract requires:
+  /// present, and always an object.
+  ///
+  /// An empty object is written literally. Encoding a default-valued
+  /// `ScriptMeta` instead would emit every member, which reads back as a parsed
+  /// value rather than as "nothing parsed yet".
+  static func encodeOptional<K: CodingKey>(
+    _ meta: ScriptMeta?,
+    to container: inout KeyedEncodingContainer<K>,
+    forKey key: K
+  ) throws {
+    if let meta {
+      try container.encode(meta, forKey: key)
+    } else {
+      try container.encode([String: String](), forKey: key)
+    }
+  }
+}
+
+/// Decodes only from an empty JSON object; any other shape throws.
+private struct EmptyJSONObject: Decodable {
+  private struct AnyKey: CodingKey {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: AnyKey.self)
+    guard container.allKeys.isEmpty else {
+      throw DecodingError.dataCorrupted(
+        .init(codingPath: decoder.codingPath, debugDescription: "object is not empty"))
+    }
   }
 }

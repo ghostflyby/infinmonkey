@@ -25,6 +25,11 @@ public enum EntrySource: Sendable, Equatable {
 }
 
 extension EntrySource: Codable {
+  /// Hand-written because the wire shape is the TypeScript discriminated union
+  /// (`{"type":"dev","url":…}`), which synthesis does not produce: for an enum
+  /// with associated values it emits a nested object keyed by case name
+  /// (`{"dev":{"url":…}}`). The two are not interchangeable, and the extension
+  /// reads the former.
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     switch try container.decode(Kind.self, forKey: .type) {
@@ -118,6 +123,10 @@ public struct EntryRecord: Codable, Sendable, Equatable {
     case meta, source, connectGrants
   }
 
+  /// Hand-written for the metadata convention: `meta` is read through
+  /// `ScriptMeta.decodeOptional`, which maps an empty object to nil. Synthesis
+  /// cannot delegate a single member to a custom rule, and the members here are
+  /// otherwise a plain one-to-one mapping, so the rest is mechanical.
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     self.init(
@@ -130,46 +139,11 @@ public struct EntryRecord: Codable, Sendable, Equatable {
       rev: try container.decode(Int.self, forKey: .rev),
       codeSha: try container.decodeIfPresent(String.self, forKey: .codeSha) ?? "",
       metaStale: try container.decodeIfPresent(Bool.self, forKey: .metaStale) ?? false,
-      // `{}` decodes back to nil: no parse result is ever empty.
-      meta: try Self.decodeMeta(container),
+      meta: try ScriptMeta.decodeOptional(from: container, forKey: .meta),
       source: try container.decodeIfPresent(EntrySource.self, forKey: .source) ?? .inline,
       connectGrants: try container.decodeIfPresent([String].self, forKey: .connectGrants) ?? [])
   }
 
-  public func encode(to encoder: Encoder) throws {
-    var container = encoder.container(keyedBy: CodingKeys.self)
-    try container.encode(id, forKey: .id)
-    try container.encode(kind, forKey: .kind)
-    try container.encode(enabled, forKey: .enabled)
-    try container.encode(position, forKey: .position)
-    try container.encode(installedAt, forKey: .installedAt)
-    try container.encode(updatedAt, forKey: .updatedAt)
-    try container.encode(rev, forKey: .rev)
-    try container.encode(codeSha, forKey: .codeSha)
-    try container.encode(metaStale, forKey: .metaStale)
-    // Omitted when absent. A keyed container cannot emit a bare `{}`, and the
-    // index has no other reader, so absence is the honest spelling here; the
-    // wire layer materializes `{}` because the extension's contract expects the
-    // key to be present.
-    try container.encodeIfPresent(meta, forKey: .meta)
-    try container.encode(source, forKey: .source)
-    if !connectGrants.isEmpty || kind == .script {
-      try container.encode(connectGrants, forKey: .connectGrants)
-    }
-  }
-
-  /// Decodes `meta`, mapping the empty object to `nil`.
-  ///
-  /// This is exact rather than a guess about field values: `encode` writes `{}`
-  /// only for "no metadata", and a real parse result can never be empty because
-  /// `parseMeta()` always emits every field.
-  private static func decodeMeta(_ container: KeyedDecodingContainer<CodingKeys>) throws
-    -> ScriptMeta?
-  {
-    guard container.contains(.meta) else { return nil }
-    if (try? container.decode(EmptyObject.self, forKey: .meta)) != nil { return nil }
-    return try container.decode(ScriptMeta.self, forKey: .meta)
-  }
 }
 
 /// A record together with its code file and its opaque GM values.
@@ -190,26 +164,6 @@ public struct FullEntry: Sendable, Equatable {
     self.record = record
     self.code = code
     self.values = values
-  }
-}
-
-/// Decodes only from an empty JSON object; any other shape throws.
-///
-/// Used to recognize the wire/index spelling of "no metadata parsed yet".
-private struct EmptyObject: Decodable {
-  private struct AnyKey: CodingKey {
-    var stringValue: String
-    var intValue: Int? { nil }
-    init?(stringValue: String) { self.stringValue = stringValue }
-    init?(intValue: Int) { return nil }
-  }
-
-  init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: AnyKey.self)
-    guard container.allKeys.isEmpty else {
-      throw DecodingError.dataCorrupted(
-        .init(codingPath: decoder.codingPath, debugDescription: "object is not empty"))
-    }
   }
 }
 
