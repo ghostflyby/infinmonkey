@@ -396,18 +396,37 @@ final class ProtocolRouterTests: XCTestCase {
   }
 
   func testSharedWireEntryFixtureDecodesAndRoundTrips() async throws {
-    let object = try JSONSerialization.jsonObject(
-      with: try Data(contentsOf: try fixtureURL("wire-entry.json")))
+    // The fixture is read through the same container the transports use, so the
+    // test exercises the real path rather than a test-only initializer.
+    let data = try Data(contentsOf: try fixtureURL("wire-entry.json"))
+    let body = try JSONBody(data: data, requiringValidJSON: true)
 
-    let entry = try WireEntry(jsonObject: object)
+    let entry = try body.decoded(as: WireEntry.self)
     XCTAssertEqual(entry.id, "e1")
     XCTAssertEqual(entry.kind, .script)
     XCTAssertEqual(entry.meta?.name, "Demo")
     XCTAssertEqual(entry.connectGrants, ["api.example.org"])
 
-    // Opaque values survive a decode/encode cycle unchanged.
-    let reencoded = try JSONSerialization.data(withJSONObject: try entry.jsonObject())
-    let roundTripped = try WireEntry(jsonObject: try JSONSerialization.jsonObject(with: reencoded))
+    // Opaque values survive a decode/encode cycle unchanged, as JSON — not base64.
+    let reencoded = try JSONEncoder().encode(entry)
+    let text = try XCTUnwrap(String(data: reencoded, encoding: .utf8))
+    XCTAssertFalse(text.contains("eyJ"), "values must not be base64: \(text)")
+    let roundTripped = try JSONDecoder().decode(WireEntry.self, from: reencoded)
     XCTAssertEqual(valueDescription(roundTripped.fullEntry().values, "token"), "abc")
+  }
+
+  func testNilMetaIsWrittenAsAnObject() async throws {
+    let entry = FullEntry(
+      record: makeRecord(id: "e1", meta: nil), code: "x", values: nil)
+    let data = try JSONEncoder().encode(WireEntry(full: entry))
+    let object = try XCTUnwrap(
+      try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    XCTAssertEqual(
+      (object["meta"] as? [String: Any])?.isEmpty, true,
+      "the contract has meta present and always an object")
+
+    // And it reads back as "nothing parsed", not as a parsed empty value.
+    let back = try JSONDecoder().decode(WireEntry.self, from: data)
+    XCTAssertNil(back.meta)
   }
 }

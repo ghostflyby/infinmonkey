@@ -2,7 +2,7 @@
 //  SafariWebExtensionHandler.swift
 //  Shared (Extension)
 //
-//  Routes browser.runtime.sendNativeMessage frames from the extension into the
+//  Routes browser.runtime.sendNativeMessage messages from the extension into the
 //  InfinMonkeyCore library.
 //
 
@@ -15,8 +15,8 @@ import os.log
 ///
 /// `NSExtensionContext` is an Objective-C type the SDK does not mark `Sendable`,
 /// but Apple documents `completeRequest(returningItems:completionHandler:)` as
-/// callable from any thread. A request can only be completed once and this
-/// handler holds the sole reference, so handing it to a single task is safe.
+/// callable from any thread. A request completes once and this handler holds the
+/// sole reference, so handing it to a single task is safe.
 private struct RequestContext: @unchecked Sendable {
   let context: NSExtensionContext
 
@@ -35,7 +35,7 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
   /// One router for the process: it is an actor, so concurrent requests
   /// serialize on it, and the store reloads from disk per operation rather than
-  /// caching a document that other processes can invalidate.
+  /// caching a document other processes can invalidate.
   private static let router = ProtocolRouter(store: SafariWebExtensionHandler.makeStore())
 
   private static func makeStore() -> NativeStore {
@@ -68,33 +68,26 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
       message = request?.userInfo?["message"]
     }
 
-    // Every profile shares the single app group store; per-profile routing
-    // would mean per-profile store roots.
+    // Every profile shares the single app group store; per-profile routing would
+    // mean per-profile store roots.
     if let profile {
       os_log(.default, "InfinMonkey native request from profile %@", profile.uuidString)
     }
 
-    // This boundary hands over `[AnyHashable: Any]`, which is neither Sendable
-    // nor typed. Convert to bytes here — the single place untyped data exists —
-    // so everything past this point is typed and Sendable.
-    let requestData = Self.jsonData(from: message)
+    // This boundary arrives as an Objective-C object graph, which is neither
+    // Sendable nor typed and so cannot cross into the router's isolation. Wrapping
+    // it in a `JSONBody` freezes it and makes it Sendable; the router then reads
+    // the envelope from the graph in place — nothing is serialized to get in, and
+    // only the members that need a concrete type are converted.
+    let body = (try? JSONBody(object: message as? [String: Any] ?? [:])) ?? .emptyObject
     let requestContext = RequestContext(context: context)
 
     Task {
-      let responseData = await SafariWebExtensionHandler.router.handle(requestData: requestData)
-      let response =
-        (try? JSONSerialization.jsonObject(with: responseData)) as? [String: Any] ?? [:]
-      requestContext.complete(with: response)
+      let response = await SafariWebExtensionHandler.router.handle(request: body)
+      // The response crosses back out as a graph for `userInfo`, which is
+      // Objective-C typed. This is the boundary's own conversion.
+      requestContext.complete(with: response.object as? [String: Any] ?? [:])
     }
-  }
-
-  private static func jsonData(from message: Any?) -> Data {
-    guard let message = message as? [String: Any], JSONSerialization.isValidJSONObject(message),
-      let data = try? JSONSerialization.data(withJSONObject: message)
-    else {
-      return Data("{}".utf8)
-    }
-    return data
   }
 
 }

@@ -1,38 +1,15 @@
 import Foundation
 
-/// Helpers for moving between Foundation's two JSON paths at the boundary.
-///
-/// Semantically meaningful types (`ScriptMeta`, `EntrySource`) are `Codable`;
-/// the wire envelope and opaque payloads go through `JSONSerialization`. These
-/// two functions are the only bridges between them.
-enum JSONCoding {
-  /// Encode a typed value into `Any` so it can be embedded in a hand-built
-  /// JSON object.
-  static func object<T: Encodable>(_ value: T) throws -> Any {
-    try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))
-  }
-
-  /// Decode a typed value out of a value obtained from `JSONSerialization`.
-  static func decode<T: Decodable>(_ type: T.Type, from object: Any) throws -> T {
-    try JSONDecoder().decode(T.self, from: try JSONSerialization.data(withJSONObject: object))
-  }
-}
-
-extension Dictionary where Key == String, Value == Any {
-  func int(_ key: String) -> Int? { self[key] as? Int }
-  func int64(_ key: String) -> Int64? {
-    (self[key] as? NSNumber)?.int64Value
-  }
-  func string(_ key: String) -> String? { self[key] as? String }
-  func bool(_ key: String) -> Bool? { self[key] as? Bool }
-}
-
 /// Wire projection of an entry, matching the field names the extension uses.
 ///
-/// This is the single place the protocol's naming lives, so the domain model
-/// stays free to differ. `values` is passed through as parsed JSON — never
-/// inspected, validated, or reordered here.
-struct WireEntry {
+/// `Codable` throughout: the compiler writes the mapping, required members are
+/// required (a missing or wrongly typed one fails the request instead of being
+/// silently defaulted), and keys a newer extension sends are ignored.
+///
+/// The type exists because the wire and the store agree on most but not all
+/// members — the store also tracks `rev` and `codeSha`, which the extension has
+/// no business seeing — so the conversion is written out rather than shared.
+struct WireEntry: Codable, Sendable, Equatable {
   var id: String
   var kind: EntryKind
   var enabled: Bool
@@ -40,13 +17,13 @@ struct WireEntry {
   var installedAt: Int64
   var updatedAt: Int64
   var code: String
-  /// nil means "no metadata yet"; the wire shape requires an object, so nil is
-  /// emitted as `{}` and `{}` decodes back to nil.
+  /// nil means "nothing parsed this code yet". The extension's contract has the
+  /// member present and always an object, so nil is written as `{}`.
   var meta: ScriptMeta?
   var source: EntrySource
   var connectGrants: [String]?
-  /// Opaque GM values (`Record<string, unknown>` on the extension side).
-  var values: Any?
+  /// GM values, carried as the graph itself. The extension owns their meaning.
+  var values: JSONBody?
   var metaStale: Bool?
 
   init(full: FullEntry) {
@@ -60,32 +37,8 @@ struct WireEntry {
     self.meta = full.record.meta
     self.source = full.record.source
     self.connectGrants = full.record.kind == .script ? full.record.connectGrants : nil
-    self.values = Self.parseOpaque(full.values)
+    self.values = full.values.map { JSONBody(data: $0) }
     self.metaStale = full.record.metaStale ? true : nil
-  }
-
-  /// Decodes one entry out of a JSON object. Throws on a structurally invalid
-  /// entry so the caller can report `badRequest` instead of storing nonsense.
-  init(jsonObject: Any) throws {
-    guard let object = jsonObject as? [String: Any],
-      let id = object.string("id"), !id.isEmpty,
-      let kindRaw = object.string("kind"), let kind = EntryKind(rawValue: kindRaw),
-      let code = object.string("code")
-    else {
-      throw WireError.malformedEnvelope
-    }
-    self.id = id
-    self.kind = kind
-    self.code = code
-    self.enabled = object.bool("enabled") ?? true
-    self.position = object.int("position") ?? 0
-    self.installedAt = object.int64("installedAt") ?? 0
-    self.updatedAt = object.int64("updatedAt") ?? 0
-    self.meta = try Self.parseMeta(object["meta"])
-    self.source = try Self.parseSource(object["source"])
-    self.connectGrants = object["connectGrants"] as? [String]
-    self.values = object["values"]
-    self.metaStale = object.bool("metaStale")
   }
 
   /// Back into the domain model; `rev` and `codeSha` are store bookkeeping and
@@ -104,58 +57,91 @@ struct WireEntry {
       meta: meta,
       source: source,
       connectGrants: connectGrants ?? [])
-    return FullEntry(record: record, code: code, values: Self.serializeOpaque(values))
+    return FullEntry(record: record, code: code, values: values?.data)
   }
 
-  func jsonObject() throws -> [String: Any] {
-    var object: [String: Any] = [
-      "id": id,
-      "kind": kind.rawValue,
-      "enabled": enabled,
-      "position": position,
-      "installedAt": installedAt,
-      "updatedAt": updatedAt,
-      "code": code,
-      "meta": try meta.map { try JSONCoding.object($0) } ?? [String: Any](),
-      "source": try JSONCoding.object(source),
-    ]
-    if let connectGrants { object["connectGrants"] = connectGrants }
-    if let values { object["values"] = values }
-    if metaStale == true { object["metaStale"] = true }
-    return object
+  private enum CodingKeys: String, CodingKey {
+    case id, kind, enabled, position, installedAt, updatedAt, code, meta, source
+    case connectGrants, values, metaStale
   }
 
-  /// `{}` is the wire's "nothing parsed": no real parse result is empty, since
-  /// the extension's parser always emits every field. A non-empty object must
-  /// decode cleanly — a malformed one is an error rather than a silent nil.
-  private static func parseMeta(_ value: Any?) throws -> ScriptMeta? {
-    guard let dictionary = value as? [String: Any], !dictionary.isEmpty else { return nil }
-    return try JSONCoding.decode(ScriptMeta.self, from: dictionary)
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    // Required by the contract: absent or wrongly typed fails the request.
+    self.id = try container.decode(String.self, forKey: .id)
+    self.kind = try container.decode(EntryKind.self, forKey: .kind)
+    self.enabled = try container.decode(Bool.self, forKey: .enabled)
+    self.position = try container.decode(Int.self, forKey: .position)
+    self.installedAt = try container.decode(Int64.self, forKey: .installedAt)
+    self.updatedAt = try container.decode(Int64.self, forKey: .updatedAt)
+    self.code = try container.decode(String.self, forKey: .code)
+    self.source = try container.decode(EntrySource.self, forKey: .source)
+    // Optional by contract.
+    self.connectGrants = try container.decodeIfPresent([String].self, forKey: .connectGrants)
+    self.values = try container.decodeIfPresent(JSONBody.self, forKey: .values)
+    self.metaStale = try container.decodeIfPresent(Bool.self, forKey: .metaStale)
+    // Present by contract, but `{}` is how "nothing parsed" is spelled.
+    self.meta = try Self.decodeMeta(container)
   }
 
-  /// Optional on the wire (older senders omit it); when present it must be valid.
-  private static func parseSource(_ value: Any?) throws -> EntrySource {
-    guard let value else { return .inline }
-    return try JSONCoding.decode(EntrySource.self, from: value)
+  func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(kind, forKey: .kind)
+    try container.encode(enabled, forKey: .enabled)
+    try container.encode(position, forKey: .position)
+    try container.encode(installedAt, forKey: .installedAt)
+    try container.encode(updatedAt, forKey: .updatedAt)
+    try container.encode(code, forKey: .code)
+    try container.encode(source, forKey: .source)
+    try container.encodeIfPresent(connectGrants, forKey: .connectGrants)
+    try container.encodeIfPresent(values, forKey: .values)
+    try container.encodeIfPresent(metaStale, forKey: .metaStale)
+    // Always an object: the extension reads `meta` unconditionally. Absence is
+    // written as a genuinely empty object — encoding a default-valued
+    // `ScriptMeta` would emit every member and read back as a parsed value.
+    if let meta {
+      try container.encode(meta, forKey: .meta)
+    } else {
+      try container.encode([String: String](), forKey: .meta)
+    }
   }
 
-  private static func parseOpaque(_ data: Data?) -> Any? {
-    guard let data, !data.isEmpty else { return nil }
-    return try? JSONSerialization.jsonObject(with: data)
+  /// `{}` is the wire spelling of "nothing has parsed this code" — no real parse
+  /// result is empty, since the parser emits every member.
+  private static func decodeMeta(_ container: KeyedDecodingContainer<CodingKeys>) throws
+    -> ScriptMeta?
+  {
+    guard container.contains(.meta) else { return nil }
+    if (try? container.decode(EmptyJSONObject.self, forKey: .meta)) != nil { return nil }
+    return try container.decode(ScriptMeta.self, forKey: .meta)
+  }
+}
+
+/// Decodes only from an empty JSON object; any other shape throws.
+private struct EmptyJSONObject: Decodable {
+  private struct AnyKey: CodingKey {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
   }
 
-  private static func serializeOpaque(_ value: Any?) -> Data? {
-    guard let value, JSONSerialization.isValidJSONObject(value) else { return nil }
-    return try? JSONSerialization.data(withJSONObject: value)
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: AnyKey.self)
+    guard container.allKeys.isEmpty else {
+      throw DecodingError.dataCorrupted(
+        .init(codingPath: decoder.codingPath, debugDescription: "object is not empty"))
+    }
   }
 }
 
 /// Wire projection of an entry summary.
-struct WireSummary {
+struct WireSummary: Codable, Sendable, Equatable {
   var id: String
   var kind: EntryKind
-  /// Absent when the entry has no name to report yet (not parsed, or empty
-  /// `@name`); the receiver decides what to show.
+  /// Absent when the entry has no name to report yet (nothing parsed, or an
+  /// empty `@name`); the receiver decides what to show.
   var name: String?
   var version: String?
   var enabled: Bool
@@ -173,74 +159,53 @@ struct WireSummary {
     self.updatedAt = summary.updatedAt
     self.metaStale = summary.metaStale
   }
-
-  func jsonObject() -> [String: Any] {
-    var object: [String: Any] = [
-      "id": id,
-      "kind": kind.rawValue,
-      "enabled": enabled,
-      "position": position,
-      "updatedAt": updatedAt,
-      "metaStale": metaStale,
-    ]
-    if let name { object["name"] = name }
-    if let version { object["version"] = version }
-    return object
-  }
 }
 
-/// Wire projection of an export bundle.
-struct WireBundle {
-  var infinmonkey: Int?
-  var version: String?
-  var exportedAt: Int64?
+/// Wire projection of an export bundle: the file the app writes, and the payload
+/// `importAll` accepts. Entries keep their values as JSON objects.
+struct WireBundle: Codable, Sendable, Equatable {
+  var infinmonkey: Int
+  var version: String
+  var exportedAt: Int64
   var scripts: [WireEntry]
   var styles: [WireEntry]
 
-  init(bundle: ExportBundle) {
-    self.infinmonkey = bundle.infinmonkey
-    self.version = bundle.version
-    self.exportedAt = bundle.exportedAt
-    self.scripts = bundle.scripts.map(WireEntry.init(full:))
-    self.styles = bundle.styles.map(WireEntry.init(full:))
+  init(
+    infinmonkey: Int = 1,
+    version: String,
+    exportedAt: Int64,
+    scripts: [WireEntry],
+    styles: [WireEntry]
+  ) {
+    self.infinmonkey = infinmonkey
+    self.version = version
+    self.exportedAt = exportedAt
+    self.scripts = scripts
+    self.styles = styles
   }
 
-  init(jsonObject: Any) throws {
-    let object = jsonObject as? [String: Any] ?? [:]
-    self.infinmonkey = object["infinmonkey"] as? Int
-    self.version = object["version"] as? String
-    self.exportedAt = (object["exportedAt"] as? NSNumber)?.int64Value
-    self.scripts = try (object["scripts"] as? [Any] ?? []).map(WireEntry.init(jsonObject:))
-    self.styles = try (object["styles"] as? [Any] ?? []).map(WireEntry.init(jsonObject:))
+  init(bundle: ExportBundle) {
+    self.init(
+      infinmonkey: bundle.infinmonkey,
+      version: bundle.version,
+      exportedAt: bundle.exportedAt,
+      scripts: bundle.scripts.map(WireEntry.init(full:)),
+      styles: bundle.styles.map(WireEntry.init(full:)))
   }
 
   func exportBundle() -> ExportBundle {
     ExportBundle(
-      infinmonkey: infinmonkey ?? 1,
-      version: version ?? CoreConstants.storeVersionString,
-      exportedAt: exportedAt ?? 0,
+      infinmonkey: infinmonkey,
+      version: version,
+      exportedAt: exportedAt,
       scripts: scripts.map { $0.fullEntry() },
       styles: styles.map { $0.fullEntry() })
   }
-
-  func jsonObject() throws -> [String: Any] {
-    [
-      "infinmonkey": infinmonkey ?? 1,
-      "version": version ?? CoreConstants.storeVersionString,
-      "exportedAt": exportedAt ?? 0,
-      "scripts": try scripts.map { try $0.jsonObject() },
-      "styles": try styles.map { try $0.jsonObject() },
-    ]
-  }
 }
 
-/// Typed op payloads.
-///
-/// Only fields the native side must reason about are modeled. `values` is
-/// deliberately absent from `CreateEntry`: it is opaque, so the router reads it
-/// out of the raw payload with `JSONSerialization` and passes the bytes to the
-/// store untouched. `JSONDecoder` ignores the keys it does not know, so the two
-/// paths coexist without a wrapper type.
+/// Typed op payloads: what the extension sends. A member is typed when the
+/// native side must reason about it, and absent when it is opaque (those live in
+/// the frame's opaque body).
 enum WirePayload {
   struct Hello: Codable, Sendable {
     var sinceRev: Int?
@@ -274,6 +239,8 @@ enum WirePayload {
     var meta: ScriptMeta?
   }
 
+  /// `values` is absent here on purpose: it is opaque, so the router reads it
+  /// from the frame body into a `JSONBody` and never models it.
   struct CreateEntry: Codable, Sendable {
     var kind: EntryKind
     var code: String
@@ -281,15 +248,68 @@ enum WirePayload {
     var source: EntrySource?
     var enabled: Bool?
   }
+
+  struct PutEntry: Codable, Sendable {
+    var entry: WireEntry
+  }
+
+  struct ImportAll: Codable, Sendable {
+    var bundle: WireBundle
+    var mode: ImportMode
+  }
 }
 
-extension JSONCoding {
-  /// The opaque `values` member of a payload, as bytes, or nil when absent.
-  static func opaqueMember(_ key: String, in payload: Data) -> Data? {
-    guard let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
-      let value = object[key],
-      JSONSerialization.isValidJSONObject(value)
-    else { return nil }
-    return try? JSONSerialization.data(withJSONObject: value)
+/// Typed op results: what the native side sends back.
+enum WireResult {
+  struct Pong: Codable, Sendable {
+    var proto: Int
+    var app: String
+    var platform: String
+  }
+
+  struct Hello: Codable, Sendable {
+    var proto: Int
+    var app: String
+    var platform: String
+    var rev: Int
+    var entries: [WireSummary]
+  }
+
+  struct List: Codable, Sendable {
+    var rev: Int
+    var entries: [WireEntry]
+  }
+
+  struct Changes: Codable, Sendable {
+    var rev: Int
+    var upserts: [WireEntry]
+    var deletedIds: [String]
+  }
+
+  struct Entry: Codable, Sendable {
+    var rev: Int
+    var entry: WireEntry
+  }
+
+  struct Rev: Codable, Sendable {
+    var rev: Int
+  }
+
+  struct Deleted: Codable, Sendable {
+    var rev: Int
+    var deleted: Bool
+  }
+
+  struct Values: Codable, Sendable {
+    var values: JSONBody
+  }
+
+  struct Imported: Codable, Sendable {
+    var rev: Int
+    var count: Int
+  }
+
+  struct Export: Codable, Sendable {
+    var bundle: WireBundle
   }
 }

@@ -102,11 +102,13 @@ public struct LibraryService: Sendable {
 
   // MARK: - Import / export
 
+  /// The export file. Serialized through the wire projection so opaque values
+  /// stay JSON objects (encoding the domain type directly would emit base64).
   public func exportData() async throws -> Data {
     let bundle = try await store.exportBundle()
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-    return try encoder.encode(bundle)
+    return try encoder.encode(WireBundle(bundle: bundle))
   }
 
   /// Imports either a bundle (`.json`) or a single script/style file.
@@ -116,8 +118,8 @@ public struct LibraryService: Sendable {
 
     if name.hasSuffix(".json") {
       do {
-        let bundle = try JSONDecoder().decode(ExportBundle.self, from: data)
-        _ = try await store.importBundle(bundle, mode: .merge)
+        let bundle = try JSONDecoder().decode(WireBundle.self, from: data)
+        _ = try await store.importBundle(bundle.exportBundle(), mode: .merge)
         return
       } catch {
         throw StoreError.badRequest("导入文件不是有效的 InfinMonkey 导出：\(error)")

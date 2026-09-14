@@ -41,16 +41,31 @@ Two representations, picked by whether the native side must perceive structure:
    with the wrong type is an error, not a silently substituted default. Never thread
    `[String: Any]` through the implementation to avoid writing a type.
 
-2. **Semantics-free payload → keep it opaque.** GM values are a `Record<string, unknown>` on the
+2. **Semantics-free payload → `JSONBody`.** GM values are a `Record<string, unknown>` on the
    extension side and mean nothing to the storage layer, so the native side must not model,
-   validate, interpret, or reorder them. Carry them as raw JSON (`Data`, or a JSON string) and pass
-   the bytes through unchanged; `JSONSerialization` is acceptable here purely as a transport
-   encoding. Encoding an opaque payload through a typed model would drop fields a newer extension
-   added.
+   validate, interpret, or reorder them. `JSONBody` carries them as a JSON graph and is the **only**
+   place `Any` may live. Never thread `[String: Any]` through the implementation to avoid writing a
+   type, and never put these values in a `Data` field of a `Codable` type — `Data` encodes as
+   base64, so the extension would receive `"eyJrIjoxfQ=="` instead of an object.
 
-The only place `Any` is unavoidable is the Safari app extension boundary
-(`NSExtensionItem.userInfo` is `[AnyHashable: Any]`). Convert to concrete types immediately at that
-entry point — that conversion is the single place where untyped data may exist.
+## The JSON conversion path
+
+Three rules, and no other conversions anywhere:
+
+| Layer | Mechanism | Why |
+|---|---|---|
+| **Envelope** (`v`, `id`, `type`, `payload`) | read from the object graph, or parsed from text by `JSONBody(data:requiringValidJSON:)` | the payload's type depends on `type`, so the envelope cannot be decoded before it is known |
+| **Payload and result** | `Codable`, compiler-written, fail-fast | a required member is required; a wrongly typed one is an error, never a default |
+| **Opaque members** | `JSONBody` | Codable has no raw-JSON-fragment support, and `Data` means base64 |
+
+A message is a `JSONBody` in both directions, which is what lets one entry point serve every
+transport: Safari hands over a parsed graph, stdio hands over JSON text, and neither is
+re-serialized to fit the router. `JSONBody` is `@unchecked Sendable` because it freezes whatever
+graph it is given, so the value cannot change after construction.
+
+`[String: Any]` is banned outside `JSONBody`. The one unavoidable exception is
+`NSExtensionItem.userInfo`, which is Objective-C typed — wrap it in a `JSONBody` at that boundary and
+nothing past it sees a dictionary.
 
 `meta` falls under rule 1: the app shows name, version, and description, so it needs the structure.
 It is `ScriptMeta?`, and **the absence of the value is what means "not parsed yet"** — there is no

@@ -10,8 +10,11 @@
  *   request  { v, id, type, payload }
  *   response { v, id, ok: true, result } | { v, id, ok: false, error: { code, message } }
  *
- * The native side stores `meta` and `source` as opaque JSON blobs and never
- * interprets them; the extension owns parsing (packages/shared/meta.ts).
+ * `meta` and `source` are modeled on both sides: the native app displays name,
+ * version and description, so it decodes those two rather than treating them as
+ * opaque. `values` is the genuinely opaque member — the native side only carries
+ * it, and never interprets or reorders it. The extension owns metadata parsing
+ * (packages/shared/meta.ts).
  */
 
 export const PROTOCOL_VERSION = 1;
@@ -52,13 +55,13 @@ export interface WireEntry {
   installedAt: number;
   updatedAt: number;
   code: string;
-  /** Parsed userscript/userstyle metadata; opaque JSON on the native side. */
+  /** Parsed userscript/userstyle metadata. Decoded by the native side for display. */
   meta: unknown;
-  /** Entry source descriptor ("inline" | "dev"); opaque JSON on the native side. */
+  /** Entry source descriptor ("inline" | "dev"). Decoded by the native side. */
   source: unknown;
   /** Extra @connect grants approved by the user (scripts only). */
   connectGrants?: string[];
-  /** GM value store snapshot (scripts only). */
+  /** GM value store snapshot (scripts only). Opaque to the native side: carried verbatim. */
   values?: Record<string, unknown>;
   /** True when the code file changed outside the app and `meta` needs re-parsing. */
   metaStale?: boolean;
@@ -111,6 +114,7 @@ export interface DeleteResult {
 }
 
 export interface ValuesResult {
+  /** Opaque to the native side, which only carries the bytes. */
   values: Record<string, unknown>;
 }
 
@@ -124,7 +128,7 @@ export interface DeleteValueResult {
 }
 
 export interface ExportResult {
-  /** ExportBundle shape from @infinmonkey/shared/types; opaque to the native side. */
+  /** ExportBundle shape from @infinmonkey/shared/types. */
   bundle: unknown;
 }
 

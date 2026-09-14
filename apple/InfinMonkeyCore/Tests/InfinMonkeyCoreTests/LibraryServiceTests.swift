@@ -101,10 +101,11 @@ final class LibraryServiceTests: XCTestCase {
   func testImportValidBundleMerges() async throws {
     let store = FakeStore()
     let fixture = try fixtureURL("wire-entry.json")
-    let object = try JSONSerialization.jsonObject(with: try Data(contentsOf: fixture))
-    let entry = try WireEntry(jsonObject: object).fullEntry()
-    let bundle = ExportBundle(version: "0.1.0", exportedAt: 0, scripts: [entry], styles: [])
+    let entry = try JSONBody(data: try Data(contentsOf: fixture), requiringValidJSON: true)
+      .decoded(as: WireEntry.self)
 
+    let bundle = WireBundle(
+      infinmonkey: 1, version: "0.1.0", exportedAt: 0, scripts: [entry], styles: [])
     let encoder = JSONEncoder()
     let url = FileManager.default.temporaryDirectory
       .appendingPathComponent("bundle-\(UUID().uuidString).json")

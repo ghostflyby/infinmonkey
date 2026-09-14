@@ -176,7 +176,12 @@ public struct EntryRecord: Codable, Sendable, Equatable {
 ///
 /// `values` is raw JSON — the extension owns its meaning, and this layer only
 /// carries the bytes. `nil` means the entry has no values file (styles).
-public struct FullEntry: Codable, Sendable, Equatable {
+///
+/// Deliberately **not** `Codable`: `Data` encodes as a base64 string, so an
+/// exported file would carry `"values": "eyJrIjoxfQ=="` instead of an object and
+/// break the contract the extension reads. Serialization goes through
+/// `WireEntry`, which carries values as a `JSONBody`.
+public struct FullEntry: Sendable, Equatable {
   public var record: EntryRecord
   public var code: String
   public var values: Data?
@@ -282,7 +287,11 @@ public struct Changes: Sendable, Equatable {
 
 /// Entries plus their code, as an import/export payload; mirrors
 /// `ExportBundle` in packages/shared/src/types.ts.
-public struct ExportBundle: Codable, Sendable, Equatable {
+///
+/// In-memory only, and deliberately not `Codable` for the same reason as
+/// `FullEntry`: its entries carry opaque bytes, which `Data` would turn into
+/// base64. The file format is `WireBundle`.
+public struct ExportBundle: Sendable, Equatable {
   public var infinmonkey: Int
   public var version: String
   public var exportedAt: Int64
