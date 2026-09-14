@@ -40,14 +40,14 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
   private static func makeStore() -> NativeStore {
     do {
-      let layout = try StoreLayout.resolve()
+      let layout = try StoreLocation.layout()
       os_log(.default, "InfinMonkey native store at %@", layout.root.path)
       return NativeStore(layout: layout)
     } catch {
       // A missing app group identity is a build fault. Fall back to a path that
       // is certainly writable so the extension keeps working, and log loudly.
       os_log(.error, "InfinMonkey: app group identity missing (%@)", "\(error)")
-      return NativeStore(root: StoreLayout.fallbackRoot())
+      return NativeStore(root: StoreLocation.fallbackRoot())
     }
   }
 

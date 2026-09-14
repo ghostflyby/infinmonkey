@@ -22,9 +22,10 @@ public struct LibraryService: Sendable {
     self.locationError = locationError
   }
 
-  /// Resolves the shared store from the app group configured in the bundle.
-  public init(bundle: Bundle = .main) throws {
-    let layout = try StoreLayout.resolve(bundle: bundle)
+  /// Builds a service over a store, for a caller that has already decided where
+  /// the store lives. Locating it — app group containers, bundle identity — is
+  /// platform knowledge and stays outside this package.
+  public init(layout: StoreLayout) {
     self.init(store: NativeStore(layout: layout), storagePath: layout.root.path)
   }
 

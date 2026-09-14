@@ -1,3 +1,5 @@
+import type { EntrySource, ScriptMeta } from "@infinmonkey/shared/types";
+
 /**
  * Wire protocol between the extension and the native InfinMonkey app.
  *
@@ -55,10 +57,15 @@ export interface WireEntry {
   installedAt: number;
   updatedAt: number;
   code: string;
-  /** Parsed userscript/userstyle metadata. Decoded by the native side for display. */
-  meta: unknown;
-  /** Entry source descriptor ("inline" | "dev"). Decoded by the native side. */
-  source: unknown;
+  /**
+   * Parsed metadata, or `null` when nothing has parsed the code yet — a file
+   * imported in the app, or adopted from the store directory. Either way the
+   * extension owns parsing, so a receiver must re-parse rather than assume the
+   * members are present.
+   */
+  meta: ScriptMeta | null;
+  /** Where the code comes from. */
+  source: EntrySource;
   /** Extra @connect grants approved by the user (scripts only). */
   connectGrants?: string[];
   /** GM value store snapshot (scripts only). Opaque to the native side: carried verbatim. */
@@ -160,17 +167,17 @@ export interface OpMap {
     payload: {
       kind: EntryKind;
       code: string;
-      meta: unknown;
-      source?: unknown;
+      meta: ScriptMeta | null;
+      source?: EntrySource;
       enabled?: boolean;
       values?: Record<string, unknown>;
     };
     result: EntryResult;
   };
-  updateCode: { payload: { id: string; code: string; meta?: unknown }; result: EntryResult };
+  updateCode: { payload: { id: string; code: string; meta?: ScriptMeta }; result: EntryResult };
   /** Mirror upsert from the extension: full entry, id preserved. */
   putEntry: { payload: { entry: WireEntry }; result: EntryResult };
-  updateMeta: { payload: { id: string; meta: unknown }; result: EntryResult };
+  updateMeta: { payload: { id: string; meta: ScriptMeta }; result: EntryResult };
   setEnabled: { payload: { id: string; enabled: boolean }; result: EntryResult };
   reorderEntries: { payload: { ids: string[] }; result: ReorderResult };
   deleteEntry: { payload: { id: string }; result: DeleteResult };

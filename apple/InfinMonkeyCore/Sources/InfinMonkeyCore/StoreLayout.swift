@@ -1,13 +1,4 @@
 import Foundation
-import os
-
-/// The store could not be located. Kept separate from `StoreError` because this
-/// is a build-configuration fault, not a runtime data fault.
-public enum StoreLocationError: Error, Equatable {
-  /// The Info.plist passthrough key carrying the app group id is absent or
-  /// empty. The build setting is not reaching the plist.
-  case missingAppGroupKey(String)
-}
 
 /// Filesystem layout of the per-file store.
 ///
@@ -68,71 +59,31 @@ public struct StoreLayout: Sendable, Equatable {
     return nil
   }
 
-  /// Ids become file names, so the charset stays conservative. Returns nil when
-  /// nothing usable remains.
-  public static func sanitizeId(_ raw: String) -> String? {
-    let allowed = CharacterSet(
-      charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
-    let cleaned = String(
-      String.UnicodeScalarView(raw.unicodeScalars.filter { allowed.contains($0) }))
-    return cleaned.isEmpty || cleaned.count > 64 ? nil : cleaned
-  }
-}
-
-// MARK: - Location
-
-extension StoreLayout {
-  /// Info.plist key carrying the app group id. The value comes from the
-  /// `APP_GROUP_ID` build setting, so it picks up `$(TeamIdentifierPrefix)`
-  /// when the build is signed instead of being frozen into the binary.
-  public static let appGroupPlistKey = "InfinMonkeyAppGroupID"
-
-  /// The app group id as the signed entitlement sees it.
+  /// Whether `id` can be used as a file name in the store.
   ///
-  /// A missing key is a build fault and throws: continuing would put this
-  /// process in a container the other processes do not share, and the failure
-  /// would show up later as mysteriously diverging libraries.
-  public static func appGroupID(bundle: Bundle = .main) throws -> String {
-    guard let value = bundle.object(forInfoDictionaryKey: appGroupPlistKey) as? String,
-      !value.isEmpty
-    else {
-      throw StoreLocationError.missingAppGroupKey(appGroupPlistKey)
+  /// This validates rather than rewrites: an id is an entry's identity, shared
+  /// with the extension, so silently repairing one would orphan the entry on the
+  /// other side. Callers that can invent a replacement do so explicitly.
+  ///
+  /// The rules describe what a file name must satisfy rather than an ASCII
+  /// whitelist. Ids come from `crypto.randomUUID()` today, but the store is a
+  /// user-visible directory, so a name chosen by a user or a future client
+  /// should survive.
+  public static func isValidID(_ id: String) -> Bool {
+    guard !id.isEmpty, id.count <= maxIDLength else { return false }
+    // Path structure: no separators, and neither `.` nor `..` as a whole name.
+    guard !id.contains("/"), !id.contains("\\"), id != ".", id != ".." else { return false }
+    // A colon is legal in a POSIX name but the Finder shows it as a separator,
+    // which makes the entry look like a file it is not.
+    guard !id.contains(":") else { return false }
+    // NUL terminates a C path, and control characters are unusable in a name.
+    for scalar in id.unicodeScalars {
+      if scalar == "\0" { return false }
+      if scalar.properties.generalCategory == .control { return false }
     }
-    return value
+    return true
   }
 
-  /// Resolves the store root.
-  ///
-  /// Prefers the app group container so every process sharing the library sees
-  /// the same files. When no container is available — a build without
-  /// entitlements, which is how `CODE_SIGNING_ALLOWED=NO` builds and unit tests
-  /// run — it falls back to Application Support so the code stays uniform and
-  /// exercisable. Callers that must not run split-brained should use the
-  /// container-failure signal rather than relying on the fallback.
-  public static func resolve(bundle: Bundle = .main) throws -> StoreLayout {
-    #if APP_GROUP
-      let groupID = try appGroupID(bundle: bundle)
-      if let container = FileManager.default.containerURL(
-        forSecurityApplicationGroupIdentifier: groupID)
-      {
-        return StoreLayout(
-          root: container.appendingPathComponent("Library/InfinMonkey", isDirectory: true))
-      }
-      os_log(
-        .error,
-        "InfinMonkeyCore: app group %@ has no container (unsigned build?); using the per-process fallback store",
-        groupID)
-    #else
-      os_log(
-        .info, "InfinMonkeyCore: built without APP_GROUP; using the per-process fallback store")
-    #endif
-    return StoreLayout(root: fallbackRoot())
-  }
-
-  public static func fallbackRoot() -> URL {
-    let base =
-      FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-      ?? FileManager.default.temporaryDirectory
-    return base.appendingPathComponent("InfinMonkey", isDirectory: true)
-  }
+  /// Upper bound on an id: generous for a UUID, bounded for a readable name.
+  static let maxIDLength = 128
 }

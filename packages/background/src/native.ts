@@ -13,6 +13,7 @@ import type {
   ScriptMeta,
   StyleEntry,
 } from "@infinmonkey/shared/types";
+import { parseMeta } from "@infinmonkey/shared/meta";
 import { randomId } from "@infinmonkey/shared/util";
 import {
   findEntry,
@@ -81,9 +82,23 @@ function toWire(e: AnyEntry): WireEntry {
   return w;
 }
 
+/**
+ * Meta as the store needs it: parsed.
+ *
+ * The native side reports `null` when nothing has parsed the code (a file
+ * imported in the app, or adopted from the store directory) and sets
+ * `metaStale` when the code changed underneath the metadata. Parsing belongs to
+ * the extension, so this is where both cases are resolved — otherwise an entry
+ * would reach the injector with `matches` missing and throw while matching.
+ */
+function metaFor(w: WireEntry): ScriptMeta {
+  if (w.meta && !w.metaStale) return w.meta;
+  return parseMeta(w.code);
+}
+
 function fromWire(w: WireEntry): AnyEntry {
-  const meta = w.meta as ScriptMeta;
-  const source = w.source as EntrySource;
+  const meta = metaFor(w);
+  const source = w.source;
   const base = {
     id: w.id,
     enabled: w.enabled,

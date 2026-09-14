@@ -33,7 +33,7 @@ final class StoreModel {
 
   private static func makeDefaultLibrary() -> LibraryService {
     do {
-      return try LibraryService()
+      return LibraryService(layout: try StoreLocation.layout())
     } catch {
       // A missing app group key is a build fault; surface it instead of
       // silently writing into a per-process container.

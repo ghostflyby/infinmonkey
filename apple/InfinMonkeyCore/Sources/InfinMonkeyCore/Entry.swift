@@ -112,7 +112,7 @@ public struct EntryRecord: Codable, Sendable, Equatable {
   public var source: EntrySource
   public var connectGrants: [String]
 
-  public init(
+  init(
     id: String,
     kind: EntryKind,
     enabled: Bool,
@@ -153,6 +153,7 @@ public struct EntryRecord: Codable, Sendable, Equatable {
   /// cannot delegate a single member to a custom rule, and the members here are
   /// otherwise a plain one-to-one mapping, so the rest is mechanical.
   public init(from decoder: Decoder) throws {
+    // 为什么一定需要empty to nil，不能就保持nil吗？如果不行为什么，以及用属性包装器如何？
     let container = try decoder.container(keyedBy: CodingKeys.self)
     self.init(
       id: try container.decode(String.self, forKey: .id),
@@ -164,7 +165,7 @@ public struct EntryRecord: Codable, Sendable, Equatable {
       rev: try container.decode(Int.self, forKey: .rev),
       codeSha: try container.decodeIfPresent(String.self, forKey: .codeSha) ?? "",
       metaStale: try container.decodeIfPresent(Bool.self, forKey: .metaStale) ?? false,
-      meta: try ScriptMeta.decodeOptional(from: container, forKey: .meta),
+      meta: try container.decodeIfPresent(ScriptMeta.self, forKey: .meta),
       source: try container.decodeIfPresent(EntrySource.self, forKey: .source) ?? .inline,
       connectGrants: try container.decodeIfPresent([String].self, forKey: .connectGrants) ?? [])
   }
@@ -185,11 +186,6 @@ public struct FullEntry: Sendable, Equatable {
   public var code: String
   public var values: Data?
 
-  public init(record: EntryRecord, code: String, values: Data?) {
-    self.record = record
-    self.code = code
-    self.values = values
-  }
 }
 
 /// Lightweight descriptor for handshakes and list views.
@@ -206,7 +202,7 @@ public struct EntrySummary: Sendable, Equatable {
   public var updatedAt: Int64
   public var metaStale: Bool
 
-  public init(record: EntryRecord) {
+  init(record: EntryRecord) {
     self.id = record.id
     self.kind = record.kind
     self.name = record.meta.flatMap { $0.name.isEmpty ? nil : $0.name }
@@ -224,10 +220,6 @@ public struct Tombstone: Codable, Sendable, Equatable {
   public var id: String
   public var rev: Int
 
-  public init(id: String, rev: Int) {
-    self.id = id
-    self.rev = rev
-  }
 }
 
 // MARK: - Operation results
@@ -236,20 +228,12 @@ public struct Snapshot: Sendable, Equatable {
   public var rev: Int
   public var entries: [FullEntry]
 
-  public init(rev: Int, entries: [FullEntry]) {
-    self.rev = rev
-    self.entries = entries
-  }
 }
 
 public struct SummarySnapshot: Sendable, Equatable {
   public var rev: Int
   public var entries: [EntrySummary]
 
-  public init(rev: Int, entries: [EntrySummary]) {
-    self.rev = rev
-    self.entries = entries
-  }
 }
 
 public struct Changes: Sendable, Equatable {
@@ -257,11 +241,6 @@ public struct Changes: Sendable, Equatable {
   public var upserts: [FullEntry]
   public var deletedIds: [String]
 
-  public init(rev: Int, upserts: [FullEntry], deletedIds: [String]) {
-    self.rev = rev
-    self.upserts = upserts
-    self.deletedIds = deletedIds
-  }
 }
 
 /// Entries plus their code, as an import/export payload; mirrors
@@ -276,8 +255,8 @@ public struct ExportBundle: Sendable, Equatable {
   public var exportedAt: Int64
   public var scripts: [FullEntry]
   public var styles: [FullEntry]
-
-  public init(
+  // 同默认init问题，我记得初始值可以直接放到字段声明上
+  init(
     infinmonkey: Int = 1,
     version: String,
     exportedAt: Int64,

@@ -69,6 +69,7 @@ struct WireEntry: Codable, Sendable, Equatable {
   /// which synthesis cannot delegate; the remaining members are a one-to-one
   /// mapping. Required members use `decode`, matching the contract: a missing
   /// one fails the request rather than defaulting.
+  ///为什么执着于empty object表示nothing？
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     // Required by the contract: absent or wrongly typed fails the request.
@@ -84,8 +85,8 @@ struct WireEntry: Codable, Sendable, Equatable {
     self.connectGrants = try container.decodeIfPresent([String].self, forKey: .connectGrants)
     self.values = try container.decodeIfPresent(JSONBody.self, forKey: .values)
     self.metaStale = try container.decodeIfPresent(Bool.self, forKey: .metaStale)
-    // Present by contract, but `{}` is how "nothing parsed" is spelled.
-    self.meta = try ScriptMeta.decodeOptional(from: container, forKey: .meta)
+    // `null` and an absent member both mean "nothing has parsed this code yet".
+    self.meta = try container.decodeIfPresent(ScriptMeta.self, forKey: .meta)
   }
 
   func encode(to encoder: Encoder) throws {
@@ -101,8 +102,10 @@ struct WireEntry: Codable, Sendable, Equatable {
     try container.encodeIfPresent(connectGrants, forKey: .connectGrants)
     try container.encodeIfPresent(values, forKey: .values)
     try container.encodeIfPresent(metaStale, forKey: .metaStale)
-    // Always an object: the extension reads `meta` unconditionally.
-    try ScriptMeta.encodeOptional(meta, to: &container, forKey: .meta)
+    // Present as `null` when nothing has parsed this code yet: the key stays in
+    // the frame, and `null` is what the TypeScript side's `unknown` already
+    // admits, so no consumer needs a special "empty object" case.
+    try container.encode(meta, forKey: .meta)
   }
 }
 

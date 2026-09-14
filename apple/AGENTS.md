@@ -26,7 +26,11 @@ folders hold only code that genuinely compiles for both platforms — platform d
 protocol types, metadata modeling, and the library operations. The app targets hold only views,
 view models, and platform glue.
 
-- Core must not import SwiftUI or AppKit/UIKit.
+- Core must not import SwiftUI or AppKit/UIKit, and must not know how the store is
+  *located*: it is given a root and manages the layout inside it. App group containers, bundle
+  identity, and entitlement resolution are platform knowledge and live in `Shared (App)` as
+  `StoreLocation` (admitted to the extension targets too, so all processes agree on one container
+  rather than each resolving its own).
 - Anything worth asserting goes in Core, so it is covered by `swift test` rather than by driving the
   GUI. Fault-prone logic (merging, revision tracking, file reconciliation, protocol dispatch) lives
   behind protocols so tests can substitute a fake.
@@ -93,11 +97,21 @@ Two rules when hand-writing it: the payload must not declare a member named afte
 an unrecognized tag must fail rather than fall back.
 
 `meta` falls under rule 1: the app shows name, version, and description, so it needs the structure.
-It is `ScriptMeta?`, and **the absence of the value is what means "not parsed yet"** — there is no
-flag inside it and no placeholder name. `{}` on the wire is the same statement, so it decodes to
-`nil` and `nil` encodes back to `{}` (the extension's contract has the key present). The invariant
-"no metadata implies still-needs-parsing" is enforced in the store when a document is loaded, not
-inferred at each use.
+It is `ScriptMeta?`, and **the absence of the value is what means "not parsed yet"** — no flag inside
+it, no placeholder name, and no sentinel spelling. On the wire that is `null` (the member stays
+present, because the TypeScript type is non-optional); `null` and a missing member are the same
+statement. The invariant "no metadata implies still-needs-parsing" is enforced in the store when a
+document is loaded, not inferred at each use.
+
+Do not reintroduce an empty-object spelling. It was tried and removed: `{}` decodes as a
+fully-defaulted `ScriptMeta`, which is a *parsed* value, so a consumer that treats it as unparsed
+had to special-case it — and the TypeScript side never did, which let an entry with no `matches`
+reach the URL matcher and throw. The extension re-parses at the bridge (`native.ts`), which is where
+parsing belongs.
+
+Consequently the contract types `meta` concretely (`ScriptMeta | null`) rather than `unknown`: the
+shape is modeled on both sides, so leaving it unknown only hid the missing-member case behind an
+unchecked assertion.
 
 Model types are immutable (`let`) — a parse result is a snapshot, not a mutable bag — so an edit is
 expressed as a derivation that names exactly what changes (`ScriptMeta.withSummary`). A hand-written

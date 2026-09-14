@@ -12,13 +12,10 @@ public actor ProtocolRouter {
   private let store: any EntryStoring
   private let platform: String
 
-  public init(store: any EntryStoring, platform: String) {
+  /// - Parameter platform: defaults to the platform this build runs on.
+  public init(store: any EntryStoring, platform: String = PlatformName.current) {
     self.store = store
     self.platform = platform
-  }
-
-  public init(store: any EntryStoring, capabilities: PlatformCapabilities = .current) {
-    self.init(store: store, platform: capabilities.wireName)
   }
 
   // MARK: - Entry points
@@ -238,21 +235,19 @@ public actor ProtocolRouter {
   }
 }
 
-/// Host platform facts the protocol reports.
-public struct PlatformCapabilities: Sendable {
-  public var wireName: String
-
-  public init(wireName: String) {
-    self.wireName = wireName
-  }
-
-  public static var current: PlatformCapabilities {
+/// Names of the platforms the protocol can report.
+public enum PlatformName {
+  /// The platform this build runs on, as reported in `hello` and `ping`.
+  ///
+  /// A compile-time fact, so it is a conditional constant rather than an
+  /// injectable value; tests that need a different one pass it to the router.
+  public static var current: String {
     #if os(macOS)
-      PlatformCapabilities(wireName: "macos")
+      return "macos"
     #elseif os(iOS)
-      PlatformCapabilities(wireName: "ios")
+      return "ios"
     #else
-      PlatformCapabilities(wireName: "unknown")
+      return "unknown"
     #endif
   }
 }

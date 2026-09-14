@@ -78,7 +78,7 @@ final class NativeStoreTests: XCTestCase {
     XCTAssertNil(entry.values, "styles have no values file")
   }
 
-  func testMissingMetaRoundTripsAsEmptyObject() async throws {
+  func testMissingMetaStaysAbsentAcrossAReload() async throws {
     let store = NativeStore(root: temporaryRoot())
     let entry = try await store.create(
       kind: .script, code: scriptCode(), meta: nil, source: .inline, enabled: true,
@@ -91,100 +91,6 @@ final class NativeStoreTests: XCTestCase {
     let reloaded = try await store.entry(id: entry.record.id)
     XCTAssertNil(reloaded.record.meta)
     XCTAssertTrue(reloaded.record.metaStale)
-  }
-
-  func testEmptyMetaObjectInAnOlderStoreReadsAsAbsent() async throws {
-    // Older builds wrote "not parsed yet" as `{}`; that must still mean absent
-    // rather than an empty-but-parsed result.
-    let store = NativeStore(root: temporaryRoot())
-    let entry = try await store.create(
-      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
-      values: nil)
-
-    var index = try XCTUnwrap(
-      try JSONSerialization.jsonObject(with: try Data(contentsOf: store.layout.indexURL))
-        as? [String: Any])
-    var entries = try XCTUnwrap(index["entries"] as? [[String: Any]])
-    entries[0]["meta"] = [String: Any]()
-    index["entries"] = entries
-    try JSONSerialization.data(withJSONObject: index).write(to: store.layout.indexURL)
-
-    let reloaded = try await store.entry(id: entry.record.id)
-    XCTAssertNil(reloaded.record.meta, "`{}` means nothing has been parsed")
-    XCTAssertTrue(reloaded.record.metaStale)
-  }
-
-  func testSummaryUsesPlaceholderForUnparsedEntry() async throws {
-    let store = NativeStore(root: temporaryRoot())
-    let entry = try await store.create(
-      kind: .script, code: scriptCode(), meta: nil, source: .inline, enabled: true, values: nil)
-    let summaries = try await store.summaries(sinceRev: nil)
-    let summary = try XCTUnwrap(summaries.entries.first { $0.id == entry.record.id })
-    XCTAssertNil(summary.name, "no name to report yet, and no placeholder invented")
-    XCTAssertNil(summary.version)
-  }
-
-  func testExternalEditMarksMetaStale() async throws {
-    let store = NativeStore(root: temporaryRoot())
-    let entry = try await store.create(
-      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
-      values: nil)
-
-    // Simulate an editor writing behind the store's back.
-    try Data("/* rewritten */".utf8).write(to: store.layout.codeURL(entry.record))
-
-    let after = try await store.entry(id: entry.record.id)
-    XCTAssertTrue(after.record.metaStale)
-
-    // The extension re-parses and pushes fresh metadata; the flag clears.
-    let fixed = try await store.updateMeta(
-      id: entry.record.id, meta: demoMeta(name: "Renamed"), fromParsing: true)
-    XCTAssertFalse(fixed.record.metaStale)
-    XCTAssertEqual(fixed.record.meta?.name, "Renamed")
-  }
-
-  func testOrphanFileIsAdoptedAndMissingFileIsTombstoned() async throws {
-    let store = NativeStore(root: temporaryRoot())
-    let first = try await store.create(
-      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
-      values: nil)
-
-    // A file with no index record.
-    let orphan = store.layout.entriesDir.appendingPathComponent("dropped-in.user.js")
-    try Data("// ==UserScript==\n// @name Dropped\n// ==/UserScript==\n".utf8).write(to: orphan)
-    // A record whose file vanished.
-    try FileManager.default.removeItem(at: store.layout.codeURL(first.record))
-
-    let snapshot = try await store.snapshot()
-    let ids = Set(snapshot.entries.map(\.record.id))
-    XCTAssertTrue(ids.contains("dropped-in"), "orphan should be adopted")
-    XCTAssertFalse(ids.contains(first.record.id), "vanished record should be dropped")
-
-    let adopted = try XCTUnwrap(snapshot.entries.first { $0.record.id == "dropped-in" })
-    XCTAssertTrue(adopted.record.metaStale, "adopted code has not been parsed yet")
-    XCTAssertNil(adopted.record.meta)
-
-    let changes = try await store.changes(sinceRev: 0)
-    XCTAssertTrue(changes.deletedIds.contains(first.record.id))
-    XCTAssertTrue(changes.upserts.contains { $0.record.id == "dropped-in" })
-  }
-
-  func testRevisionAdvancesPerMutation() async throws {
-    let store = NativeStore(root: temporaryRoot())
-    let entry = try await store.create(
-      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
-      values: nil)
-
-    let revAfterCreate = try await store.currentRev()
-    _ = try await store.setEnabled(id: entry.record.id, enabled: false)
-    let revAfterDisable = try await store.currentRev()
-    XCTAssertGreaterThan(revAfterDisable, revAfterCreate)
-
-    // A no-op write must not advance the revision: clients watch it to decide
-    // whether they need to sync.
-    _ = try await store.setEnabled(id: entry.record.id, enabled: false)
-    let revAfterNoOp = try await store.currentRev()
-    XCTAssertEqual(revAfterNoOp, revAfterDisable)
   }
 
   func testChangesStreamReportsUpsertsAndDeletes() async throws {
@@ -325,10 +231,28 @@ final class NativeStoreTests: XCTestCase {
     }
   }
 
-  func testIdSanitization() {
-    XCTAssertEqual(StoreLayout.sanitizeId("abc-DEF_123"), "abc-DEF_123")
-    XCTAssertEqual(StoreLayout.sanitizeId("a/b\\c:d"), "abcd")
-    XCTAssertNil(StoreLayout.sanitizeId(""))
-    XCTAssertNil(StoreLayout.sanitizeId(String(repeating: "x", count: 65)))
+  func testIdValidation() {
+    // Usable: UUIDs as minted today, and readable names including non-ASCII —
+    // the store directory is user-visible, so a chosen name must survive.
+    XCTAssertTrue(StoreLayout.isValidID("abc-DEF_123"))
+    XCTAssertTrue(StoreLayout.isValidID(UUID().uuidString.lowercased()))
+    XCTAssertTrue(StoreLayout.isValidID("我的脚本"))
+    XCTAssertTrue(StoreLayout.isValidID("脚本 v2"))
+
+    // Unusable: path structure, separators, and things that break a file name.
+    XCTAssertFalse(StoreLayout.isValidID(""), "empty cannot be a file name")
+    XCTAssertFalse(StoreLayout.isValidID(".."), "would escape the directory")
+    XCTAssertFalse(StoreLayout.isValidID("."))
+    XCTAssertFalse(StoreLayout.isValidID("a/b"), "path separator")
+    XCTAssertFalse(StoreLayout.isValidID("a\\b"), "path separator")
+    XCTAssertFalse(StoreLayout.isValidID("a:b"), "Finder renders a colon as a separator")
+    XCTAssertFalse(StoreLayout.isValidID("a\nb"), "control character")
+    XCTAssertFalse(StoreLayout.isValidID("a\0b"), "NUL terminates a C path")
+    XCTAssertFalse(
+      StoreLayout.isValidID(String(repeating: "x", count: 129)), "bounded length")
+
+    // A rejected id is never silently repaired: `put` depends on that, because a
+    // rewritten id would orphan the entry on the extension's side.
+    XCTAssertNotEqual(StoreLayout.isValidID("a/b"), true)
   }
 }

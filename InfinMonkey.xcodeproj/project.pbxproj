@@ -106,6 +106,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Assets.xcassets,
+				StoreLocation.swift,
 				ContentView.swift,
 				EntryDetailView.swift,
 				InfinMonkeyApp.swift,
@@ -131,6 +132,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Assets.xcassets,
+				StoreLocation.swift,
 				ContentView.swift,
 				EntryDetailView.swift,
 				InfinMonkeyApp.swift,
@@ -145,6 +147,20 @@
 			);
 			target = ECBE707B3055A77C00072D70 /* InfinMonkey Extension (macOS) */;
 		};
+		ECBE7D013055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey Extension (iOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				StoreLocation.swift,
+			);
+			target = ECBE70713055A77C00072D70 /* InfinMonkey Extension (iOS) */;
+		};
+		ECBE7D023055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey Extension (macOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				StoreLocation.swift,
+			);
+			target = ECBE707B3055A77C00072D70 /* InfinMonkey Extension (macOS) */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -153,6 +169,8 @@
 			exceptions = (
 				ECBE70A03055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey (iOS)" target */,
 				ECBE70AA3055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey (macOS)" target */,
+				ECBE7D013055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey Extension (iOS)" target */,
+				ECBE7D023055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey Extension (macOS)" target */,
 			);
 			path = "apple/Shared (App)";
 			sourceTree = "<group>";

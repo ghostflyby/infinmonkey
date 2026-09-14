@@ -194,10 +194,11 @@ public actor NativeStore: EntryStoring {
   @discardableResult
   public func put(entry: FullEntry) throws -> FullEntry {
     try mutate { doc in
-      // Reject rather than rewrite: the caller's id is its identity, so
-      // silently changing it would orphan the entry on the other side.
-      guard let id = StoreLayout.sanitizeId(entry.record.id), id == entry.record.id else {
-        throw StoreError.badRequest("entry id is not usable as a file name: \(entry.record.id)")
+      // The caller's id is the entry's identity and is shared with the
+      // extension, so an unusable one is rejected rather than repaired.
+      let id = entry.record.id
+      guard StoreLayout.isValidID(id) else {
+        throw StoreError.badRequest("entry id is not usable as a file name: \(id)")
       }
       var record = entry.record
       record.rev = 0
@@ -297,9 +298,10 @@ public actor NativeStore: EntryStoring {
       let now = Self.nowMs()
       for incoming in bundle.allEntries {
         var record = incoming.record
-        if let sanitized = StoreLayout.sanitizeId(record.id) {
-          record.id = sanitized
-        } else {
+        // An imported id is kept when it is usable — a round trip through export
+        // should preserve identities — and replaced only when it cannot be a
+        // file name, since the bundle came from outside this store.
+        if !StoreLayout.isValidID(record.id) {
           record.id = Self.freshId(excluding: Set(doc.entries.map(\.id)))
         }
         record.rev = 0
@@ -422,8 +424,8 @@ public actor NativeStore: EntryStoring {
     var changed = false
     for file in files.sorted() {
       guard let kind = StoreLayout.kind(ofFileName: file),
-        let rawId = StoreLayout.entryId(ofFileName: file),
-        let id = StoreLayout.sanitizeId(rawId),
+        let id = StoreLayout.entryId(ofFileName: file),
+        StoreLayout.isValidID(id),
         !known.contains(id)
       else { continue }
       let url = layout.entriesDir.appendingPathComponent(file)
@@ -478,15 +480,17 @@ public actor NativeStore: EntryStoring {
     close(descriptor)
   }
 
-  /// Writes through a temp file plus rename so readers never see a partial file.
+  /// Writes atomically: `Foundation` replaces the file through a temporary file
+  /// and a rename, so a reader never observes a partial write and a crash cannot
+  /// leave a torn file.
+  ///
+  /// The directory is created first because `.atomic` does not create missing
+  /// parents, and the first write to a new store has none. That is the only
+  /// reason this wraps the call.
   static func atomicWrite(_ data: Data, to url: URL) throws {
-    let directory = url.deletingLastPathComponent()
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let temporary = directory.appendingPathComponent(
-      ".\(url.lastPathComponent).tmp-\(UUID().uuidString)")
-    try data.write(to: temporary, options: .atomic)
-    _ = try FileManager.default.replaceItemAt(
-      url, withItemAt: temporary, backupItemName: nil, options: [])
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try data.write(to: url, options: .atomic)
   }
 
   /// An empty JSON object, used when a script has no values yet.

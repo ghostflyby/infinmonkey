@@ -5,6 +5,9 @@
     ".": "./src/index.ts",
     "./wire": "./src/index.ts"
   },
+  "imports": {
+    "@infinmonkey/shared": "workspace:*"
+  },
   "compilerOptions": {
     "strict": true,
     "lib": [

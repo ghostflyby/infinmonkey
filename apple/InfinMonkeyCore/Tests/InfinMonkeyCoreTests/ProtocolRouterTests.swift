@@ -127,7 +127,7 @@ actor FakeStore: EntryStoring {
   @discardableResult
   func put(entry: FullEntry) throws -> FullEntry {
     try checkFailure()
-    guard StoreLayout.sanitizeId(entry.record.id) != nil else {
+    guard StoreLayout.isValidID(entry.record.id) else {
       throw StoreError.badRequest("bad id")
     }
     bump()
@@ -415,18 +415,20 @@ final class ProtocolRouterTests: XCTestCase {
     XCTAssertEqual(valueDescription(roundTripped.fullEntry().values, "token"), "abc")
   }
 
-  func testNilMetaIsWrittenAsAnObject() async throws {
-    let entry = FullEntry(
-      record: makeRecord(id: "e1", meta: nil), code: "x", values: nil)
+  func testMissingMetaIsWrittenAsNull() async throws {
+    let entry = FullEntry(record: makeRecord(id: "e1", meta: nil), code: "x", values: nil)
     let data = try JSONEncoder().encode(WireEntry(full: entry))
-    let object = try XCTUnwrap(
-      try JSONSerialization.jsonObject(with: data) as? [String: Any])
-    XCTAssertEqual(
-      (object["meta"] as? [String: Any])?.isEmpty, true,
-      "the contract has meta present and always an object")
+    let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+
+    // The member stays present, spelled `null` — which the TypeScript side's
+    // `unknown` already admits, so no consumer needs an "empty object" case.
+    XCTAssertTrue(object.keys.contains("meta"), "meta must be present in the frame")
+    XCTAssertTrue(
+      object["meta"] is NSNull, "meta must be null, got \(String(describing: object["meta"]))")
 
     // And it reads back as "nothing parsed", not as a parsed empty value.
     let back = try JSONDecoder().decode(WireEntry.self, from: data)
     XCTAssertNil(back.meta)
   }
+
 }

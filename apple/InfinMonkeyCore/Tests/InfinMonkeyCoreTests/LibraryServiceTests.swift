@@ -160,8 +160,4 @@ final class LibraryServiceTests: XCTestCase {
     }
   }
 
-  func testAppGroupKeyMissingFailsFast() throws {
-    // A bundle without the passthrough key is a build fault.
-    XCTAssertThrowsError(try StoreLayout.appGroupID(bundle: .init(for: LibraryServiceTests.self)))
-  }
 }
