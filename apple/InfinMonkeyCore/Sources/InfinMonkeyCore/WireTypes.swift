@@ -65,11 +65,10 @@ struct WireEntry: Codable, Sendable, Equatable {
     case connectGrants, values, metaStale
   }
 
-  /// `meta` needs the shared convention (empty object means "nothing parsed"),
-  /// which synthesis cannot delegate; the remaining members are a one-to-one
-  /// mapping. Required members use `decode`, matching the contract: a missing
-  /// one fails the request rather than defaulting.
-  ///为什么执着于empty object表示nothing？
+  /// `meta` is optional (absent and `null` both mean "nothing has parsed this
+  /// code yet") while the remaining members are a one-to-one mapping. Required
+  /// members use `decode`, matching the contract: a missing one fails the
+  /// request rather than defaulting.
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     // Required by the contract: absent or wrongly typed fails the request.

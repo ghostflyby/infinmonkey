@@ -148,12 +148,11 @@ public struct EntryRecord: Codable, Sendable, Equatable {
     case meta, source, connectGrants
   }
 
-  /// Hand-written for the metadata convention: `meta` is read through
-  /// `ScriptMeta.decodeOptional`, which maps an empty object to nil. Synthesis
-  /// cannot delegate a single member to a custom rule, and the members here are
-  /// otherwise a plain one-to-one mapping, so the rest is mechanical.
+  /// Hand-written because a non-optional member whose key is absent throws even
+  /// when the property has a default value, and the index is read back from
+  /// another build. Absent members therefore take their documented default while
+  /// a wrongly typed one is still an error.
   public init(from decoder: Decoder) throws {
-    // 为什么一定需要empty to nil，不能就保持nil吗？如果不行为什么，以及用属性包装器如何？
     let container = try decoder.container(keyedBy: CodingKeys.self)
     self.init(
       id: try container.decode(String.self, forKey: .id),
@@ -250,25 +249,12 @@ public struct Changes: Sendable, Equatable {
 /// `FullEntry`: its entries carry opaque bytes, which `Data` would turn into
 /// base64. The file format is `WireBundle`.
 public struct ExportBundle: Sendable, Equatable {
-  public var infinmonkey: Int
+  /// Format version of the bundle; the only member with a default.
+  public var infinmonkey: Int = 1
   public var version: String
   public var exportedAt: Int64
   public var scripts: [FullEntry]
   public var styles: [FullEntry]
-  // 同默认init问题，我记得初始值可以直接放到字段声明上
-  init(
-    infinmonkey: Int = 1,
-    version: String,
-    exportedAt: Int64,
-    scripts: [FullEntry],
-    styles: [FullEntry]
-  ) {
-    self.infinmonkey = infinmonkey
-    self.version = version
-    self.exportedAt = exportedAt
-    self.scripts = scripts
-    self.styles = styles
-  }
 
   public var allEntries: [FullEntry] { scripts + styles }
 }
