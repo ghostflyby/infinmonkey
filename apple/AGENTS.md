@@ -67,14 +67,27 @@ Shared mutable state is an `actor`, not a lock. The store is entered only throug
 locking stays a separate concern: the actor serializes access within one process, `flock` on the
 store's lock file serializes it across processes (app, extension, host are separate processes).
 
-Note the language-mode split: the app targets build in Swift 6 mode with
-`-default-isolation=MainActor`, while the package currently builds in Swift 5 mode, so package code
-is checked less strictly. Do not rely on the package catching data races; make types `Sendable`
-deliberately.
+Both the package and the app targets build in **Swift 6 language mode**, so strict concurrency is
+enforced (a nonisolated mutable global is an error, not a warning). The difference is the default
+isolation:
+
+| | Language mode | Default isolation |
+|---|---|---|
+| `apple/InfinMonkeyCore` | 6 | **nonisolated** |
+| app targets | 6 | `MainActor` |
+
+That asymmetry is deliberate. Library code must not be pinned to the main actor by default — the
+extension handler and a future stdio host call it off the main actor — so isolation in the package
+is explicit (actors own state, value types are `Sendable`). App targets are UI, so MainActor-by-
+default is right for them. Do not "fix" the difference by adding `-default-isolation=MainActor` to
+the package.
 
 Under Swift 6 with MainActor-by-default, `ObservableObject` cannot synthesize its conformance
 (`objectWillChange` is required to be nonisolated). Use `@Observable` in SwiftUI instead — which is
-why the app's deployment target is iOS 17 / macOS 14.
+why the app's deployment target is iOS 17 / macOS 14, and why the package declares the same floor.
+
+A consequence worth internalizing: untyped data cannot cross into actor isolation. The protocol
+router speaks `Data`, not `[String: Any]`, for exactly this reason.
 
 ## Identity tree
 
@@ -134,16 +147,25 @@ xcodebuild -project InfinMonkey.xcodeproj -scheme "InfinMonkey (macOS)" \
 deno task swift:fmt && deno task swift:lint
 ```
 
+To confirm the language mode is really applied, check the flag rather than trusting a clean build:
+`swift build --disable-sandbox -v | grep -o '\-swift-version [0-9]*'` must print `6`. A passing
+build only means nothing was flagged — a mutable global is a reliable probe for whether strict
+checking is on.
+
 The iOS scheme has no usable destination on a machine without the iOS device platform installed.
 Verify iOS-side sources by typechecking them against the simulator SDK with the same flags the target
-uses:
+uses. Build the package for the simulator triple first, or the module will be rejected for having
+been built against the macOS SDK:
 
 ```bash
 SDK=$(xcrun -sdk iphonesimulator -show-sdk-path)
+cd apple/InfinMonkeyCore
+swift build --disable-sandbox --triple arm64-apple-ios17.0-simulator -Xswiftc -sdk -Xswiftc "$SDK"
+cd ../..
 swiftc -typecheck -sdk "$SDK" -target arm64-apple-ios17.0-simulator \
   -swift-version 6 -default-isolation=MainActor -DAPP_GROUP \
-  -I apple/InfinMonkeyCore/.build/arm64-apple-macosx/debug/Modules \
-  apple/Shared\ \(App\)/*.swift
+  -I apple/InfinMonkeyCore/.build/arm64-apple-ios-simulator/debug/Modules \
+  "apple/Shared (App)"/*.swift
 ```
 
 `xcodebuild -target X -sdk ...` bypasses package resolution and fails with "unable to resolve module
