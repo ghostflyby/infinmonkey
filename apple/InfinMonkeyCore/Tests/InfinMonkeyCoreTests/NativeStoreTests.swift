@@ -18,10 +18,23 @@ func scriptCode(name: String = "Demo") -> String {
 }
 
 func demoMeta(name: String = "Demo") -> ScriptMeta {
-  var meta = ScriptMeta()
-  meta.name = name
-  meta.headerFound = true
-  return meta
+  ScriptMeta(name: name, headerFound: true)
+}
+
+/// A record whose code content stands in for a hex digest in tests that do not
+/// exercise hashing.
+func makeRecord(
+  id: String,
+  kind: EntryKind = .script,
+  enabled: Bool = true,
+  position: Int = 0,
+  meta: ScriptMeta? = nil,
+  metaStale: Bool = false,
+  source: EntrySource = .inline
+) -> EntryRecord {
+  EntryRecord(
+    id: id, kind: kind, enabled: enabled, position: position, installedAt: 0, updatedAt: 0,
+    rev: 0, codeSha: "", metaStale: metaStale, meta: meta, source: source)
 }
 
 func valuesBlob(_ object: [String: Any]) -> Data {
@@ -65,18 +78,50 @@ final class NativeStoreTests: XCTestCase {
     XCTAssertNil(entry.values, "styles have no values file")
   }
 
-  func testUnparsedMetaRoundTripsAsEmptyObject() async throws {
+  func testMissingMetaRoundTripsAsEmptyObject() async throws {
     let store = NativeStore(root: temporaryRoot())
     let entry = try await store.create(
-      kind: .script, code: scriptCode(), meta: .unparsed, source: .inline, enabled: true,
+      kind: .script, code: scriptCode(), meta: nil, source: .inline, enabled: true,
       values: nil)
 
-    XCTAssertTrue(entry.record.meta.isUnparsed)
-    XCTAssertTrue(entry.record.metaStale, "unparsed metadata means the extension must parse it")
+    XCTAssertNil(entry.record.meta)
+    XCTAssertTrue(entry.record.metaStale, "no metadata means the extension must parse the code")
 
-    // A fresh read from disk keeps the marker, so the extension still parses it.
+    // A fresh read from disk keeps it absent.
     let reloaded = try await store.entry(id: entry.record.id)
-    XCTAssertTrue(reloaded.record.meta.isUnparsed)
+    XCTAssertNil(reloaded.record.meta)
+    XCTAssertTrue(reloaded.record.metaStale)
+  }
+
+  func testEmptyMetaObjectInAnOlderStoreReadsAsAbsent() async throws {
+    // Older builds wrote "not parsed yet" as `{}`; that must still mean absent
+    // rather than an empty-but-parsed result.
+    let store = NativeStore(root: temporaryRoot())
+    let entry = try await store.create(
+      kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
+      values: nil)
+
+    var index = try XCTUnwrap(
+      try JSONSerialization.jsonObject(with: try Data(contentsOf: store.layout.indexURL))
+        as? [String: Any])
+    var entries = try XCTUnwrap(index["entries"] as? [[String: Any]])
+    entries[0]["meta"] = [String: Any]()
+    index["entries"] = entries
+    try JSONSerialization.data(withJSONObject: index).write(to: store.layout.indexURL)
+
+    let reloaded = try await store.entry(id: entry.record.id)
+    XCTAssertNil(reloaded.record.meta, "`{}` means nothing has been parsed")
+    XCTAssertTrue(reloaded.record.metaStale)
+  }
+
+  func testSummaryUsesPlaceholderForUnparsedEntry() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let entry = try await store.create(
+      kind: .script, code: scriptCode(), meta: nil, source: .inline, enabled: true, values: nil)
+    let summaries = try await store.summaries(sinceRev: nil)
+    let summary = try XCTUnwrap(summaries.entries.first { $0.id == entry.record.id })
+    XCTAssertNil(summary.name, "no name to report yet, and no placeholder invented")
+    XCTAssertNil(summary.version)
   }
 
   func testExternalEditMarksMetaStale() async throws {
@@ -92,9 +137,10 @@ final class NativeStoreTests: XCTestCase {
     XCTAssertTrue(after.record.metaStale)
 
     // The extension re-parses and pushes fresh metadata; the flag clears.
-    let fixed = try await store.updateMeta(id: entry.record.id, meta: demoMeta(name: "Renamed"))
+    let fixed = try await store.updateMeta(
+      id: entry.record.id, meta: demoMeta(name: "Renamed"), fromParsing: true)
     XCTAssertFalse(fixed.record.metaStale)
-    XCTAssertEqual(fixed.record.meta.name, "Renamed")
+    XCTAssertEqual(fixed.record.meta?.name, "Renamed")
   }
 
   func testOrphanFileIsAdoptedAndMissingFileIsTombstoned() async throws {
@@ -116,7 +162,7 @@ final class NativeStoreTests: XCTestCase {
 
     let adopted = try XCTUnwrap(snapshot.entries.first { $0.record.id == "dropped-in" })
     XCTAssertTrue(adopted.record.metaStale, "adopted code has not been parsed yet")
-    XCTAssertTrue(adopted.record.meta.isUnparsed)
+    XCTAssertNil(adopted.record.meta)
 
     let changes = try await store.changes(sinceRev: 0)
     XCTAssertTrue(changes.deletedIds.contains(first.record.id))
@@ -166,10 +212,8 @@ final class NativeStoreTests: XCTestCase {
       values: nil)
 
     let mirror = FullEntry(
-      record: EntryRecord(
-        id: existing.record.id, kind: .script, enabled: false, position: 0, installedAt: 1,
-        updatedAt: 2, rev: 0, codeSha: "", metaStale: false, meta: demoMeta(name: "Mirror"),
-        source: .inline),
+      record: makeRecord(
+        id: existing.record.id, enabled: false, meta: demoMeta(name: "Mirror")),
       code: "console.log(2)",
       values: valuesBlob(["k": "v"]))
 
@@ -183,11 +227,7 @@ final class NativeStoreTests: XCTestCase {
     XCTAssertEqual(valueDescription(stored.values, "k"), "v")
 
     // An id that cannot be a file name is rejected rather than sanitized silently.
-    let bad = FullEntry(
-      record: EntryRecord(
-        id: "x/y", kind: .script, enabled: true, position: 0, installedAt: 0, updatedAt: 0,
-        rev: 0, codeSha: "", metaStale: false, meta: .unparsed, source: .inline),
-      code: "", values: nil)
+    let bad = FullEntry(record: makeRecord(id: "x/y"), code: "", values: nil)
     do {
       _ = try await store.put(entry: bad)
       XCTFail("expected badRequest for an unusable id")
@@ -216,7 +256,7 @@ final class NativeStoreTests: XCTestCase {
     let imported = try await other.entry(id: entry.record.id)
     XCTAssertEqual(imported.code, scriptCode())
     XCTAssertEqual(valueDescription(imported.values, "k"), "42")
-    XCTAssertEqual(imported.record.meta.name, "Demo")
+    XCTAssertEqual(imported.record.meta?.name, "Demo")
   }
 
   func testImportReplaceWipesExistingEntries() async throws {
@@ -226,9 +266,7 @@ final class NativeStoreTests: XCTestCase {
       enabled: true, values: nil)
 
     let replacement = FullEntry(
-      record: EntryRecord(
-        id: "repl-1", kind: .script, enabled: true, position: 1, installedAt: 0, updatedAt: 0,
-        rev: 0, codeSha: "", metaStale: false, meta: demoMeta(name: "New"), source: .inline),
+      record: makeRecord(id: "repl-1", position: 1, meta: demoMeta(name: "New")),
       code: "console.log(2)", values: nil)
     let count = try await store.importBundle(
       ExportBundle(version: "0.1.0", exportedAt: 0, scripts: [replacement], styles: []),

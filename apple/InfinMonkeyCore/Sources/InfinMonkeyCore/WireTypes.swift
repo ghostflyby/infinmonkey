@@ -40,7 +40,9 @@ struct WireEntry {
   var installedAt: Int64
   var updatedAt: Int64
   var code: String
-  var meta: ScriptMeta
+  /// nil means "no metadata yet"; the wire shape requires an object, so nil is
+  /// emitted as `{}` and `{}` decodes back to nil.
+  var meta: ScriptMeta?
   var source: EntrySource
   var connectGrants: [String]?
   /// Opaque GM values (`Record<string, unknown>` on the extension side).
@@ -79,10 +81,8 @@ struct WireEntry {
     self.position = object.int("position") ?? 0
     self.installedAt = object.int64("installedAt") ?? 0
     self.updatedAt = object.int64("updatedAt") ?? 0
-    self.meta =
-      object["meta"].flatMap { try? JSONCoding.decode(ScriptMeta.self, from: $0) } ?? .unparsed
-    self.source =
-      object["source"].flatMap { try? JSONCoding.decode(EntrySource.self, from: $0) } ?? .inline
+    self.meta = try Self.parseMeta(object["meta"])
+    self.source = try Self.parseSource(object["source"])
     self.connectGrants = object["connectGrants"] as? [String]
     self.values = object["values"]
     self.metaStale = object.bool("metaStale")
@@ -100,7 +100,7 @@ struct WireEntry {
       updatedAt: updatedAt,
       rev: 0,
       codeSha: "",
-      metaStale: metaStale ?? meta.isUnparsed,
+      metaStale: metaStale ?? (meta == nil),
       meta: meta,
       source: source,
       connectGrants: connectGrants ?? [])
@@ -116,13 +116,27 @@ struct WireEntry {
       "installedAt": installedAt,
       "updatedAt": updatedAt,
       "code": code,
-      "meta": try JSONCoding.object(meta),
+      "meta": try meta.map { try JSONCoding.object($0) } ?? [String: Any](),
       "source": try JSONCoding.object(source),
     ]
     if let connectGrants { object["connectGrants"] = connectGrants }
     if let values { object["values"] = values }
     if metaStale == true { object["metaStale"] = true }
     return object
+  }
+
+  /// `{}` is the wire's "nothing parsed": no real parse result is empty, since
+  /// the extension's parser always emits every field. A non-empty object must
+  /// decode cleanly — a malformed one is an error rather than a silent nil.
+  private static func parseMeta(_ value: Any?) throws -> ScriptMeta? {
+    guard let dictionary = value as? [String: Any], !dictionary.isEmpty else { return nil }
+    return try JSONCoding.decode(ScriptMeta.self, from: dictionary)
+  }
+
+  /// Optional on the wire (older senders omit it); when present it must be valid.
+  private static func parseSource(_ value: Any?) throws -> EntrySource {
+    guard let value else { return .inline }
+    return try JSONCoding.decode(EntrySource.self, from: value)
   }
 
   private static func parseOpaque(_ data: Data?) -> Any? {
@@ -140,20 +154,20 @@ struct WireEntry {
 struct WireSummary {
   var id: String
   var kind: EntryKind
-  var name: String
+  /// Absent when the entry has no name to report yet (not parsed, or empty
+  /// `@name`); the receiver decides what to show.
+  var name: String?
   var version: String?
-  var description: String?
   var enabled: Bool
   var position: Int
   var updatedAt: Int64
   var metaStale: Bool
 
-  init(summary: EntrySummary, meta: ScriptMeta) {
+  init(summary: EntrySummary) {
     self.id = summary.id
     self.kind = summary.kind
     self.name = summary.name
     self.version = summary.version
-    self.description = meta.description
     self.enabled = summary.enabled
     self.position = summary.position
     self.updatedAt = summary.updatedAt
@@ -164,14 +178,13 @@ struct WireSummary {
     var object: [String: Any] = [
       "id": id,
       "kind": kind.rawValue,
-      "name": name,
       "enabled": enabled,
       "position": position,
       "updatedAt": updatedAt,
       "metaStale": metaStale,
     ]
+    if let name { object["name"] = name }
     if let version { object["version"] = version }
-    if let description { object["description"] = description }
     return object
   }
 }

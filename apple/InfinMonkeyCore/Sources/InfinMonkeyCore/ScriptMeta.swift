@@ -9,8 +9,8 @@ public enum RunAt: String, Codable, Sendable, CaseIterable {
 
 /// `@resource` entry; mirrors `ResourceRef` in packages/shared/src/types.ts.
 public struct ResourceRef: Codable, Sendable, Equatable {
-  public var name: String
-  public var url: String
+  public let name: String
+  public let url: String
 
   public init(name: String, url: String) {
     self.name = name
@@ -25,40 +25,39 @@ public struct ResourceRef: Codable, Sendable, Equatable {
 /// the extension's `parseMeta()` produces.
 ///
 /// Decoding is lenient about *absent* fields (they take their documented
-/// default) but strict about *malformed* ones, so an empty `{}` — the
-/// extension's marker for "not parsed yet" — decodes to `isUnparsed` instead of
-/// throwing. A stated field with the wrong type is an error.
+/// default) and strict about *malformed* ones: a stated field with the wrong
+/// type is an error.
+///
+/// "Not parsed yet" is represented by the *absence* of this value (`ScriptMeta?`),
+/// not by a flag inside it. An empty `{}` decodes to `nil` — no real parse result
+/// is ever empty, because `parseMeta()` always emits every field — and `nil`
+/// encodes back to `{}`, keeping the wire shape (which requires an object).
 public struct ScriptMeta: Codable, Sendable, Equatable {
-  public var name: String
-  public var namespace: String?
-  public var version: String?
-  public var description: String?
-  public var author: String?
-  public var homepageURL: String?
-  public var supportURL: String?
-  public var iconURL: String?
-  public var updateURL: String?
-  public var downloadURL: String?
-  public var license: String?
-  public var runAt: RunAt
-  public var noframes: Bool
-  public var matches: [String]
-  public var includes: [String]
-  public var excludes: [String]
-  public var grants: [String]
-  public var connects: [String]
-  public var requires: [String]
-  public var resources: [ResourceRef]
-  public var nameLocales: [String: String]
-  public var descriptionLocales: [String: String]
-  public var others: [String: [String]]
-  public var headerRaw: String
-  public var headerFound: Bool
-
-  /// True when the source JSON object was empty: the extension has not parsed
-  /// this entry yet. Not a wire field — it is derived from the object itself,
-  /// and setting it only matters when re-serializing after an edit.
-  public var isUnparsed: Bool
+  public let name: String
+  public let namespace: String?
+  public let version: String?
+  public let description: String?
+  public let author: String?
+  public let homepageURL: String?
+  public let supportURL: String?
+  public let iconURL: String?
+  public let updateURL: String?
+  public let downloadURL: String?
+  public let license: String?
+  public let runAt: RunAt
+  public let noframes: Bool
+  public let matches: [String]
+  public let includes: [String]
+  public let excludes: [String]
+  public let grants: [String]
+  public let connects: [String]
+  public let requires: [String]
+  public let resources: [ResourceRef]
+  public let nameLocales: [String: String]
+  public let descriptionLocales: [String: String]
+  public let others: [String: [String]]
+  public let headerRaw: String
+  public let headerFound: Bool
 
   public init(
     name: String = "",
@@ -85,8 +84,7 @@ public struct ScriptMeta: Codable, Sendable, Equatable {
     descriptionLocales: [String: String] = [:],
     others: [String: [String]] = [:],
     headerRaw: String = "",
-    headerFound: Bool = false,
-    isUnparsed: Bool = false
+    headerFound: Bool = false
   ) {
     self.name = name
     self.namespace = namespace
@@ -113,15 +111,40 @@ public struct ScriptMeta: Codable, Sendable, Equatable {
     self.others = others
     self.headerRaw = headerRaw
     self.headerFound = headerFound
-    self.isUnparsed = isUnparsed
   }
 
-  /// The `{}` marker: "no metadata yet, the extension must parse the code".
-  public static let unparsed = ScriptMeta(isUnparsed: true)
-
-  /// Name to show when the entry has no usable `@name` yet.
-  public var displayName: String {
-    name.isEmpty ? "未命名" : name
+  /// The edited summary, for the three fields the app's UI owns.
+  ///
+  /// Everything else is carried over untouched: `@match` rules, grants, and
+  /// unrecognized directives are parse output, and the app cannot recompute
+  /// them. An empty string clears a field.
+  public func withSummary(name: String, version: String, description: String) -> ScriptMeta {
+    ScriptMeta(
+      name: name,
+      namespace: namespace,
+      version: version.isEmpty ? nil : version,
+      description: description.isEmpty ? nil : description,
+      author: author,
+      homepageURL: homepageURL,
+      supportURL: supportURL,
+      iconURL: iconURL,
+      updateURL: updateURL,
+      downloadURL: downloadURL,
+      license: license,
+      runAt: runAt,
+      noframes: noframes,
+      matches: matches,
+      includes: includes,
+      excludes: excludes,
+      grants: grants,
+      connects: connects,
+      requires: requires,
+      resources: resources,
+      nameLocales: nameLocales,
+      descriptionLocales: descriptionLocales,
+      others: others,
+      headerRaw: headerRaw,
+      headerFound: headerFound)
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -163,15 +186,11 @@ public struct ScriptMeta: Codable, Sendable, Equatable {
         ?? [:],
       others: try container.decodeIfPresent([String: [String]].self, forKey: .others) ?? [:],
       headerRaw: try container.decodeIfPresent(String.self, forKey: .headerRaw) ?? "",
-      headerFound: try container.decodeIfPresent(Bool.self, forKey: .headerFound) ?? false,
-      isUnparsed: container.allKeys.isEmpty)
+      headerFound: try container.decodeIfPresent(Bool.self, forKey: .headerFound) ?? false)
   }
 
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
-    // An unparsed entry stays `{}` so the extension keeps treating it as its own
-    // to parse; anything else round-trips the full field set.
-    guard !isUnparsed else { return }
     try container.encode(name, forKey: .name)
     try container.encodeIfPresent(namespace, forKey: .namespace)
     try container.encodeIfPresent(version, forKey: .version)

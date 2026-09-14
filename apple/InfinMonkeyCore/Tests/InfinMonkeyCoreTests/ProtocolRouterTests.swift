@@ -67,7 +67,7 @@ actor FakeStore: EntryStoring {
   func create(
     kind: EntryKind,
     code: String,
-    meta: ScriptMeta,
+    meta: ScriptMeta?,
     source: EntrySource,
     enabled: Bool,
     values: Data?
@@ -78,8 +78,7 @@ actor FakeStore: EntryStoring {
     let id = "fake-\(nextId)"
     let record = EntryRecord(
       id: id, kind: kind, enabled: enabled, position: order.count + 1, installedAt: 0,
-      updatedAt: 0, rev: rev, codeSha: "sha", metaStale: meta.isUnparsed, meta: meta,
-      source: source)
+      updatedAt: 0, rev: rev, codeSha: "sha", metaStale: meta == nil, meta: meta, source: source)
     let entry = FullEntry(record: record, code: code, values: kind == .script ? values : nil)
     entries[id] = entry
     order.append(id)
@@ -94,7 +93,7 @@ actor FakeStore: EntryStoring {
     entry.code = code
     if let meta {
       entry.record.meta = meta
-      entry.record.metaStale = meta.isUnparsed
+      entry.record.metaStale = false  // the caller parsed the code it just sent
     }
     entry.record.rev = rev
     entries[id] = entry
@@ -102,12 +101,13 @@ actor FakeStore: EntryStoring {
   }
 
   @discardableResult
-  func updateMeta(id: String, meta: ScriptMeta) throws -> FullEntry {
+  func updateMeta(id: String, meta: ScriptMeta, fromParsing: Bool) throws -> FullEntry {
     try checkFailure()
     guard var entry = entries[id] else { throw StoreError.notFound }
     bump()
+    let previouslyParsed = entry.record.meta != nil
     entry.record.meta = meta
-    entry.record.metaStale = meta.isUnparsed
+    entry.record.metaStale = fromParsing ? false : !previouslyParsed
     entry.record.rev = rev
     entries[id] = entry
     return entry
@@ -196,11 +196,14 @@ func errorCode(_ response: [String: Any]) -> String? {
   (response["error"] as? [String: Any])?["code"] as? String
 }
 
-func seededEntry(id: String = "e1", kind: EntryKind = .script) -> FullEntry {
-  FullEntry(
+func seededEntry(
+  id: String = "e1", kind: EntryKind = .script, meta: ScriptMeta? = nil
+) -> FullEntry {
+  let resolved = meta ?? demoMeta(name: "Demo")
+  return FullEntry(
     record: EntryRecord(
       id: id, kind: kind, enabled: true, position: 1, installedAt: 0, updatedAt: 0, rev: 1,
-      codeSha: "", metaStale: false, meta: demoMeta(name: "Demo"), source: .inline),
+      codeSha: "", metaStale: false, meta: resolved, source: .inline),
     code: scriptCode(),
     values: kind == .script ? valuesBlob(["token": "abc"]) : nil)
 }
@@ -388,8 +391,8 @@ final class ProtocolRouterTests: XCTestCase {
 
     let snapshot = try await store.snapshot()
     let entry = try XCTUnwrap(snapshot.entries.first)
-    XCTAssertEqual(entry.record.meta.name, "Demo")
-    XCTAssertEqual(entry.record.meta.matches, ["https://example.org/*"])
+    XCTAssertEqual(entry.record.meta?.name, "Demo")
+    XCTAssertEqual(entry.record.meta?.matches, ["https://example.org/*"])
   }
 
   func testSharedWireEntryFixtureDecodesAndRoundTrips() async throws {
@@ -399,7 +402,7 @@ final class ProtocolRouterTests: XCTestCase {
     let entry = try WireEntry(jsonObject: object)
     XCTAssertEqual(entry.id, "e1")
     XCTAssertEqual(entry.kind, .script)
-    XCTAssertEqual(entry.meta.name, "Demo")
+    XCTAssertEqual(entry.meta?.name, "Demo")
     XCTAssertEqual(entry.connectGrants, ["api.example.org"])
 
     // Opaque values survive a decode/encode cycle unchanged.

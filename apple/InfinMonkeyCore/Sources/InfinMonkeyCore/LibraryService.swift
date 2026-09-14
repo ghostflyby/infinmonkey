@@ -64,12 +64,11 @@ public struct LibraryService: Sendable {
     try await store.updateCode(id: id, code: code, meta: nil)
   }
 
-  /// Applies an edited metadata summary, leaving every other parsed field as it
-  /// was — the UI edits only these three, so the rest must survive untouched.
+  /// Applies an edited metadata summary.
   ///
-  /// An entry whose metadata has not been parsed yet (the extension owns
-  /// parsing) gets a fresh summary, and stays marked for parsing: describing an
-  /// entry by hand does not give us its `@match` list.
+  /// An entry with no parsed metadata yet (the extension owns parsing) gets a
+  /// summary built from the edit. It stays stale: typing a name does not tell us
+  /// the `@match` rules, so the extension must still parse the code.
   @discardableResult
   public func saveMetadata(
     id: String,
@@ -78,14 +77,16 @@ public struct LibraryService: Sendable {
     description: String
   ) async throws -> FullEntry {
     let existing = try await store.entry(id: id)
-    var meta = existing.record.meta
-    let wasUnparsed = meta.isUnparsed
-    if wasUnparsed { meta = ScriptMeta() }
-    meta.name = name.isEmpty ? "" : name
-    meta.version = version.isEmpty ? nil : version
-    meta.description = description.isEmpty ? nil : description
-    if wasUnparsed { meta.isUnparsed = true }
-    return try await store.updateMeta(id: id, meta: meta)
+    let summary = (existing.record.meta ?? ScriptMeta())
+      .withSummary(name: name, version: version, description: description)
+    return try await store.updateMeta(id: id, meta: summary, fromParsing: false)
+  }
+
+  /// Stores metadata produced by parsing the code, which is authoritative and
+  /// therefore clears the "needs parsing" signal.
+  @discardableResult
+  public func saveParsedMetadata(id: String, meta: ScriptMeta) async throws -> FullEntry {
+    try await store.updateMeta(id: id, meta: meta, fromParsing: true)
   }
 
   @discardableResult
@@ -129,12 +130,12 @@ public struct LibraryService: Sendable {
     guard let code = String(data: data, encoding: .utf8) else {
       throw StoreError.badRequest("文件不是 UTF-8 文本：\(name)")
     }
-    // Metadata stays `.unparsed`: only the extension parses userscript headers,
-    // and it does so on its next connection.
+    // No metadata: only the extension parses userscript headers, and it does so
+    // on its next connection.
     _ = try await store.create(
       kind: kind,
       code: code,
-      meta: .unparsed,
+      meta: nil,
       source: .inline,
       enabled: true,
       values: kind == .script ? NativeStore.emptyJSONObject : nil)
@@ -175,14 +176,16 @@ public struct LibraryService: Sendable {
     }
   }
 
+  /// Metadata for a fresh scaffold. This is not a guess: it describes the code
+  /// `scaffold(for:)` writes, header and `@match` rule included.
   static func scaffoldMeta(for kind: EntryKind) -> ScriptMeta {
-    var meta = ScriptMeta()
-    meta.name = kind == .script ? "新脚本" : "新样式"
-    meta.namespace = "infinmonkey"
-    meta.version = "0.1.0"
-    meta.description = "由 InfinMonkey 创建"
-    meta.headerFound = true
-    return meta
+    ScriptMeta(
+      name: kind == .script ? "新脚本" : "新样式",
+      namespace: "infinmonkey",
+      version: "0.1.0",
+      description: "由 InfinMonkey 创建",
+      matches: kind == .script ? ["https://example.org/*"] : [],
+      headerFound: true)
   }
 }
 
@@ -202,13 +205,15 @@ private struct UnavailableStore: EntryStoring {
   func changes(sinceRev: Int) async throws -> Changes { try fail() }
   func values(id: String) async throws -> Data? { try fail() }
   func create(
-    kind: EntryKind, code: String, meta: ScriptMeta, source: EntrySource, enabled: Bool,
+    kind: EntryKind, code: String, meta: ScriptMeta?, source: EntrySource, enabled: Bool,
     values: Data?
   ) async throws -> FullEntry { try fail() }
   func updateCode(id: String, code: String, meta: ScriptMeta?) async throws -> FullEntry {
     try fail()
   }
-  func updateMeta(id: String, meta: ScriptMeta) async throws -> FullEntry { try fail() }
+  func updateMeta(id: String, meta: ScriptMeta, fromParsing: Bool) async throws -> FullEntry {
+    try fail()
+  }
   func setEnabled(id: String, enabled: Bool) async throws -> FullEntry { try fail() }
   func put(entry: FullEntry) async throws -> FullEntry { try fail() }
   func reorder(ids: [String]) async throws { _ = try fail() as Void }

@@ -84,9 +84,11 @@ struct EntryDetailView: View {
     guard let entry = await model.loadEntry(id: entryId) else { return }
     if dirty && loadedId == entryId { return }
     code = entry.code
-    name = entry.record.meta.isUnparsed ? "" : entry.record.meta.displayName
-    version = entry.record.meta.version ?? ""
-    entryDescription = entry.record.meta.description ?? ""
+    // Empty rather than a placeholder: this field is editable text, and
+    // "未命名" is not a name the user typed.
+    name = entry.record.meta?.name ?? ""
+    version = entry.record.meta?.version ?? ""
+    entryDescription = entry.record.meta?.description ?? ""
     metaStale = entry.record.metaStale
     kind = entry.record.kind
     // Display only: the store carries GM values as opaque bytes, so the keys

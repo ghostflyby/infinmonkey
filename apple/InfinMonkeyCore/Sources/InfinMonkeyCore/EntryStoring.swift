@@ -29,7 +29,7 @@ public protocol EntryStoring: Sendable {
   func create(
     kind: EntryKind,
     code: String,
-    meta: ScriptMeta,
+    meta: ScriptMeta?,
     source: EntrySource,
     enabled: Bool,
     values: Data?
@@ -39,8 +39,11 @@ public protocol EntryStoring: Sendable {
   @discardableResult
   func updateCode(id: String, code: String, meta: ScriptMeta?) async throws -> FullEntry
 
+  /// `fromParsing` states whether `meta` came from parsing the code (which
+  /// makes it authoritative) or from a hand edit (which does not, so the
+  /// "still needs parsing" signal is preserved).
   @discardableResult
-  func updateMeta(id: String, meta: ScriptMeta) async throws -> FullEntry
+  func updateMeta(id: String, meta: ScriptMeta, fromParsing: Bool) async throws -> FullEntry
 
   @discardableResult
   func setEnabled(id: String, enabled: Bool) async throws -> FullEntry

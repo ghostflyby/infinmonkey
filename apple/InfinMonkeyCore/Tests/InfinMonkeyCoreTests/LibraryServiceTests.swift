@@ -19,9 +19,11 @@ final class LibraryServiceTests: XCTestCase {
     let created = try await service(store).create(kind: .script)
 
     XCTAssertTrue(created.code.contains("==UserScript=="))
-    XCTAssertEqual(created.record.meta.name, "新脚本")
-    XCTAssertTrue(created.record.meta.headerFound)
+    XCTAssertEqual(created.record.meta?.name, "新脚本")
+    XCTAssertTrue(created.record.meta?.headerFound ?? false)
     XCTAssertFalse(created.record.metaStale)
+    // The scaffold declares its own @match, so it is complete enough to run.
+    XCTAssertEqual(created.record.meta?.matches, ["https://example.org/*"])
     XCTAssertNotNil(created.values, "a new script starts with an empty values object")
   }
 
@@ -33,57 +35,67 @@ final class LibraryServiceTests: XCTestCase {
     XCTAssertNil(created.values)
   }
 
-  func testSaveMetadataKeepsUnparsedMarkerForUnparsedEntry() async throws {
-    // Simulates the app editing an entry the extension has not parsed yet.
-    var entry = seededEntry()
-    entry.record.meta = .unparsed
-    entry.record.metaStale = true
-    let store = FakeStore(seeded: [entry])
+  func testSaveMetadataOnUnparsedEntrySurvivesAndStaysStale() async throws {
+    // An entry created from a dropped file: no parsed metadata yet.
+    let store = NativeStore(root: temporaryRoot())
+    let created = try await store.create(
+      kind: .script, code: scriptCode(), meta: nil, source: .inline, enabled: true, values: nil)
+    let service = LibraryService(store: store, storagePath: "/tmp/unused")
 
-    let saved = try await service(store).saveMetadata(
-      id: entry.record.id, name: "我的脚本", version: "1.2.0", description: "说明")
-
-    XCTAssertEqual(saved.record.meta.name, "我的脚本")
-    XCTAssertEqual(saved.record.meta.version, "1.2.0")
-    XCTAssertEqual(saved.record.meta.description, "说明")
+    let saved = try await service.saveMetadata(
+      id: created.record.id, name: "我的脚本", version: "1.2.0", description: "说明")
+    XCTAssertEqual(saved.record.meta?.name, "我的脚本")
+    XCTAssertEqual(saved.record.meta?.version, "1.2.0")
+    XCTAssertEqual(saved.record.meta?.description, "说明")
     XCTAssertTrue(
-      saved.record.meta.isUnparsed,
-      "describing an entry by hand does not tell us its match rules, so the extension must still parse"
-    )
-    XCTAssertTrue(saved.record.metaStale)
+      saved.record.metaStale,
+      "a hand-written summary says nothing about match rules, so parsing is still required")
+
+    // The regression this guards: the edit used to be serialized away, so a
+    // fresh reader saw an empty name.
+    let reloaded = try await NativeStore(root: store.layout.root).entry(id: created.record.id)
+    XCTAssertEqual(reloaded.record.meta?.name, "我的脚本", "the edit must reach disk")
+    XCTAssertTrue(reloaded.record.metaStale)
+  }
+
+  func testParsedMetadataClearsStale() async throws {
+    let store = NativeStore(root: temporaryRoot())
+    let created = try await store.create(
+      kind: .script, code: scriptCode(), meta: nil, source: .inline, enabled: true, values: nil)
+    let service = LibraryService(store: store, storagePath: "/tmp/unused")
+
+    var parsed = demoMeta(name: "Parsed")
+    parsed = parsed.withSummary(name: "Parsed", version: "", description: "")
+    let saved = try await service.saveParsedMetadata(id: created.record.id, meta: parsed)
+    XCTAssertFalse(saved.record.metaStale, "parser output is authoritative")
   }
 
   func testSaveMetadataPreservesFieldsBeyondTheThreeEdited() async throws {
-    var entry = seededEntry()
-    var meta = demoMeta(name: "Original")
-    meta.matches = ["https://a.example/*"]
-    meta.grants = ["GM_getValue"]
-    meta.others = ["custom": ["kept"]]
-    entry.record.meta = meta
+    let entry = seededEntry(
+      meta: ScriptMeta(
+        name: "Original", matches: ["https://a.example/*"], grants: ["GM_getValue"],
+        others: ["custom": ["kept"]]))
     let store = FakeStore(seeded: [entry])
 
     let saved = try await service(store).saveMetadata(
       id: entry.record.id, name: "Renamed", version: "", description: "")
 
-    XCTAssertEqual(saved.record.meta.name, "Renamed")
-    XCTAssertNil(saved.record.meta.version, "an emptied field clears the value")
+    XCTAssertEqual(saved.record.meta?.name, "Renamed")
+    XCTAssertNil(saved.record.meta?.version, "an emptied field clears the value")
     XCTAssertEqual(
-      saved.record.meta.matches, ["https://a.example/*"], "match rules survive an edit")
-    XCTAssertEqual(saved.record.meta.grants, ["GM_getValue"], "grants survive an edit")
+      saved.record.meta?.matches, ["https://a.example/*"], "match rules survive an edit")
+    XCTAssertEqual(saved.record.meta?.grants, ["GM_getValue"], "grants survive an edit")
     XCTAssertEqual(
-      saved.record.meta.others, ["custom": ["kept"]], "unknown directives survive an edit")
+      saved.record.meta?.others, ["custom": ["kept"]], "unknown directives survive an edit")
   }
 
-  func testSaveCodeDoesNotInventMetadata() async throws {
-    var entry = seededEntry()
-    var meta = demoMeta(name: "Original")
-    meta.matches = ["https://a.example/*"]
-    entry.record.meta = meta
+  func testSaveCodeMarksMetadataStaleRatherThanInventingIt() async throws {
+    let entry = seededEntry(meta: ScriptMeta(name: "Original", matches: ["https://a.example/*"]))
     let store = FakeStore(seeded: [entry])
 
     let saved = try await service(store).saveCode(id: entry.record.id, code: "console.log(2)")
     XCTAssertEqual(saved.code, "console.log(2)")
-    XCTAssertEqual(saved.record.meta.matches, ["https://a.example/*"])
+    XCTAssertEqual(saved.record.meta?.matches, ["https://a.example/*"])
   }
 
   func testImportValidBundleMerges() async throws {
@@ -115,8 +127,8 @@ final class LibraryServiceTests: XCTestCase {
     try await service(store).importFile(at: url)
     let snapshot = try await store.snapshot()
     let entry = try XCTUnwrap(snapshot.entries.first)
-    XCTAssertTrue(
-      entry.record.meta.isUnparsed,
+    XCTAssertNil(
+      entry.record.meta,
       "only the extension parses userscript headers, so the app must not guess")
     XCTAssertEqual(entry.record.kind, .script)
   }

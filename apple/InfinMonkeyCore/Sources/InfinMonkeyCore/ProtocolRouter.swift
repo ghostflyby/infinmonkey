@@ -55,12 +55,6 @@ public actor ProtocolRouter {
       case "hello":
         let payload = try decodePayload(WirePayload.Hello.self, frame)
         let snapshot = try await store.summaries(sinceRev: payload.sinceRev)
-        var entries: [[String: Any]] = []
-        for summary in snapshot.entries {
-          // The summary carries the description, which only the metadata holds.
-          let meta = (try? await store.entry(id: summary.id))?.record.meta ?? .unparsed
-          entries.append(WireSummary(summary: summary, meta: meta).jsonObject())
-        }
         return try ResponseFrame(
           id: frame.id,
           result: encodeObject([
@@ -68,7 +62,7 @@ public actor ProtocolRouter {
             "app": CoreConstants.appName,
             "platform": platform,
             "rev": snapshot.rev,
-            "entries": entries,
+            "entries": snapshot.entries.map { WireSummary(summary: $0).jsonObject() },
           ]))
 
       case "listEntries":
@@ -96,7 +90,7 @@ public actor ProtocolRouter {
         let created = try await store.create(
           kind: payload.kind,
           code: payload.code,
-          meta: payload.meta ?? .unparsed,
+          meta: payload.meta,
           source: payload.source ?? .inline,
           enabled: payload.enabled ?? true,
           values: JSONCoding.opaqueMember("values", in: frame.payload))
@@ -110,7 +104,9 @@ public actor ProtocolRouter {
 
       case "updateMeta":
         let payload = try decodePayload(WirePayload.UpdateMeta.self, frame)
-        let updated = try await store.updateMeta(id: payload.id, meta: payload.meta)
+        // Over the wire, metadata comes from the extension's parser.
+        let updated = try await store.updateMeta(
+          id: payload.id, meta: payload.meta, fromParsing: true)
         return try await entryResponse(frame, updated)
 
       case "setEnabled":

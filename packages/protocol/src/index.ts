@@ -68,9 +68,9 @@ export interface WireEntry {
 export interface EntrySummary {
   id: string;
   kind: EntryKind;
-  name: string;
+  /** Absent when there is no name yet: not parsed, or an empty `@name`. Display chooses the placeholder. */
+  name?: string;
   version?: string;
-  description?: string;
   enabled: boolean;
   position: number;
   updatedAt: number;

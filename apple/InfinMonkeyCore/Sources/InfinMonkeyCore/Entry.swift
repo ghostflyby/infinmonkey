@@ -61,6 +61,7 @@ extension EntrySource: Codable {
 /// `fileName` is derived from `id` and `kind` rather than stored, so the three
 /// cannot drift apart.
 public struct EntryRecord: Codable, Sendable, Equatable {
+
   public var id: String
   public var kind: EntryKind
   public var enabled: Bool
@@ -74,7 +75,10 @@ public struct EntryRecord: Codable, Sendable, Equatable {
   /// True when the code file changed outside the app: the parsed metadata is
   /// stale and the extension must re-parse the code.
   public var metaStale: Bool
-  public var meta: ScriptMeta
+  /// Parsed metadata, or nil when nothing has parsed this entry's code yet
+  /// (an adopted file, a fresh import, a create from the app). The extension
+  /// owns parsing, so nil means "it must parse this and push the result back".
+  public var meta: ScriptMeta?
   public var source: EntrySource
   public var connectGrants: [String]
 
@@ -88,7 +92,7 @@ public struct EntryRecord: Codable, Sendable, Equatable {
     rev: Int,
     codeSha: String,
     metaStale: Bool,
-    meta: ScriptMeta,
+    meta: ScriptMeta?,
     source: EntrySource,
     connectGrants: [String] = []
   ) {
@@ -108,6 +112,64 @@ public struct EntryRecord: Codable, Sendable, Equatable {
 
   /// File name holding this entry's code.
   public var fileName: String { StoreLayout.codeFileName(id: id, kind: kind) }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, kind, enabled, position, installedAt, updatedAt, rev, codeSha, metaStale
+    case meta, source, connectGrants
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      id: try container.decode(String.self, forKey: .id),
+      kind: try container.decode(EntryKind.self, forKey: .kind),
+      enabled: try container.decode(Bool.self, forKey: .enabled),
+      position: try container.decode(Int.self, forKey: .position),
+      installedAt: try container.decode(Int64.self, forKey: .installedAt),
+      updatedAt: try container.decode(Int64.self, forKey: .updatedAt),
+      rev: try container.decode(Int.self, forKey: .rev),
+      codeSha: try container.decodeIfPresent(String.self, forKey: .codeSha) ?? "",
+      metaStale: try container.decodeIfPresent(Bool.self, forKey: .metaStale) ?? false,
+      // `{}` decodes back to nil: no parse result is ever empty.
+      meta: try Self.decodeMeta(container),
+      source: try container.decodeIfPresent(EntrySource.self, forKey: .source) ?? .inline,
+      connectGrants: try container.decodeIfPresent([String].self, forKey: .connectGrants) ?? [])
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id)
+    try container.encode(kind, forKey: .kind)
+    try container.encode(enabled, forKey: .enabled)
+    try container.encode(position, forKey: .position)
+    try container.encode(installedAt, forKey: .installedAt)
+    try container.encode(updatedAt, forKey: .updatedAt)
+    try container.encode(rev, forKey: .rev)
+    try container.encode(codeSha, forKey: .codeSha)
+    try container.encode(metaStale, forKey: .metaStale)
+    // Omitted when absent. A keyed container cannot emit a bare `{}`, and the
+    // index has no other reader, so absence is the honest spelling here; the
+    // wire layer materializes `{}` because the extension's contract expects the
+    // key to be present.
+    try container.encodeIfPresent(meta, forKey: .meta)
+    try container.encode(source, forKey: .source)
+    if !connectGrants.isEmpty || kind == .script {
+      try container.encode(connectGrants, forKey: .connectGrants)
+    }
+  }
+
+  /// Decodes `meta`, mapping the empty object to `nil`.
+  ///
+  /// This is exact rather than a guess about field values: `encode` writes `{}`
+  /// only for "no metadata", and a real parse result can never be empty because
+  /// `parseMeta()` always emits every field.
+  private static func decodeMeta(_ container: KeyedDecodingContainer<CodingKeys>) throws
+    -> ScriptMeta?
+  {
+    guard container.contains(.meta) else { return nil }
+    if (try? container.decode(EmptyObject.self, forKey: .meta)) != nil { return nil }
+    return try container.decode(ScriptMeta.self, forKey: .meta)
+  }
 }
 
 /// A record together with its code file and its opaque GM values.
@@ -126,11 +188,34 @@ public struct FullEntry: Codable, Sendable, Equatable {
   }
 }
 
+/// Decodes only from an empty JSON object; any other shape throws.
+///
+/// Used to recognize the wire/index spelling of "no metadata parsed yet".
+private struct EmptyObject: Decodable {
+  private struct AnyKey: CodingKey {
+    var stringValue: String
+    var intValue: Int? { nil }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: AnyKey.self)
+    guard container.allKeys.isEmpty else {
+      throw DecodingError.dataCorrupted(
+        .init(codingPath: decoder.codingPath, debugDescription: "object is not empty"))
+    }
+  }
+}
+
 /// Lightweight descriptor for handshakes and list views.
 public struct EntrySummary: Sendable, Equatable {
   public var id: String
   public var kind: EntryKind
-  public var name: String
+  /// nil when there is no name to report: the code has not been parsed yet, or
+  /// it parsed to an empty `@name`. Choosing what to display is a presentation
+  /// concern, so no placeholder is invented here.
+  public var name: String?
   public var version: String?
   public var enabled: Bool
   public var position: Int
@@ -140,8 +225,8 @@ public struct EntrySummary: Sendable, Equatable {
   public init(record: EntryRecord) {
     self.id = record.id
     self.kind = record.kind
-    self.name = record.meta.displayName
-    self.version = record.meta.version
+    self.name = record.meta.flatMap { $0.name.isEmpty ? nil : $0.name }
+    self.version = record.meta?.version
     self.enabled = record.enabled
     self.position = record.position
     self.updatedAt = record.updatedAt

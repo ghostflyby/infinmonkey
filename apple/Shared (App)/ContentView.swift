@@ -106,7 +106,7 @@ struct EntryRow: View {
         .foregroundStyle(.tint)
         .frame(width: 24)
       VStack(alignment: .leading) {
-        Text(summary.name)
+        Text(summary.name ?? "未命名")
           .fontWeight(.medium)
         if let version = summary.version {
           Text("v" + version)

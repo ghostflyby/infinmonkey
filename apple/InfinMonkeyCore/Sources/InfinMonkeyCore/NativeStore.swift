@@ -85,7 +85,7 @@ public actor NativeStore: EntryStoring {
   public func create(
     kind: EntryKind,
     code: String,
-    meta: ScriptMeta,
+    meta: ScriptMeta?,
     source: EntrySource,
     enabled: Bool,
     values: Data?
@@ -102,7 +102,8 @@ public actor NativeStore: EntryStoring {
         updatedAt: now,
         rev: 0,
         codeSha: Self.sha256Hex(of: code),
-        metaStale: meta.isUnparsed,
+        // No metadata means the extension still has to parse this code.
+        metaStale: meta == nil,
         meta: meta,
         source: source)
       doc.stampNextRev(for: &record)
@@ -131,13 +132,13 @@ public actor NativeStore: EntryStoring {
         try Self.atomicWrite(Data(code.utf8), to: layout.codeURL(previous))
         updated.codeSha = sha
         updated.updatedAt = Self.nowMs()
-        // The code moved on, so any previously parsed metadata is no longer
-        // known to describe it until the caller supplies freshly parsed meta.
-        updated.metaStale = meta == nil
+        // The code moved on, so any previously parsed metadata no longer
+        // describes it; the caller clears the flag by supplying fresh meta.
+        updated.metaStale = true
       }
       if let meta {
         updated.meta = meta
-        updated.metaStale = meta.isUnparsed
+        updated.metaStale = false
       }
 
       let changed = codeChanged || meta != nil
@@ -152,14 +153,18 @@ public actor NativeStore: EntryStoring {
   }
 
   @discardableResult
-  public func updateMeta(id: String, meta: ScriptMeta) throws -> FullEntry {
+  public func updateMeta(id: String, meta: ScriptMeta, fromParsing: Bool = true) throws -> FullEntry
+  {
     try mutate { doc in
       guard let index = doc.entries.firstIndex(where: { $0.id == id }) else {
         throw StoreError.notFound
       }
       var updated = doc.entries[index]
+      let previouslyParsed = updated.meta != nil
       updated.meta = meta
-      updated.metaStale = meta.isUnparsed
+      // A hand-written summary does not tell us the match rules, so an entry
+      // that was never parsed still reports that it needs parsing.
+      updated.metaStale = fromParsing ? false : !previouslyParsed
       doc.stampNextRev(for: &updated)
       doc.entries[index] = updated
       let values = updated.kind == .script ? Self.readValuesBlob(layout: layout, id: id) : nil
@@ -197,8 +202,9 @@ public actor NativeStore: EntryStoring {
       var record = entry.record
       record.rev = 0
       record.codeSha = Self.sha256Hex(of: entry.code)
-      // The mirroring client sends the code it holds; whether its metadata is
-      // current is its own statement, so keep the flag it sent.
+      // The mirroring client states whether its metadata is current, so keep
+      // the flag it sent; absent meta means it has none yet.
+      if record.meta == nil { record.metaStale = true }
       try Self.atomicWrite(Data(entry.code.utf8), to: layout.codeURL(record))
       if record.kind == .script {
         try Self.writeValuesBlob(layout: layout, id: id, blob: entry.values ?? Self.emptyJSONObject)
@@ -386,6 +392,13 @@ public actor NativeStore: EntryStoring {
         doc.stampNextRev(for: &record)
         changed = true
       }
+      // Invariant, enforced on every load: no metadata means the code still has
+      // to be parsed, whatever flag the record arrived with.
+      if record.meta == nil, !record.metaStale {
+        record.metaStale = true
+        doc.stampNextRev(for: &record)
+        changed = true
+      }
       kept.append(record)
     }
     doc.entries = kept
@@ -427,7 +440,7 @@ public actor NativeStore: EntryStoring {
         codeSha: Self.sha256Hex(of: data),
         // Nothing has parsed this code yet, so the extension must.
         metaStale: true,
-        meta: .unparsed,
+        meta: nil,
         source: .inline)
       doc.stampNextRev(for: &record)
       doc.entries.append(record)

@@ -52,9 +52,21 @@ The only place `Any` is unavoidable is the Safari app extension boundary
 (`NSExtensionItem.userInfo` is `[AnyHashable: Any]`). Convert to concrete types immediately at that
 entry point — that conversion is the single place where untyped data may exist.
 
-`meta` is the boundary case that falls under rule 1: the app shows name, version, and description,
-so it needs the structure. An empty `meta` object (`{}`) is the extension's marker for "not parsed
-yet" — preserve it as such through reads and writes rather than filling in defaults.
+`meta` falls under rule 1: the app shows name, version, and description, so it needs the structure.
+It is `ScriptMeta?`, and **the absence of the value is what means "not parsed yet"** — there is no
+flag inside it and no placeholder name. `{}` on the wire is the same statement, so it decodes to
+`nil` and `nil` encodes back to `{}` (the extension's contract has the key present). The invariant
+"no metadata implies still-needs-parsing" is enforced in the store when a document is loaded, not
+inferred at each use.
+
+Model types are immutable (`let`) — a parse result is a snapshot, not a mutable bag — so an edit is
+expressed as a derivation that names exactly what changes (`ScriptMeta.withSummary`). A hand-written
+summary does not clear the needs-parsing signal, because it says nothing about `@match` rules; only
+parser output does (`updateMeta(fromParsing:)`).
+
+Display copy never lives in this package: it is English-only and language-agnostic by policy, while
+UI strings are Chinese. `EntrySummary.name` is therefore optional and the views choose what to show
+for "no name yet".
 
 Because `meta` is typed on both sides, a new parsed field is a schema change on both sides at once:
 bump the protocol version and update both the Swift type and `packages/shared/src/types.ts` in the
