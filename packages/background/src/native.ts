@@ -6,13 +6,7 @@ import {
   type ResponseFrame,
   type WireEntry,
 } from "@infinmonkey/protocol/wire";
-import type {
-  AnyEntry,
-  EntrySource,
-  ScriptEntry,
-  ScriptMeta,
-  StyleEntry,
-} from "@infinmonkey/shared/types";
+import type { AnyEntry, ScriptEntry, ScriptMeta, StyleEntry } from "@infinmonkey/shared/types";
 import { parseMeta } from "@infinmonkey/shared/meta";
 import { randomId } from "@infinmonkey/shared/util";
 import {
