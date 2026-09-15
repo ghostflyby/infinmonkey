@@ -1,6 +1,5 @@
 import Foundation
 import InfinMonkeyCore
-import os
 
 /// Where the shared library lives on this platform.
 ///
@@ -10,9 +9,10 @@ import os
 /// storage layer has no business depending on — that is why it lives here rather
 /// than in `InfinMonkeyCore`.
 ///
-/// Both the app and the extension use it, so they agree on the container. A build
-/// without entitlements (`CODE_SIGNING_ALLOWED=NO`, unit tests) has no container
-/// at all, which the fallback below covers.
+/// Both the app and the extension use it, so they agree on the container. There
+/// is no fallback directory: a build that cannot name its app group cannot share
+/// a library with the other processes, so locating the store simply fails and
+/// every caller reports the reason.
 enum StoreLocation {
   /// Info.plist key carrying the app group id. The value comes from the
   /// `APP_GROUP_ID` build setting, so it picks up `$(TeamIdentifierPrefix)` when
@@ -33,44 +33,46 @@ enum StoreLocation {
     return value
   }
 
-  /// The store root: the app group container when there is one, otherwise a
-  /// per-process fallback.
-  ///
-  /// Preferring the container is what makes the app, the extension, and (later)
-  /// the native messaging host see the same library. The fallback exists only so
-  /// an unsigned build stays runnable.
+  /// The store root: the app group container. Preferring the container is what
+  /// makes the app, the extension, and (later) the native messaging host see the
+  /// same library.
   static func layout(bundle: Bundle = .main) throws -> StoreLayout {
     #if APP_GROUP
       let groupID = try appGroupID(bundle: bundle)
-      if let container = FileManager.default.containerURL(
-        forSecurityApplicationGroupIdentifier: groupID)
-      {
-        return StoreLayout(
-          root: container.appendingPathComponent("Library/InfinMonkey", isDirectory: true))
+      guard
+        let container = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: groupID)
+      else {
+        throw StoreLocationError.noContainer(groupID)
       }
-      os_log(
-        .error,
-        "InfinMonkey: app group %@ has no container (unsigned build?); using the per-process fallback",
-        groupID)
+      return StoreLayout(
+        root: container.appendingPathComponent("Library/InfinMonkey", isDirectory: true))
     #else
-      os_log(.info, "InfinMonkey: built without APP_GROUP; using the per-process fallback")
+      throw StoreLocationError.appGroupDisabled
     #endif
-    return StoreLayout(root: fallbackRoot())
-  }
-
-  /// A writable root for builds that have no app group.
-  static func fallbackRoot() -> URL {
-    let base =
-      FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-      ?? FileManager.default.temporaryDirectory
-    return base.appendingPathComponent("InfinMonkey", isDirectory: true)
   }
 }
 
 /// The store could not be located. Separate from `StoreError` because this is a
 /// build-configuration fault rather than a runtime data fault.
-enum StoreLocationError: Error, Equatable {
+enum StoreLocationError: Error, CustomStringConvertible {
   /// The Info.plist passthrough key carrying the app group id is absent or empty,
   /// so the build setting is not reaching the plist.
   case missingAppGroupKey(String)
+  /// The build names a group the runtime does not grant a container for — a
+  /// signing or provisioning fault.
+  case noContainer(String)
+  /// The target was built without the APP_GROUP compilation condition.
+  case appGroupDisabled
+
+  var description: String {
+    switch self {
+    case .missingAppGroupKey(let key):
+      return "app group id key '\(key)' missing from Info.plist"
+    case .noContainer(let groupID):
+      return "app group '\(groupID)' has no container (unsigned build?)"
+    case .appGroupDisabled:
+      return "built without APP_GROUP, so the shared store cannot be located"
+    }
+  }
 }

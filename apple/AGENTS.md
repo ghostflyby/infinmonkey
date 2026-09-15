@@ -168,10 +168,12 @@ treats a missing key as a build configuration error. This matters because
 a literal compiled into the binary silently stops matching the entitlement at that point and the
 processes end up in different containers.
 
-Two-tier resolution is deliberate: a missing passthrough key is a hard failure, while a present key
-whose container cannot be opened (unsigned developer builds, where `CODE_SIGNING_ALLOWED=NO` embeds
-no entitlements at all) falls back to Application Support with a log line, so `swift test` and
-unsigned builds keep working.
+Resolution is single-tier and fails hard: a missing passthrough key, a key whose container the
+runtime does not grant (unsigned developer builds, where `CODE_SIGNING_ALLOWED=NO` embeds no
+entitlements at all), and targets built without `APP_GROUP` all throw `StoreLocationError`. There is
+no fallback directory on purpose — writing into one would split the library across processes. The
+app reports the reason through its `unavailable` service, and the extension answers every request
+with an error frame carrying it.
 
 Entitlements are referenced from the target's build settings via `CODE_SIGN_ENTITLEMENTS`; the target
 folders above own their files.
@@ -246,7 +248,8 @@ Verified on this project, worth not re-discovering:
 - A **bare** sandboxed binary — one not inside an `.app` bundle — is killed with `SIGTRAP` on launch.
   Sandboxed code must live in a bundle; verify by putting a probe inside a `.app`.
 - `CODE_SIGNING_ALLOWED=NO` builds embed no entitlements at all: no sandbox, no app group. Good for
-  type and logic checking, and it is why the Application Support fallback must exist.
+  type and logic checking, and it is why locating the store fails rather than falls back: an unsigned
+  build has no container to share, so there is nothing to fall back to.
 - A manual `codesign` does not expand `$(VAR)` in entitlements, while `xcodebuild` does. Hand-signing
   a probe means expanding the values yourself first.
 - Info.plist expansion applies to values only; dictionary keys stay literal.

@@ -13,20 +13,16 @@ import os.log
 
 /// Carries the request context across the async hop.
 ///
-/// `NSExtensionContext` is an Objective-C type the SDK does not mark `Sendable`,
-/// but Apple documents `completeRequest(returningItems:completionHandler:)` as
-/// callable from any thread. A request completes once and this handler holds the
-/// sole reference, so handing it to a single task is safe.
+/// `NSExtensionContext` is an Objective-C type the SDK does not mark `Sendable`.
+/// A request completes exactly once and this handler holds the sole reference,
+/// so handing it to a single task is sound: that task is the only user of the
+/// context, and its only use is `completeRequest(returningItems:completionHandler:)`.
 private struct RequestContext: @unchecked Sendable {
   let context: NSExtensionContext
 
   func complete(with response: [String: Any]) {
     let item = NSExtensionItem()
-    if #available(iOS 15.0, macOS 11.0, *) {
-      item.userInfo = [SFExtensionMessageKey: response]
-    } else {
-      item.userInfo = ["message": response]
-    }
+    item.userInfo = [SFExtensionMessageKey: response]
     context.completeRequest(returningItems: [item], completionHandler: nil)
   }
 }
@@ -38,35 +34,26 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
   /// caching a document other processes can invalidate.
   private static let router = ProtocolRouter(store: SafariWebExtensionHandler.makeStore())
 
-  private static func makeStore() -> NativeStore {
+  /// Locates the shared store. The app group identity is expected to exist: a
+  /// build without one cannot share a library with the app, so there is no
+  /// fallback directory — the router gets a store whose every operation fails
+  /// with the reason, and every request surfaces it.
+  private static func makeStore() -> any EntryStoring {
     do {
       let layout = try StoreLocation.layout()
       os_log(.default, "InfinMonkey native store at %@", layout.root.path)
       return NativeStore(layout: layout)
     } catch {
-      // A missing app group identity is a build fault. Fall back to a path that
-      // is certainly writable so the extension keeps working, and log loudly.
-      os_log(.error, "InfinMonkey: app group identity missing (%@)", "\(error)")
-      return NativeStore(root: StoreLocation.fallbackRoot())
+      os_log(.error, "InfinMonkey: shared store unavailable (%@)", "\(error)")
+      return UnavailableStore(reason: "\(error)")
     }
   }
 
   func beginRequest(with context: NSExtensionContext) {
     let request = context.inputItems.first as? NSExtensionItem
 
-    let profile: UUID?
-    if #available(iOS 17.0, macOS 14.0, *) {
-      profile = request?.userInfo?[SFExtensionProfileKey] as? UUID
-    } else {
-      profile = request?.userInfo?["profile"] as? UUID
-    }
-
-    let message: Any?
-    if #available(iOS 15.0, macOS 11.0, *) {
-      message = request?.userInfo?[SFExtensionMessageKey]
-    } else {
-      message = request?.userInfo?["message"]
-    }
+    let profile = request?.userInfo?[SFExtensionProfileKey] as? UUID
+    let message = request?.userInfo?[SFExtensionMessageKey]
 
     // Every profile shares the single app group store; per-profile routing would
     // mean per-profile store roots.
@@ -76,9 +63,8 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
     // This boundary arrives as an Objective-C object graph, which is neither
     // Sendable nor typed and so cannot cross into the router's isolation. Wrapping
-    // it in a `JSONBody` freezes it and makes it Sendable; the router then reads
-    // the envelope from the graph in place — nothing is serialized to get in, and
-    // only the members that need a concrete type are converted.
+    // it in a `JSONBody` freezes it and makes it Sendable; the router decodes the
+    // frame from that body in one pass.
     let body = (try? JSONBody(object: message as? [String: Any] ?? [:])) ?? .emptyObject
     let requestContext = RequestContext(context: context)
 
