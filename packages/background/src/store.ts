@@ -30,6 +30,17 @@ export function emitStoreMutation(m: StoreMutation): void {
 
 let cache: DB | null = null;
 
+// Content scripts (installer) and the native mirror write entries straight to
+// storage.local, bypassing this module's in-memory cache. Without this hook the
+// background would keep serving a stale DB and - worse - write the stale list
+// back over newer entries on its next persist(). Any external write to the
+// store keys invalidates the cache; the background's own writes re-read once,
+// which is harmless.
+browser.storage.onChanged.addListener((changes: Record<string, unknown>, area: string) => {
+  if (area !== "local") return;
+  if (changes.scripts || changes.styles || changes.settings || changes.pending) cache = null;
+});
+
 /** Keeps well-formed entries, drops the rest; returns how many were dropped. */
 function sanitizeEntryList(raw: unknown): { valid: AnyEntry[]; dropped: number } {
   if (!Array.isArray(raw)) return { valid: [], dropped: 0 };
