@@ -1,6 +1,7 @@
 import browser from "webextension-polyfill";
 import { DEFAULT_DEV_ORIGIN, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
 import { extractHeader, parseMeta } from "@infinmonkey/shared/meta";
+import { isEntryCore, isScriptMeta, isStoredEntry } from "@infinmonkey/shared/guards";
 import type {
   AnyEntry,
   EntrySource,
@@ -9,7 +10,7 @@ import type {
   Settings,
   StyleEntry,
 } from "@infinmonkey/shared/types";
-import { randomId } from "@infinmonkey/shared/util";
+import { isRecord, randomId } from "@infinmonkey/shared/util";
 
 interface DB {
   scripts: ScriptEntry[];
@@ -29,16 +30,34 @@ export function emitStoreMutation(m: StoreMutation): void {
 
 let cache: DB | null = null;
 
+/** Keeps well-formed entries, drops the rest; returns how many were dropped. */
+function sanitizeEntryList(raw: unknown): { valid: AnyEntry[]; dropped: number } {
+  if (!Array.isArray(raw)) return { valid: [], dropped: 0 };
+  const valid = raw.filter(isStoredEntry);
+  return { valid, dropped: raw.length - valid.length };
+}
+
 export async function getDB(): Promise<DB> {
   if (cache) return cache;
   const all = await browser.storage.local.get(["scripts", "styles", "settings", "pending"]);
+  const scripts = sanitizeEntryList(all.scripts);
+  const styles = sanitizeEntryList(all.styles);
+  const dropped = scripts.dropped + styles.dropped;
+  if (dropped > 0) {
+    // Shape-invalid entries are unusable downstream (injection would throw on
+    // them); dropping beats crashing, but it must not happen silently.
+    reportError(
+      "getDB",
+      new Error(`${dropped} malformed entr${dropped === 1 ? "y" : "ies"} dropped from storage`),
+    );
+  }
   cache = {
-    scripts: (all.scripts as ScriptEntry[]) ?? [],
-    styles: (all.styles as StyleEntry[]) ?? [],
+    scripts: scripts.valid as ScriptEntry[],
+    styles: styles.valid as StyleEntry[],
     settings: {
       devOrigin: DEFAULT_DEV_ORIGIN,
       storageBackend: "local",
-      ...(all.settings as Partial<Settings> | undefined),
+      ...(isRecord(all.settings) ? (all.settings as Partial<Settings>) : {}),
     },
     pending: (all.pending as Record<string, PendingInstall>) ?? {},
   };
@@ -323,19 +342,43 @@ export async function importAll(
     db.styles = [];
   }
   for (const raw of [...(data.scripts ?? []), ...(data.styles ?? [])]) {
-    const kind = raw.kind === "style" ? "style" : "script";
-    const entry = {
-      ...raw,
-      id: randomId(),
-      position: 0,
-      updatedAt: Date.now(),
-    } as AnyEntry;
-    if (kind === "script") {
-      db.scripts.push(entry as ScriptEntry);
-      (entry as ScriptEntry).position = nextPosition(db.scripts);
+    // Imported files are arbitrary JSON. Core fields are validated (nothing
+    // unknown rides along); metadata is repaired by parsing the code when the
+    // file carries none, mirroring what the native mirror path does.
+    if (!isEntryCore(raw)) continue;
+    const meta = isScriptMeta(raw.meta) ? raw.meta : parseMeta(raw.code);
+    const entry: AnyEntry = raw.kind === "script"
+      ? {
+        id: randomId(),
+        kind: "script",
+        enabled: raw.enabled,
+        position: 0,
+        code: raw.code,
+        meta,
+        source: raw.source,
+        installedAt: raw.installedAt,
+        updatedAt: Date.now(),
+        connectGrants: [...raw.connectGrants],
+        values: raw.values,
+        devCode: raw.source.type === "dev" ? raw.code : undefined,
+      }
+      : {
+        id: randomId(),
+        kind: "style",
+        enabled: raw.enabled,
+        position: 0,
+        code: raw.code,
+        meta,
+        source: raw.source,
+        installedAt: raw.installedAt,
+        updatedAt: Date.now(),
+      };
+    if (entry.kind === "script") {
+      db.scripts.push(entry);
+      entry.position = nextPosition(db.scripts);
     } else {
-      db.styles.push(entry as StyleEntry);
-      (entry as StyleEntry).position = nextPosition(db.styles);
+      db.styles.push(entry);
+      entry.position = nextPosition(db.styles);
     }
     count++;
   }

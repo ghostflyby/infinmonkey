@@ -3,8 +3,9 @@
  * and shows the "Install to InfinMonkey" banner.
  */
 import browser from "webextension-polyfill";
+import { isStoredEntry } from "@infinmonkey/shared/guards";
 import { detectKind, parseMeta } from "@infinmonkey/shared/meta";
-import type { ScriptEntry, Settings, StyleEntry } from "@infinmonkey/shared/types";
+import type { AnyEntry, Settings } from "@infinmonkey/shared/types";
 
 interface Found {
   kind: "script" | "style";
@@ -94,11 +95,15 @@ function showBanner(found: Found): void {
     try {
       // The content script completes pending → entry directly via storage (no bg message channel needed)
       const st = (await browser.storage.local.get(["scripts", "styles", "settings"])) as {
-        scripts?: ScriptEntry[];
-        styles?: StyleEntry[];
+        scripts?: unknown;
+        styles?: unknown;
         settings?: Partial<Settings>;
       };
-      const all: (ScriptEntry | StyleEntry)[] = [...(st.scripts ?? []), ...(st.styles ?? [])];
+      // Entries come back untyped; the same shape rule as the background's own
+      // read applies, so a malformed store cannot break the install page.
+      const rawScripts = Array.isArray(st.scripts) ? st.scripts : [];
+      const rawStyles = Array.isArray(st.styles) ? st.styles : [];
+      const all: AnyEntry[] = [...rawScripts, ...rawStyles].filter(isStoredEntry);
       const kind = detectKind(found.text);
       const dev = location.href.startsWith("http://127.0.0.1:17321") ||
         location.href.startsWith("http://localhost:17321");
@@ -125,7 +130,7 @@ function showBanner(found: Found): void {
           updatedAt: now,
         };
         if (kind === "script") {
-          const arr = st.scripts ?? [];
+          const arr = rawScripts.filter(isStoredEntry);
           arr.push({
             ...common,
             kind: "script",
@@ -135,7 +140,7 @@ function showBanner(found: Found): void {
           });
           await browser.storage.local.set({ scripts: arr });
         } else {
-          const arr = st.styles ?? [];
+          const arr = rawStyles.filter(isStoredEntry);
           arr.push({ ...common, kind: "style" });
           await browser.storage.local.set({ styles: arr });
         }
