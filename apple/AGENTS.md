@@ -257,7 +257,10 @@ Verified on this project, worth not re-discovering:
 
 ## Tests
 
-Unit tests live in `apple/InfinMonkeyCore/Tests` and run with `swift test --disable-sandbox`. Test
-names and messages are English; do not assert on user-visible Chinese copy. Fixtures shared with the
-TypeScript side live under `packages/tests/fixtures/` — contract tests read them from the package so
-one source of truth pins both implementations.
+Unit tests live in `apple/InfinMonkeyCore/Tests` and run with `swift test --disable-sandbox`. They
+are written with Swift Testing (`import Testing`, `@Suite`/`@Test`, `#expect`/`#require`), not
+XCTest. Tests run concurrently by default, so every test must create its own temporary directories
+(`temporaryRoot()` names them by UUID). Test names and messages are English; do not assert on
+user-visible Chinese copy. Fixtures shared with the TypeScript side live under
+`packages/tests/fixtures/` — contract tests read them from the package so one source of truth pins
+both implementations.

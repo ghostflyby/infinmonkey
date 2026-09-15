@@ -1,4 +1,5 @@
-import XCTest
+import Foundation
+import Testing
 
 @testable import InfinMonkeyCore
 
@@ -50,50 +51,49 @@ func valueDescription(_ blob: Data?, _ key: String) -> String? {
   return object[key].map { String(describing: $0) }
 }
 
-final class NativeStoreTests: XCTestCase {
+@Suite struct NativeStoreTests {
 
-  func testCreateAndListRoundTrip() async throws {
+  @Test func createAndListRoundTrip() async throws {
     let store = NativeStore(root: temporaryRoot())
     let entry = try await store.create(
       kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
       values: valuesBlob(["token": "abc"]))
 
     let snapshot = try await store.snapshot()
-    XCTAssertEqual(snapshot.entries.count, 1)
+    #expect(snapshot.entries.count == 1)
     let full = snapshot.entries[0]
-    XCTAssertEqual(full.record.id, entry.record.id)
-    XCTAssertEqual(full.code, scriptCode())
-    XCTAssertEqual(valueDescription(full.values, "token"), "abc")
-    XCTAssertFalse(full.record.metaStale)
+    #expect(full.record.id == entry.record.id)
+    #expect(full.code == scriptCode())
+    #expect(valueDescription(full.values, "token") == "abc")
+    #expect(!full.record.metaStale)
   }
 
-  func testCodeFileLayoutOnDisk() async throws {
+  @Test func codeFileLayoutOnDisk() async throws {
     let store = NativeStore(root: temporaryRoot())
     let entry = try await store.create(
       kind: .style, code: "body{}", meta: demoMeta(name: "S"), source: .inline, enabled: true,
       values: nil)
-    XCTAssertEqual(entry.record.fileName, "\(entry.record.id).user.css")
-    XCTAssertTrue(
-      FileManager.default.fileExists(atPath: store.layout.codeURL(entry.record).path))
-    XCTAssertNil(entry.values, "styles have no values file")
+    #expect(entry.record.fileName == "\(entry.record.id).user.css")
+    #expect(FileManager.default.fileExists(atPath: store.layout.codeURL(entry.record).path))
+    #expect(entry.values == nil, "styles have no values file")
   }
 
-  func testMissingMetaStaysAbsentAcrossAReload() async throws {
+  @Test func missingMetaStaysAbsentAcrossAReload() async throws {
     let store = NativeStore(root: temporaryRoot())
     let entry = try await store.create(
       kind: .script, code: scriptCode(), meta: nil, source: .inline, enabled: true,
       values: nil)
 
-    XCTAssertNil(entry.record.meta)
-    XCTAssertTrue(entry.record.metaStale, "no metadata means the extension must parse the code")
+    #expect(entry.record.meta == nil)
+    #expect(entry.record.metaStale, "no metadata means the extension must parse the code")
 
     // A fresh read from disk keeps it absent.
     let reloaded = try await store.entry(id: entry.record.id)
-    XCTAssertNil(reloaded.record.meta)
-    XCTAssertTrue(reloaded.record.metaStale)
+    #expect(reloaded.record.meta == nil)
+    #expect(reloaded.record.metaStale)
   }
 
-  func testChangesStreamReportsUpsertsAndDeletes() async throws {
+  @Test func changesStreamReportsUpsertsAndDeletes() async throws {
     let store = NativeStore(root: temporaryRoot())
     let a = try await store.create(
       kind: .script, code: scriptCode(), meta: demoMeta(name: "A"), source: .inline, enabled: true,
@@ -106,12 +106,12 @@ final class NativeStoreTests: XCTestCase {
     _ = try await store.delete(id: b.record.id)
 
     let changes = try await store.changes(sinceRev: rev1)
-    XCTAssertTrue(changes.upserts.contains { $0.record.id == a.record.id && !$0.record.enabled })
-    XCTAssertTrue(changes.deletedIds.contains(b.record.id))
-    XCTAssertFalse(changes.upserts.contains { $0.record.id == b.record.id })
+    #expect(changes.upserts.contains { $0.record.id == a.record.id && !$0.record.enabled })
+    #expect(changes.deletedIds.contains(b.record.id))
+    #expect(!changes.upserts.contains { $0.record.id == b.record.id })
   }
 
-  func testPutUpsertsByIdAndKeepsPosition() async throws {
+  @Test func putUpsertsByIdAndKeepsPosition() async throws {
     let store = NativeStore(root: temporaryRoot())
     let existing = try await store.create(
       kind: .script, code: scriptCode(), meta: demoMeta(), source: .inline, enabled: true,
@@ -126,23 +126,25 @@ final class NativeStoreTests: XCTestCase {
     _ = try await store.put(entry: mirror)
 
     let snapshot = try await store.snapshot()
-    XCTAssertEqual(snapshot.entries.count, 1, "put must replace, not append")
+    #expect(snapshot.entries.count == 1, "put must replace, not append")
     let stored = snapshot.entries[0]
-    XCTAssertEqual(stored.code, "console.log(2)")
-    XCTAssertEqual(stored.record.position, existing.record.position, "position is store-owned")
-    XCTAssertEqual(valueDescription(stored.values, "k"), "v")
+    #expect(stored.code == "console.log(2)")
+    #expect(stored.record.position == existing.record.position, "position is store-owned")
+    #expect(valueDescription(stored.values, "k") == "v")
 
     // An id that cannot be a file name is rejected rather than sanitized silently.
     let bad = FullEntry(record: makeRecord(id: "x/y"), code: "", values: nil)
-    do {
+    await #expect {
       _ = try await store.put(entry: bad)
-      XCTFail("expected badRequest for an unusable id")
-    } catch let error as StoreError {
-      guard case .badRequest = error else { return XCTFail("unexpected error \(error)") }
+    } throws: { error in
+      guard let storeError = error as? StoreError, case .badRequest = storeError else {
+        return false
+      }
+      return true
     }
   }
 
-  func testExportImportRoundTripPreservesIdentityAndValues() async throws {
+  @Test func exportImportRoundTripPreservesIdentityAndValues() async throws {
     let store = NativeStore(root: temporaryRoot())
     let entry = try await store.create(
       kind: .script, code: scriptCode(), meta: demoMeta(name: "Demo"), source: .inline,
@@ -152,20 +154,20 @@ final class NativeStoreTests: XCTestCase {
       values: nil)
 
     let bundle = try await store.exportBundle()
-    XCTAssertEqual(bundle.scripts.count, 1)
-    XCTAssertEqual(bundle.styles.count, 1)
+    #expect(bundle.scripts.count == 1)
+    #expect(bundle.styles.count == 1)
 
     let other = NativeStore(root: temporaryRoot())
     let count = try await other.importBundle(bundle, mode: .merge)
-    XCTAssertEqual(count, 2)
+    #expect(count == 2)
 
     let imported = try await other.entry(id: entry.record.id)
-    XCTAssertEqual(imported.code, scriptCode())
-    XCTAssertEqual(valueDescription(imported.values, "k"), "42")
-    XCTAssertEqual(imported.record.meta?.name, "Demo")
+    #expect(imported.code == scriptCode())
+    #expect(valueDescription(imported.values, "k") == "42")
+    #expect(imported.record.meta?.name == "Demo")
   }
 
-  func testImportReplaceWipesExistingEntries() async throws {
+  @Test func importReplaceWipesExistingEntries() async throws {
     let store = NativeStore(root: temporaryRoot())
     _ = try await store.create(
       kind: .script, code: scriptCode(), meta: demoMeta(name: "Old"), source: .inline,
@@ -178,13 +180,13 @@ final class NativeStoreTests: XCTestCase {
       ExportBundle(version: "0.1.0", exportedAt: 0, scripts: [replacement], styles: []),
       mode: .replace)
 
-    XCTAssertEqual(count, 1)
+    #expect(count == 1)
     let snapshot = try await store.snapshot()
-    XCTAssertEqual(snapshot.entries.count, 1)
-    XCTAssertEqual(snapshot.entries[0].record.id, "repl-1")
+    #expect(snapshot.entries.count == 1)
+    #expect(snapshot.entries[0].record.id == "repl-1")
   }
 
-  func testReorderAssignsContiguousPositions() async throws {
+  @Test func reorderAssignsContiguousPositions() async throws {
     let store = NativeStore(root: temporaryRoot())
     let a = try await store.create(
       kind: .script, code: scriptCode(), meta: demoMeta(name: "A"), source: .inline, enabled: true,
@@ -195,11 +197,11 @@ final class NativeStoreTests: XCTestCase {
 
     try await store.reorder(ids: [b.record.id, a.record.id])
     let snapshot = try await store.snapshot()
-    XCTAssertEqual(snapshot.entries.map(\.record.id), [b.record.id, a.record.id])
-    XCTAssertEqual(snapshot.entries.map(\.record.position), [1, 2])
+    #expect(snapshot.entries.map(\.record.id) == [b.record.id, a.record.id])
+    #expect(snapshot.entries.map(\.record.position) == [1, 2])
   }
 
-  func testCrossInstanceVisibilityThroughFileLock() async throws {
+  @Test func crossInstanceVisibilityThroughFileLock() async throws {
     let root = temporaryRoot()
     let a = NativeStore(root: root)
     let b = NativeStore(root: root)
@@ -211,10 +213,10 @@ final class NativeStoreTests: XCTestCase {
 
     // Instance a sees what instance b wrote, because every read reloads.
     let seen = try await a.entry(id: entry.record.id)
-    XCTAssertFalse(seen.record.enabled)
+    #expect(!seen.record.enabled)
   }
 
-  func testCorruptIndexIsReportedNotRebuilt() async throws {
+  @Test func corruptIndexIsReportedNotRebuilt() async throws {
     let root = temporaryRoot()
     let store = NativeStore(root: root)
     _ = try await store.create(
@@ -223,36 +225,37 @@ final class NativeStoreTests: XCTestCase {
 
     try Data("{ not json".utf8).write(to: store.layout.indexURL)
 
-    do {
+    await #expect {
       _ = try await store.snapshot()
-      XCTFail("expected the store to refuse an unreadable index")
-    } catch let error as StoreError {
-      guard case .corruptIndex = error else { return XCTFail("unexpected error \(error)") }
+    } throws: { error in
+      guard let storeError = error as? StoreError, case .corruptIndex = storeError else {
+        return false
+      }
+      return true
     }
   }
 
-  func testIdValidation() {
+  @Test func idValidation() {
     // Usable: UUIDs as minted today, and readable names including non-ASCII —
     // the store directory is user-visible, so a chosen name must survive.
-    XCTAssertTrue(StoreLayout.isValidID("abc-DEF_123"))
-    XCTAssertTrue(StoreLayout.isValidID(UUID().uuidString.lowercased()))
-    XCTAssertTrue(StoreLayout.isValidID("我的脚本"))
-    XCTAssertTrue(StoreLayout.isValidID("脚本 v2"))
+    #expect(StoreLayout.isValidID("abc-DEF_123"))
+    #expect(StoreLayout.isValidID(UUID().uuidString.lowercased()))
+    #expect(StoreLayout.isValidID("我的脚本"))
+    #expect(StoreLayout.isValidID("脚本 v2"))
 
     // Unusable: path structure, separators, and things that break a file name.
-    XCTAssertFalse(StoreLayout.isValidID(""), "empty cannot be a file name")
-    XCTAssertFalse(StoreLayout.isValidID(".."), "would escape the directory")
-    XCTAssertFalse(StoreLayout.isValidID("."))
-    XCTAssertFalse(StoreLayout.isValidID("a/b"), "path separator")
-    XCTAssertFalse(StoreLayout.isValidID("a\\b"), "path separator")
-    XCTAssertFalse(StoreLayout.isValidID("a:b"), "Finder renders a colon as a separator")
-    XCTAssertFalse(StoreLayout.isValidID("a\nb"), "control character")
-    XCTAssertFalse(StoreLayout.isValidID("a\0b"), "NUL terminates a C path")
-    XCTAssertFalse(
-      StoreLayout.isValidID(String(repeating: "x", count: 129)), "bounded length")
+    #expect(!StoreLayout.isValidID(""), "empty cannot be a file name")
+    #expect(!StoreLayout.isValidID(".."), "would escape the directory")
+    #expect(!StoreLayout.isValidID("."))
+    #expect(!StoreLayout.isValidID("a/b"), "path separator")
+    #expect(!StoreLayout.isValidID("a\\b"), "path separator")
+    #expect(!StoreLayout.isValidID("a:b"), "Finder renders a colon as a separator")
+    #expect(!StoreLayout.isValidID("a\nb"), "control character")
+    #expect(!StoreLayout.isValidID("a\0b"), "NUL terminates a C path")
+    #expect(!StoreLayout.isValidID(String(repeating: "x", count: 129)), "bounded length")
 
     // A rejected id is never silently repaired: `put` depends on that, because a
     // rewritten id would orphan the entry on the extension's side.
-    XCTAssertNotEqual(StoreLayout.isValidID("a/b"), true)
+    #expect(StoreLayout.isValidID("a/b") != true)
   }
 }

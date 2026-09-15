@@ -1,4 +1,5 @@
-import XCTest
+import Foundation
+import Testing
 
 @testable import InfinMonkeyCore
 
@@ -8,100 +9,104 @@ import XCTest
 /// planned Windows side maps it with `System.Text.Json` polymorphism. Both expect
 /// an *internally tagged* union — the discriminator beside the payload — which is
 /// not what Swift's synthesized enum coding emits.
-final class EntrySourceTests: XCTestCase {
+@Suite struct EntrySourceTests {
 
   private func encoded<T: Encodable>(_ value: T) throws -> [String: Any] {
     let data = try JSONEncoder().encode(value)
-    return try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+    return try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
   }
 
   private func decoded(_ json: String) throws -> EntrySource {
     try JSONDecoder().decode(EntrySource.self, from: Data(json.utf8))
   }
 
-  func testInlineEncodesAsBareDiscriminator() throws {
+  @Test func inlineEncodesAsBareDiscriminator() throws {
     let object = try encoded(EntrySource.inline)
-    XCTAssertEqual(object.keys.sorted(), ["type"])
-    XCTAssertEqual(object["type"] as? String, "inline")
+    #expect(object.keys.sorted() == ["type"])
+    #expect(object["type"] as? String == "inline")
   }
 
-  func testDevPayloadMembersAreSiblingsOfTheDiscriminator() throws {
+  @Test func devPayloadMembersAreSiblingsOfTheDiscriminator() throws {
     // The whole point: no wrapper object around the payload. A `{"dev":{…}}`
     // shape here means someone let synthesis take over.
     let object = try encoded(EntrySource.dev(.init(url: "u", autoReload: true)))
-    XCTAssertEqual(object.keys.sorted(), ["autoReload", "type", "url"])
-    XCTAssertEqual(object["type"] as? String, "dev")
-    XCTAssertEqual(object["url"] as? String, "u")
-    XCTAssertEqual(object["autoReload"] as? Bool, true)
+    #expect(object.keys.sorted() == ["autoReload", "type", "url"])
+    #expect(object["type"] as? String == "dev")
+    #expect(object["url"] as? String == "u")
+    #expect(object["autoReload"] as? Bool == true)
   }
 
-  func testDecodesBothCasesFromTheWireForm() throws {
-    XCTAssertEqual(try decoded(#"{"type":"inline"}"#), .inline)
-    XCTAssertEqual(
-      try decoded(#"{"type":"dev","url":"u","autoReload":true}"#),
-      .dev(.init(url: "u", autoReload: true)))
+  @Test func decodesBothCasesFromTheWireForm() throws {
+    #expect(try decoded(#"{"type":"inline"}"#) == .inline)
+    #expect(
+      try decoded(#"{"type":"dev","url":"u","autoReload":true}"#)
+        == .dev(.init(url: "u", autoReload: true)))
   }
 
-  func testRoundTripIsStable() throws {
-    for source in [EntrySource.inline, .dev(.init(url: "https://x/y", autoReload: false))] {
-      let data = try JSONEncoder().encode(source)
-      XCTAssertEqual(try JSONDecoder().decode(EntrySource.self, from: data), source)
-    }
+  @Test(arguments: [EntrySource.inline, .dev(.init(url: "https://x/y", autoReload: false))])
+  func roundTripIsStable(source: EntrySource) throws {
+    let data = try JSONEncoder().encode(source)
+    #expect(try JSONDecoder().decode(EntrySource.self, from: data) == source)
   }
 
-  func testUnknownDiscriminatorIsRejected() throws {
+  @Test func unknownDiscriminatorIsRejected() throws {
     // A sender inventing a source kind expects behavior we do not have; silently
     // treating it as something else would misplace the entry's code.
     let json = #"{"type":"bundled","url":"u"}"#
-    do {
+    #expect {
       _ = try decoded(json)
-      XCTFail("expected an unknown discriminator to be rejected")
-    } catch let error as DecodingError {
-      guard case .dataCorrupted(let context) = error else {
-        return XCTFail("unexpected decoding error: \(error)")
-      }
-      XCTAssertTrue(context.debugDescription.contains("discriminator"))
+    } throws: { error in
+      guard let decodingError = error as? DecodingError,
+        case .dataCorrupted(let context) = decodingError
+      else { return false }
+      return context.debugDescription.contains("discriminator")
     }
   }
 
-  func testMissingDiscriminatorIsRejected() throws {
-    XCTAssertThrowsError(try decoded(#"{"url":"u"}"#))
+  @Test func missingDiscriminatorIsRejected() throws {
+    #expect(throws: DecodingError.self) {
+      _ = try decoded(#"{"url":"u"}"#)
+    }
   }
 
-  func testMissingDevMemberIsRejected() throws {
+  @Test func missingDevMemberIsRejected() throws {
     // `autoReload` is required by the TypeScript type and every sender provides
     // it, so an absent one is a contract violation rather than a false default.
-    XCTAssertThrowsError(try decoded(#"{"type":"dev","url":"u"}"#))
-    XCTAssertThrowsError(try decoded(#"{"type":"dev","autoReload":true}"#))
+    #expect(throws: DecodingError.self) { _ = try decoded(#"{"type":"dev","url":"u"}"#) }
+    #expect(throws: DecodingError.self) { _ = try decoded(#"{"type":"dev","autoReload":true}"#) }
   }
 
-  func testWronglyTypedMemberIsRejected() throws {
-    XCTAssertThrowsError(try decoded(#"{"type":"dev","url":1,"autoReload":true}"#))
-    XCTAssertThrowsError(try decoded(#"{"type":"dev","url":"u","autoReload":"yes"}"#))
+  @Test func wronglyTypedMemberIsRejected() throws {
+    #expect(throws: DecodingError.self) {
+      _ = try decoded(#"{"type":"dev","url":1,"autoReload":true}"#)
+    }
+    #expect(throws: DecodingError.self) {
+      _ = try decoded(#"{"type":"dev","url":"u","autoReload":"yes"}"#)
+    }
   }
 
-  func testIgnoresMembersItDoesNotModel() throws {
+  @Test func ignoresMembersItDoesNotModel() throws {
     // Forward compatibility: a newer extension may add members to a payload, and
     // that must not fail the request.
     let source = try decoded(#"{"type":"dev","url":"u","autoReload":true,"futureMember":9}"#)
-    XCTAssertEqual(source, .dev(.init(url: "u", autoReload: true)))
+    #expect(source == .dev(.init(url: "u", autoReload: true)))
   }
 
-  func testSharedFixtureSourceDecodes() throws {
+  @Test func sharedFixtureSourceDecodes() throws {
     // Pins the shape against the same fixture the TypeScript tests read.
     let object = try JSONSerialization.jsonObject(
       with: try Data(contentsOf: try fixtureURL("request-createEntry.json")))
-    let payload = try XCTUnwrap((object as? [String: Any])?["payload"] as? [String: Any])
-    let source = try XCTUnwrap(payload["source"])
+    let payload = try #require((object as? [String: Any])?["payload"] as? [String: Any])
+    let source = try #require(payload["source"])
 
     let reencoded = try JSONEncoder().encode(
       JSONDecoder().decode(
         EntrySource.self, from: try JSONSerialization.data(withJSONObject: source)))
     let decodedBack = try JSONDecoder().decode(EntrySource.self, from: reencoded)
-    XCTAssertEqual(decodedBack, .inline)
+    #expect(decodedBack == .inline)
   }
 
-  func testSourceSurvivesAWholeEntryRoundTrip() throws {
+  @Test func sourceSurvivesAWholeEntryRoundTrip() throws {
     // The union sits inside a larger structure that is also hand-coded, so this
     // checks the two compose rather than only testing in isolation.
     let entry = FullEntry(
@@ -112,6 +117,6 @@ final class EntrySourceTests: XCTestCase {
 
     let data = try JSONEncoder().encode(WireEntry(full: entry))
     let back = try JSONDecoder().decode(WireEntry.self, from: data)
-    XCTAssertEqual(back.source, .dev(.init(url: "https://dev/x", autoReload: true)))
+    #expect(back.source == .dev(.init(url: "https://dev/x", autoReload: true)))
   }
 }
