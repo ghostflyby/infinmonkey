@@ -28,7 +28,8 @@ as non-empty; E2E asserts on DOM markers/attributes (e.g. `data-infin-done`), ne
    (`nodeModulesDir: "none"`); dependency versions live in the root `deno.json`.
 3. **Bundle with `deno bundle`**, not esbuild or other third-party bundlers.
 4. **Never download browsers or other large binaries without asking first.** E2E browsers/drivers
-   come from local config (`.browsers.local.json`, gitignored) or the CI setup script.
+   come from local config (`.browsers.local.json`, gitignored) or the CI's
+   browser-actions/setup-chrome step.
 5. **No `rsync`.** Copy operations in Xcode build script phases use plain `cp`/`rm`.
 
 ## Swift conventions
