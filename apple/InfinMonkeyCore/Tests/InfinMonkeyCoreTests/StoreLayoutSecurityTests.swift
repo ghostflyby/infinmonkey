@@ -36,8 +36,8 @@ import Testing
     "legal names survive, including percent-encoding and non-ASCII",
     arguments: [
       "abc-DEF_123",
-      "我的脚本",
-      "脚本 v2",
+      "αβγ",
+      "αβγ v2",
       "..%2Fevil",
     ]
   )

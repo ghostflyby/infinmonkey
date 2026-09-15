@@ -10,7 +10,7 @@
  * 1. An uncompilable declaration restricts; it never widens. ("I wrote a broken
  *    @match" must not become "run on every site".)
  * 2. @exclude applies in every branch, including the no-declaration legacy one.
- * 3. An empty value (bare `@grant) grants nothing.
+ * 3. An empty value (bare @grant) grants nothing.
  * 4. `none` takes precedence over any other @grant line.
  */
 
@@ -58,7 +58,7 @@ for (const [pattern, url, expected] of PATTERN_CASES) {
 }
 
 const INVALID_PATTERNS: string[] = [
-  "", // bare `@match produces this; must not compile
+  "", // bare @match produces this; must not compile
   " ",
   "https://example.com", // grammar requires a path
   "foo://example.com/*", // scheme outside the allowlist
@@ -112,6 +112,27 @@ Deno.test("glob boundary: /regex/ form is case-insensitive (GM semantics)", () =
 type Meta = { matches: string[]; includes: string[]; excludes: string[] };
 
 const INJECTION_CASES: [string, Meta, string, boolean][] = [
+  // /regex/ include form is case-insensitive end to end (GM semantics).
+  [
+    "regex include, case differs",
+    { matches: [], includes: ["/X\.TEST/"], excludes: [] },
+    "https://x.test/p",
+    true,
+  ],
+  // An uppercase scheme/host fails to compile: the declaration restricts.
+  [
+    "uppercase pattern restricts",
+    { matches: ["HTTPS://OK.TEST/*"], includes: [], excludes: [] },
+    "https://ok.test/p",
+    false,
+  ],
+  // The empty-string member alone restricts (bare @match), even with @exclude.
+  [
+    "bare @match + @exclude, no loophole",
+    { matches: [""], includes: [], excludes: ["*ok*"] },
+    "https://ok.test/",
+    false,
+  ],
   // Invariant 1: an uncompilable declaration restricts, never widens.
   [
     "bare @match only → no injection anywhere",
@@ -218,7 +239,7 @@ const CONNECT_CASES: [string, string[], string[], string, boolean][] = [
   ["exact host denies others", ["example.com"], [], "evil.test", false],
   ["exact host denies subdomains", ["example.com"], [], "sub.example.com", false],
   // Leading dot: strict mode strips it and matches the bare domain only
-  // (subdomain coverage is spelled `*.example.com).
+  // (subdomain coverage is spelled *.example.com.
   ["leading dot covers bare domain", [".example.com"], [], "example.com", true],
   ["leading dot denies subdomains", [".example.com"], [], "sub.example.com", false],
   // Wildcard subdomain.
@@ -228,12 +249,13 @@ const CONNECT_CASES: [string, string[], string[], string, boolean][] = [
   // Case and surrounding whitespace are normalized.
   ["case-insensitive", ["EXAMPLE.com"], [], "example.com", true],
   ["whitespace trimmed", [" example.com "], [], "example.com", true],
-  // An empty value grants nothing (a bare `@connect line).
+  // An empty value grants nothing (a bare @connect line).
   ["empty value grants nothing", [""], [], "example.com", false],
   // Loopbacks are always allowed, with or without declarations.
   ["loopback allowed without grants", [], [], "localhost", true],
   ["ipv4 loopback allowed", [], [], "127.0.0.1", true],
   ["ipv6 loopback allowed", [], [], "[::1]", true],
+  ["ipv6 loopback bare form", [], [], "::1", true],
   // Permanent user grants merge with @connect.
   ["user grant authorizes host", [], ["api.example.org"], "api.example.org", true],
 ];
