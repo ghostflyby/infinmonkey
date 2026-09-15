@@ -44,11 +44,13 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      # EXPERIMENT: warm DerivedData for the xcodebuild step below. Key is
-      # per-run so every job saves a fresh entry; restore-keys picks the newest
-      # previous entry, and the action restores source mtimes so Xcode's
-      # incremental engine can actually reuse the artifacts. A/B the effect via
-      # the "xcodebuild duration" echo before keeping it.
+      # Warm DerivedData for the xcodebuild step below. Key is per-run so every
+      # job saves a fresh entry; restore-keys picks the newest previous entry,
+      # and the action restores source mtimes so Xcode's incremental engine can
+      # actually reuse the artifacts. Measured (2026-09-15, macos-latest):
+      # xcodebuild 62s cold / 39s across-commit / 22s same-commit; native job
+      # 142s uncached baseline / 125s cold / 75s same-commit warm. Restore is
+      # ~5s and save ~10s, so the net is positive in every observed case.
       - name: Restore Xcode build cache
         uses: irgaly/xcode-cache@v1.9.2
         with:
