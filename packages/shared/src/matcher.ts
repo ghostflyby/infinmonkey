@@ -35,7 +35,9 @@ export function globToRegExp(glob: string): RegExp | null {
   if (!g) return null;
   if (g.length > 2 && g.startsWith("/") && g.endsWith("/")) {
     try {
-      return new RegExp(g.slice(1, -1));
+      // /regex/ form is case-insensitive per GM semantics (matches
+      // Greasemonkey and Violentmonkey).
+      return new RegExp(g.slice(1, -1), "i");
     } catch {
       return null;
     }
@@ -80,14 +82,18 @@ export function urlMatchesMeta(
     const r = globToRegExp(p);
     if (r) positives.push(r);
   }
-  if (positives.length === 0) {
-    // No declarations at all: only enabled on web protocols by default, to avoid running on extension pages and the like.
-    return /^(https?|file|ftp):/.test(href);
-  }
-  if (!positives.some((r) => r.test(href))) return false;
+  // An @exclude applies in every branch: a declared exclusion must hold even
+  // when no positive declaration compiled.
   for (const p of meta.excludes) {
-    const r = globToRegExp(p);
-    if (r?.test(href)) return false;
+    if (globToRegExp(p)?.test(href)) return false;
   }
-  return true;
+  const declared = meta.matches.length > 0 || meta.includes.length > 0;
+  // A declared pattern that fails to compile must NOT degrade to "no
+  // declaration": the legacy fallback below matches every web page, so that
+  // degradation would turn a broken @match into an injection-everywhere grant.
+  // A broken declaration restricts; it never widens.
+  if (declared) return positives.some((r) => r.test(href));
+  // No declarations at all: web protocols only, so the script stays off
+  // extension and internal pages.
+  return /^(https?|file|ftp):/.test(href);
 }

@@ -12,7 +12,8 @@
     "./protocol": "./src/protocol.ts",
     "./templates": "./src/templates.ts",
     "./inject": "./src/inject.ts",
-    "./confirm": "./src/confirm.ts"
+    "./confirm": "./src/confirm.ts",
+    "./connect": "./src/connect.ts"
   },
   "compilerOptions": {
     "strict": true,
