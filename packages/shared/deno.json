@@ -15,7 +15,8 @@
     "./inject": "./src/inject.ts",
     "./confirm": "./src/confirm.ts",
     "./connect": "./src/connect.ts",
-    "./authorize": "./src/authorize.ts"
+    "./authorize": "./src/authorize.ts",
+    "./payload": "./src/payload.ts"
   },
   "compilerOptions": {
     "strict": true,

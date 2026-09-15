@@ -9,7 +9,12 @@ import { DEFAULT_DEV_ORIGIN, PM_TAG } from "@infinmonkey/shared/constants";
 import { matchScripts, prepareScripts } from "@infinmonkey/shared/inject";
 import { splitUserStyle, targetsMatch } from "@infinmonkey/shared/mozdoc";
 import type { PreparedScript, ScriptEntry, StyleEntry } from "@infinmonkey/shared/types";
-import { isRecord } from "@infinmonkey/shared/util";
+import { isRecord, withRetry, withTimeout } from "@infinmonkey/shared/util";
+import {
+  DeliveryPayload,
+  encodeDeliveryPayload,
+  PAYLOAD_ELEMENT_ID,
+} from "@infinmonkey/shared/payload";
 
 const BROADCAST = (m: Record<string, unknown>): void =>
   window.postMessage({ [PM_TAG]: true, ...m }, "*");
@@ -31,9 +36,57 @@ async function readStore(): Promise<{
   };
 }
 
+/** WORKAROUND (Firefox MV3): storage.local.get from a content script at
+ * document_start can hang while the extension is still starting up. Timeout
+ * and retry once; a second hang surfaces as a delivery error instead of
+ * silently losing the whole injection. */
+const STORAGE_READ_TIMEOUT_MS = 5_000;
+const STORAGE_READ_RETRY_DELAY_MS = 500;
+
+function readStoreGuarded(): Promise<{
+  scripts: ScriptEntry[];
+  styles: StyleEntry[];
+  devOrigin: string;
+}> {
+  const read = async (): Promise<{
+    scripts?: ScriptEntry[];
+    styles?: StyleEntry[];
+    settings?: { devOrigin?: string };
+  }> => {
+    const st = (await withTimeout(
+      browser.storage.local.get(["scripts", "styles", "settings"]) as Promise<
+        Record<string, unknown>
+      >,
+      STORAGE_READ_TIMEOUT_MS,
+      "storage.local.get",
+    )) as {
+      scripts?: ScriptEntry[];
+      styles?: StyleEntry[];
+      settings?: { devOrigin?: string };
+    };
+    // Normalize: storage.local.get returns only keys that exist, so a fresh
+    // store omits `styles`/`settings` entirely.
+    return {
+      scripts: st.scripts ?? [],
+      styles: st.styles ?? [],
+      settings: st.settings,
+    };
+  };
+  return withRetry(read, 2, STORAGE_READ_RETRY_DELAY_MS) as Promise<{
+    scripts: ScriptEntry[];
+    styles: StyleEntry[];
+    devOrigin: string;
+  }>;
+}
+
 async function deliver(): Promise<void> {
+  const mark = (t: string) => {
+    document.documentElement.dataset.infinBridge = t;
+  };
+  mark("start");
   try {
-    const { scripts, styles } = await readStore();
+    const { scripts, styles } = await readStoreGuarded();
+    mark("store:" + scripts.length);
     const url = location.href;
     const top = window.top === window;
 
@@ -52,8 +105,20 @@ async function deliver(): Promise<void> {
       if (parts.length) stylePayload.push({ id: style.id, css: parts.join("\n") });
     }
 
-    BROADCAST({ dir: "load", frameKey: url, scripts: prepared });
-    BROADCAST({ dir: "styles", styles: stylePayload });
+    // Deterministic handoff: the payload travels as an inert DOM element the
+    // runner discovers by initial scan or MutationObserver - never over the
+    // shared message bus, whose listener registration is a timing dependency.
+    const payload: DeliveryPayload = { frameKey: url, scripts: prepared, styles: stylePayload };
+    let carrier = document.getElementById(PAYLOAD_ELEMENT_ID);
+    if (!carrier) {
+      // Unknown type keeps the element inert; content scripts write it, the
+      // MAIN-world runner reads it.
+      carrier = document.createElement("script");
+      carrier.id = PAYLOAD_ELEMENT_ID;
+      (carrier as HTMLScriptElement).type = "application/x-infinmonkey-payload";
+      document.documentElement.appendChild(carrier);
+    }
+    carrier.textContent = encodeDeliveryPayload(payload);
     // Cross-world debug marker (in Firefox the page cannot see isolated-world window properties; dataset is shared ✓)
     document.documentElement.dataset.infinBridge = JSON.stringify({
       scripts: prepared.length,
@@ -64,6 +129,7 @@ async function deliver(): Promise<void> {
     });
   } catch (e) {
     console.warn("[InfinMonkey] deliver failed:", e);
+    mark("ERR: " + (e instanceof Error ? `${e.name}: ${e.message}` : String(e)));
   }
 }
 
