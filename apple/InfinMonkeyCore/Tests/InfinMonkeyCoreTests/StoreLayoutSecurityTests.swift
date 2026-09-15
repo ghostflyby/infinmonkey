@@ -31,13 +31,14 @@ import Testing
     #expect(!StoreLayout.isValidID(id))
   }
 
+  // Percent-encoding is literal here: `%` is not a separator, nothing is decoded.
   @Test(
     "legal names survive, including percent-encoding and non-ASCII",
     arguments: [
       "abc-DEF_123",
       "我的脚本",
       "脚本 v2",
-      "..%2Fevil", // literal characters: `%` is not a separator, nothing is decoded
+      "..%2Fevil",
     ]
   )
   func acceptsLegalNames(id: String) {
