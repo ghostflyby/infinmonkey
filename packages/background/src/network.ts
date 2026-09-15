@@ -1,5 +1,6 @@
 import browser from "webextension-polyfill";
 import { base64ToBytes, bytesToBase64 } from "@infinmonkey/shared/util";
+import { isConnectAllowed } from "@infinmonkey/shared/connect";
 import { addConnectGrant, findEntry } from "./store.ts";
 
 // ---- GM_xmlhttpRequest ----
@@ -8,23 +9,6 @@ const activeXhrs = new Map<string, AbortController>();
 
 export function abortXhr(ctxKey: string): void {
   activeXhrs.get(ctxKey)?.abort(new Error("aborted"));
-}
-
-/** @connect strict mode: declared match / user permanent grant / loopback addresses allowed. */
-function isConnectAllowed(connects: string[], grants: string[], host: string): boolean {
-  const h = host.toLowerCase();
-  if (h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]") return true;
-  const list = [...connects, ...grants];
-  for (const c0 of list) {
-    const c = c0.trim().toLowerCase().replace(/^\./, "");
-    if (!c) continue;
-    if (c === "*") return true;
-    if (c.startsWith("*.")) {
-      const base = c.slice(2);
-      if (h === base || h.endsWith("." + base)) return true;
-    } else if (c === h) return true;
-  }
-  return false;
 }
 
 const authWaiters = new Map<string, Array<(ok: boolean) => void>>();

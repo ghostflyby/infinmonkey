@@ -95,7 +95,10 @@ async function toPrepared(
     icon: m.iconURL ?? "",
     runAt: m.runAt,
     noframes: m.noframes,
-    grants: m.grants.filter((g) => g !== "none"),
+    // "none" takes precedence (GM semantics): a script that declares it gets no
+    // GM APIs even if other @grant lines name some. Empty grant names (a bare
+    // `@grant line) grant nothing either.
+    grants: m.grants.includes("none") ? [] : m.grants.filter((g) => g !== ""),
     connects: m.connects,
     code,
     requires,
