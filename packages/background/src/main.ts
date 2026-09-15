@@ -10,6 +10,7 @@ import type {
   PopupScriptInfo,
 } from "@infinmonkey/shared/types";
 import { compareVersions } from "@infinmonkey/shared/version";
+import { authorizeGmCall } from "@infinmonkey/shared/authorize";
 import { fetchWithTimeout, isRecord } from "@infinmonkey/shared/util";
 import { devClient } from "./devclient.ts";
 import { hasNativeSupport, nativeSync, PULL_ALARM } from "./native.ts";
@@ -270,8 +271,20 @@ async function handleGmCall(
     args: Record<string, unknown>;
     nonce?: string;
   },
-  _sender: browser.Runtime.MessageSender,
+  sender: browser.Runtime.MessageSender,
 ) {
+  // Permission gate: the calling page must be inside the script's own scope.
+  // Only browser-provided sender fields participate - a forged relayed message
+  // can claim any page URL, but it cannot claim the sender's.
+  const entry = await findEntry(msg.scriptId);
+  if (!entry || entry.kind !== "script") {
+    throw new Error("GM call denied: unknown script");
+  }
+  const url = typeof sender?.url === "string" ? sender.url : undefined;
+  const auth = authorizeGmCall(entry, url);
+  if (!auth.ok) {
+    throw new Error(`GM call denied: ${auth.reason}`);
+  }
   // Call context keyed by the bridge nonce (some engines omit tab info in sender)
   const ctxKey = `${msg.nonce ?? "n"}:${msg.scriptId}:${msg.reqId}`;
   const ctx: GmCtx = {
@@ -279,7 +292,7 @@ async function handleGmCall(
     scriptId: msg.scriptId,
     ctxKey,
     tabId: null,
-    url: typeof _sender?.url === "string" ? _sender.url : undefined,
+    url,
   };
   return await gmDispatch(msg.op, msg.args, ctx);
 }
