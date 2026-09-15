@@ -137,8 +137,10 @@ for (const browser of targets) {
     // later-loaded bundle overwrites an earlier one's helpers (observed as
     // sporadic "X is not a function" delivery failures after minification).
     // Wrap each bundle in an IIFE so every entry keeps a private scope.
+    // The leading newline keeps the closing tokens out of a potential trailing
+    // line comment (the inline sourcemap directive).
     const code = await Deno.readTextFile(outFile);
-    await Deno.writeTextFile(outFile, "(()=>{" + code + "})();");
+    await Deno.writeTextFile(outFile, "(()=>{" + code + "\n})();");
   }
 
   await copyStatic(out);
