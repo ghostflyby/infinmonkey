@@ -220,33 +220,51 @@ try {
   // ---- 2. example.com: injection + GM ----
   console.log("[e2e] 2. example.com…");
   await nav("https://example.com/");
-  await sleep(12000); // TEMP-DIAG: 让 readStore 护栏(5s+0.5s+5s)完整暴露
   const r = await poll(
     20000,
-    `return JSON.stringify({` +
-      `t:document.getElementById('infin-demo')?.textContent.slice(0,40) ?? '',` +
-      `p:document.getElementById('infin-demo') ? getComputedStyle(document.getElementById('infin-demo')).position : '',` +
+    `return document.getElementById('infin-demo') ? JSON.stringify({` +
+      `t:document.getElementById('infin-demo').textContent.slice(0,40),` +
+      `p:getComputedStyle(document.getElementById('infin-demo')).position,` +
       `b:document.documentElement.dataset.infinBridge??'',` +
-      `e:document.documentElement.dataset.infinBridgeErr??''})`,
+      `r:document.documentElement.dataset.infinRunner??'',` +
+      `e:document.documentElement.dataset.infinBridgeErr??''}) : ''`,
   );
   let demoText = "";
   let injPos = "";
   let bridgeMark = "";
   let bridgeErr = "";
+  let runnerTrail = "";
   if (typeof r === "string") {
     try {
-      const o = JSON.parse(r) as { t: string; p: string; b?: string; e?: string };
+      const o = JSON.parse(r) as { t: string; p: string; b?: string; r?: string; e?: string };
       demoText = o.t;
       injPos = o.p;
       bridgeMark = o.b ?? "";
+      runnerTrail = o.r ?? "";
       bridgeErr = o.e ?? "";
     } catch { /* injection timed out */ }
+  } else {
+    // Poll timed out without injection: read the stage markers for diagnosis.
+    const diag = await exec(
+      `return JSON.stringify({` +
+        `b:document.documentElement.dataset.infinBridge??'',` +
+        `r:document.documentElement.dataset.infinRunner??'',` +
+        `e:document.documentElement.dataset.infinBridgeErr??''})`,
+    ).catch(() => "");
+    if (typeof diag === "string" && diag) {
+      try {
+        const o = JSON.parse(diag) as { b?: string; r?: string; e?: string };
+        bridgeMark = o.b ?? "";
+        runnerTrail = o.r ?? "";
+        bridgeErr = o.e ?? "";
+      } catch { /* ignore */ }
+    }
   }
   const inj = demoText.length > 0;
   ok(
     inj,
     "user script injected (MAIN world)",
-    `${demoText} bridge=${bridgeMark} err=${bridgeErr.slice(0, 200)}`,
+    `${demoText} bridge=${bridgeMark} runner=${runnerTrail} err=${bridgeErr.slice(0, 200)}`,
   );
   ok(demoText.includes("visits=1"), "GM storage works", demoText);
   ok(injPos === "fixed", "GM_addStyle works", injPos);

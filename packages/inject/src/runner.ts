@@ -68,6 +68,13 @@ function main(): void {
   observer.observe(document.documentElement, { childList: true, subtree: true });
   consumePayloadElement();
 
+  // MutationObserver can be unreliable in headless Firefox content scripts
+  // (observed on CI). A short-interval poll guarantees discovery regardless.
+  const payloadPoll = setInterval(() => {
+    consumePayloadElement();
+    if (consumedPayloads.size > 0) clearInterval(payloadPoll);
+  }, 100);
+
   window.addEventListener("message", (ev: MessageEvent) => {
     if (ev.source !== window) return;
     const d = ev.data;
