@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "exports": {
     "./constants": "./src/constants.ts",
+    "./guards": "./src/guards.ts",
     "./types": "./src/types.ts",
     "./util": "./src/util.ts",
     "./version": "./src/version.ts",

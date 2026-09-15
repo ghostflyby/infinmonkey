@@ -9,6 +9,7 @@ import {
 import type { AnyEntry, ScriptEntry, ScriptMeta, StyleEntry } from "@infinmonkey/shared/types";
 import { parseMeta } from "@infinmonkey/shared/meta";
 import { randomId } from "@infinmonkey/shared/util";
+import { isEntryCore, isScriptMeta } from "@infinmonkey/shared/guards";
 import {
   findEntry,
   getDB,
@@ -86,7 +87,9 @@ function toWire(e: AnyEntry): WireEntry {
  * would reach the injector with `matches` missing and throw while matching.
  */
 function metaFor(w: WireEntry): ScriptMeta {
-  if (w.meta && !w.metaStale) return w.meta;
+  // Trust the metadata only when its shape checks out: a malformed object here
+  // would reach the injector and throw per frame. Repair by re-parsing instead.
+  if (w.meta && !w.metaStale && isScriptMeta(w.meta)) return w.meta;
   return parseMeta(w.code);
 }
 
@@ -99,7 +102,7 @@ function fromWire(w: WireEntry): AnyEntry {
     position: w.position,
     code: w.code,
     meta,
-    source,
+    source: w.source ?? { type: "inline" },
     installedAt: w.installedAt,
     updatedAt: w.updatedAt,
   };
@@ -185,7 +188,9 @@ class NativeSync {
     const { rev, upserts, deletedIds } = await call("getChanges", { sinceRev: 0 });
     this.mirroring = true;
     try {
-      for (const w of upserts) await this.applyRemote(w);
+      // Core-shape check only: entries without parsed metadata are exactly the
+      // ones metaFor repairs below, so they must not be dropped here.
+      for (const w of upserts.filter((x) => isEntryCore(x))) await this.applyRemote(w);
       for (const id of deletedIds) {
         if (this.dirtyUpserts.has(id)) continue; // pending local edit recreates it
         if (await findEntry(id)) await mirrorDelete(id);
