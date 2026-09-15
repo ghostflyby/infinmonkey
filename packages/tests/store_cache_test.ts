@@ -16,15 +16,17 @@ type Listener = (changes: Record<string, unknown>, area: string) => void;
 
 const storeData: Record<string, unknown> = {};
 const onChangedListeners: Listener[] = [];
+let storageGets = 0;
 
-function fireOnChanged(changes: Record<string, unknown>): void {
-  for (const l of [...onChangedListeners]) l(changes, "local");
+function fireOnChanged(changes: Record<string, unknown>, area = "local"): void {
+  for (const l of [...onChangedListeners]) l(changes, area);
 }
 
 const storageLocal = {
   // The polyfill's wrapper invokes these callback-style (it appends a callback
   // and ignores a returned promise), while a bare call expects a promise.
   get(keys: string[] | null, cb?: (out: Record<string, unknown>) => void): unknown {
+    storageGets++;
     const out: Record<string, unknown> = {};
     const want = keys ?? Object.keys(storeData);
     for (const k of want) if (k in storeData) out[k] = structuredClone(storeData[k]);
@@ -105,4 +107,30 @@ Deno.test("background store drops malformed entries but keeps valid ones", async
   const scripts = db.scripts as ScriptEntry[];
   assert(scripts.some((s) => s.id === "valid-1"), "valid entry is kept");
   assert(!scripts.some((s) => s.id === "broken"), "malformed entry is dropped");
+});
+
+Deno.test("cache invalidation keys: store keys yes, other keys and areas no", async () => {
+  // Warm the cache and record its storage-read baseline.
+  await storageLocal.set({ settings: { devOrigin: "http://127.0.0.1:9999" } });
+  await getDB();
+  const baseline = storageGets;
+
+  // A write to a non-store key must keep the cache warm.
+  await storageLocal.set({ imLastError: "diagnostic" });
+  await getDB();
+  assert(storageGets === baseline, "non-store keys must not invalidate the cache");
+
+  // A change event on another storage area must keep the cache warm.
+  fireOnChanged({ scripts: { newValue: [] } }, "sync");
+  await getDB();
+  assert(storageGets === baseline, "non-local area must not invalidate the cache");
+
+  // An external settings write must invalidate and become visible.
+  await storageLocal.set({ settings: { devOrigin: "http://127.0.0.1:7777" } });
+  const db = await getDB();
+  assert(storageGets > baseline, "settings write must invalidate the cache");
+  assert(
+    (db.settings as { devOrigin?: string }).devOrigin === "http://127.0.0.1:7777",
+    "fresh settings are visible after invalidation",
+  );
 });
