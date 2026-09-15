@@ -22,6 +22,7 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+          cache: true
       - run: deno fmt --check
       - run: deno lint
       - run: deno check packages
@@ -43,6 +44,17 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      # EXPERIMENT: warm DerivedData for the xcodebuild step below. Key is
+      # per-run so every job saves a fresh entry; restore-keys picks the newest
+      # previous entry, and the action restores source mtimes so Xcode's
+      # incremental engine can actually reuse the artifacts. A/B the effect via
+      # the "xcodebuild duration" echo before keeping it.
+      - name: Restore Xcode build cache
+        uses: irgaly/xcode-cache@v1.9.2
+        with:
+          key: xcode-v1-${{ github.run_id }}
+          restore-keys: xcode-v1-
+          deriveddata-directory: .xcodebuild/DerivedData
       - name: Swift format lint
         run: deno task swift:lint
       - name: Swift package unit tests
@@ -51,9 +63,12 @@ jobs:
       # Compiles the app + extension + the local package through Xcode's graph.
       # Unsigned: CI verifies code, not provisioning.
       - name: Build macOS app and extension (unsigned)
-        run: >
-          xcodebuild -project InfinMonkey.xcodeproj -scheme "InfinMonkey (macOS)"
-          -destination "platform=macOS" build CODE_SIGNING_ALLOWED=NO
+        run: |
+          start=$SECONDS
+          xcodebuild -project InfinMonkey.xcodeproj -scheme "InfinMonkey (macOS)" \
+            -destination "platform=macOS" -derivedDataPath .xcodebuild/DerivedData \
+            build CODE_SIGNING_ALLOWED=NO
+          echo "xcodebuild duration: $((SECONDS - start))s"
 
   e2e-firefox:
     name: E2E（Firefox / geckodriver）
@@ -63,6 +78,7 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+          cache: true
       - name: Write CI browser config
         run: |
           cat > .browsers.local.json <<'JSON'
@@ -91,9 +107,30 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      # One-shot CI environment downloads a pinned CfT browser + driver (branded Chrome/Edge ignores --load-extension)
+          cache: true
+      # CfT stable + a chromedriver matched to it (branded Chrome/Edge ignores --load-extension)
       - name: Set up CfT Chrome + chromedriver
-        run: deno run -A packages/tools/setup-chromium.ts
+        id: cft
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+      - name: Write CI browser config
+        run: |
+          cat > .browsers.local.json <<JSON
+          {
+            "browsers": {
+              "cft": {
+                "kind": "chromium",
+                "binary": "$CFT_CHROME",
+                "driver": "$CFT_DRIVER"
+              }
+            }
+          }
+          JSON
+        env:
+          CFT_CHROME: ${{ steps.cft.outputs.chrome-path }}
+          CFT_DRIVER: ${{ steps.cft.outputs.chromedriver-path }}
       - name: Build
         run: deno run -A packages/tools/build.ts --browser chrome
       - name: Start dev server

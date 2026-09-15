@@ -204,8 +204,8 @@ license.
 - **e2e-firefox**: ubuntu runner with preinstalled Firefox + geckodriver, `deno task
   devserver` in
   the background + full E2E;
-- **e2e-chromium**: `setup-chromium.ts` downloads a pinned known-good Chrome + chromedriver from
-  Chrome for Testing (the standard approach for one-shot CI environments, sidestepping the branded
+- **e2e-chromium**: `browser-actions/setup-chrome` installs Chrome for Testing stable with a matched
+  chromedriver (the standard approach for one-shot CI environments, sidestepping the branded
   `--load-extension` policy) and runs the same E2E suite.
 
 On failure, `.e2e/` screenshots and state are uploaded. Safari requires manually enabling the
