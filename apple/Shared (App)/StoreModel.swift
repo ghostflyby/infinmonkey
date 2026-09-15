@@ -111,6 +111,16 @@ final class StoreModel {
   }
 
   private static func describe(_ error: Error) -> String {
+    if let error = error as? ImportError {
+      switch error {
+      case .invalidBundle(let underlying):
+        return "导入文件不是有效的 InfinMonkey 导出：\(underlying)"
+      case .unrecognizedFileType(let name):
+        return "无法识别的文件类型：\(name)"
+      case .notUTF8(let name):
+        return "文件不是 UTF-8 文本：\(name)"
+      }
+    }
     if let error = error as? StoreError {
       switch error {
       case .notFound: return "条目不存在"

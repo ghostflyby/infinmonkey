@@ -118,20 +118,23 @@ public struct LibraryService: Sendable {
     let data = try Data(contentsOf: url)
 
     if name.hasSuffix(".json") {
+      let bundle: WireBundle
       do {
-        let bundle = try JSONDecoder().decode(WireBundle.self, from: data)
-        _ = try await store.importBundle(bundle.exportBundle(), mode: .merge)
-        return
+        bundle = try JSONDecoder().decode(WireBundle.self, from: data)
       } catch {
-        throw StoreError.badRequest("导入文件不是有效的 InfinMonkey 导出：\(error)")
+        throw ImportError.invalidBundle(underlying: error)
       }
+      // Outside the catch above: a store failure here is an io error, not a
+      // verdict on the file.
+      _ = try await store.importBundle(bundle.exportBundle(), mode: .merge)
+      return
     }
 
     guard let kind = StoreLayout.kind(ofFileName: name) else {
-      throw StoreError.badRequest("无法识别的文件类型：\(name)")
+      throw ImportError.unrecognizedFileType(name)
     }
     guard let code = String(data: data, encoding: .utf8) else {
-      throw StoreError.badRequest("文件不是 UTF-8 文本：\(name)")
+      throw ImportError.notUTF8(name)
     }
     // No metadata: only the extension parses userscript headers, and it does so
     // on its next connection.
@@ -192,35 +195,55 @@ public struct LibraryService: Sendable {
   }
 }
 
-/// Stands in when the store cannot be located, so every operation reports the
-/// same reason instead of touching the wrong directory.
-private struct UnavailableStore: EntryStoring {
-  let reason: String
+/// Failures of `importFile`. Typed with payloads so the UI renders its own
+/// wording; the underlying error stays reachable for diagnostics.
+public enum ImportError: Error {
+  /// A `.json` file that is not a valid InfinMonkey export bundle.
+  case invalidBundle(underlying: any Error)
+  /// A file whose extension the importer does not know.
+  case unrecognizedFileType(String)
+  /// A file that is not UTF-8 text.
+  case notUTF8(String)
+}
+
+/// Stands in when the store cannot be located (a missing app group identity),
+/// so every operation reports the same reason instead of touching the wrong
+/// directory. Both the app UI and the extension's router run on one of these
+/// until the build fault is fixed.
+public struct UnavailableStore: EntryStoring {
+  public let reason: String
+
+  public init(reason: String) {
+    self.reason = reason
+  }
 
   private func fail<T>() throws -> T {
     throw StoreError.io(reason)
   }
 
-  func currentRev() async throws -> Int { try fail() }
-  func summaries(sinceRev: Int?) async throws -> SummarySnapshot { try fail() }
-  func snapshot() async throws -> Snapshot { try fail() }
-  func entry(id: String) async throws -> FullEntry { try fail() }
-  func changes(sinceRev: Int) async throws -> Changes { try fail() }
-  func values(id: String) async throws -> Data? { try fail() }
-  func create(
+  public func currentRev() async throws -> Int { try fail() }
+  public func summaries(sinceRev: Int?) async throws -> SummarySnapshot { try fail() }
+  public func snapshot() async throws -> Snapshot { try fail() }
+  public func entry(id: String) async throws -> FullEntry { try fail() }
+  public func changes(sinceRev: Int) async throws -> Changes { try fail() }
+  public func values(id: String) async throws -> Data? { try fail() }
+  public func create(
     kind: EntryKind, code: String, meta: ScriptMeta?, source: EntrySource, enabled: Bool,
     values: Data?
   ) async throws -> FullEntry { try fail() }
-  func updateCode(id: String, code: String, meta: ScriptMeta?) async throws -> FullEntry {
+  public func updateCode(id: String, code: String, meta: ScriptMeta?) async throws -> FullEntry {
     try fail()
   }
-  func updateMeta(id: String, meta: ScriptMeta, fromParsing: Bool) async throws -> FullEntry {
+  public func updateMeta(id: String, meta: ScriptMeta, fromParsing: Bool) async throws -> FullEntry
+  {
     try fail()
   }
-  func setEnabled(id: String, enabled: Bool) async throws -> FullEntry { try fail() }
-  func put(entry: FullEntry) async throws -> FullEntry { try fail() }
-  func reorder(ids: [String]) async throws { _ = try fail() as Void }
-  func delete(id: String) async throws -> Bool { try fail() }
-  func exportBundle() async throws -> ExportBundle { try fail() }
-  func importBundle(_ bundle: ExportBundle, mode: ImportMode) async throws -> Int { try fail() }
+  public func setEnabled(id: String, enabled: Bool) async throws -> FullEntry { try fail() }
+  public func put(entry: FullEntry) async throws -> FullEntry { try fail() }
+  public func reorder(ids: [String]) async throws { _ = try fail() as Void }
+  public func delete(id: String) async throws -> Bool { try fail() }
+  public func exportBundle() async throws -> ExportBundle { try fail() }
+  public func importBundle(_ bundle: ExportBundle, mode: ImportMode) async throws -> Int {
+    try fail()
+  }
 }

@@ -144,8 +144,33 @@ final class LibraryServiceTests: XCTestCase {
     do {
       try await service(store).importFile(at: url)
       XCTFail("expected the importer to reject an unknown extension")
+    } catch let error as ImportError {
+      guard case .unrecognizedFileType = error else {
+        return XCTFail("unexpected error \(error)")
+      }
+    }
+  }
+
+  func testImportBundleStoreFailureIsNotMislabeledAsFileFault() async throws {
+    // A store failure while importing a *valid* bundle is an io error; only a
+    // failed decode of the file itself is a verdict on the file.
+    let store = FakeStore()
+    await store.setFailNext(StoreError.io("disk went away"))
+    let bundle = WireBundle(
+      infinmonkey: 1, version: "0.1.0", exportedAt: 0,
+      scripts: [WireEntry(full: seededEntry())], styles: [])
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("bundle-\(UUID().uuidString).json")
+    try JSONEncoder().encode(bundle).write(to: url)
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    do {
+      try await service(store).importFile(at: url)
+      XCTFail("expected the store failure to propagate")
     } catch let error as StoreError {
-      guard case .badRequest = error else { return XCTFail("unexpected error \(error)") }
+      guard case .io = error else { return XCTFail("unexpected error \(error)") }
+    } catch {
+      XCTFail("expected StoreError.io, got \(error)")
     }
   }
 
