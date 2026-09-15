@@ -118,6 +118,7 @@ for (const browser of targets) {
         "--platform=browser",
         "--sourcemap=inline",
         "--no-check",
+        "--minify",
         "-o",
         outFile,
         entry,
