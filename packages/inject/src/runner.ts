@@ -9,7 +9,7 @@ import type { PreparedScript } from "@infinmonkey/shared/types";
 import { base64ToBytes, bytesToBase64, isRecord } from "@infinmonkey/shared/util";
 import {
   decodeDeliveryPayload,
-  PAYLOAD_DATASET_KEY,
+  PAYLOAD_ATTR,
   PAYLOAD_ELEMENT_ID,
 } from "@infinmonkey/shared/payload";
 
@@ -57,9 +57,9 @@ function main(): void {
   // orders are covered. No listener-registration timing involved.
   const consumedPayloads = new Set<string>();
   function consumePayloadElement(): void {
-    // Primary channel: the dataset attribute (readable cross-world in every
+    // Primary channel: the payload attribute (readable cross-world in every
     // observed headless engine); fallback: the inert carrier element.
-    const text = document.documentElement.dataset[PAYLOAD_DATASET_KEY] ??
+    const text = document.documentElement.getAttribute(PAYLOAD_ATTR) ??
       document.getElementById(PAYLOAD_ELEMENT_ID)?.textContent ??
       "";
     if (!text || consumedPayloads.has(text)) return;
@@ -88,23 +88,16 @@ function main(): void {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: [
-      "data-" + PAYLOAD_DATASET_KEY.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()),
-    ],
+    attributeFilter: [PAYLOAD_ATTR],
   });
   stage("observer-ready");
   consumePayloadElement();
   stage("initial-scan-done");
 
   // MutationObserver can be unreliable in headless Firefox content scripts
-  // (observed on CI). A short-interval poll guarantees discovery regardless.
-  const payloadPoll = setInterval(() => {
-    consumePayloadElement();
-    if (consumedPayloads.size > 0) {
-      clearInterval(payloadPoll);
-      stage("poll-stopped");
-    }
-  }, 100);
+  // (observed on CI), so discovery never depends on it alone: the poll runs
+  // for the document's lifetime, which also covers same-page re-deliveries.
+  setInterval(consumePayloadElement, 100);
   stage("poll-started");
 
   window.addEventListener("message", (ev: MessageEvent) => {

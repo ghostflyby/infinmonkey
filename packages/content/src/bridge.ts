@@ -13,7 +13,7 @@ import { isRecord, withRetry, withTimeout } from "@infinmonkey/shared/util";
 import {
   DeliveryPayload,
   encodeDeliveryPayload,
-  PAYLOAD_DATASET_KEY,
+  PAYLOAD_ATTR,
   PAYLOAD_ELEMENT_ID,
 } from "@infinmonkey/shared/payload";
 
@@ -89,9 +89,9 @@ async function deliver(): Promise<void> {
     // Deterministic handoff: the payload travels via two redundant inert
     // carriers the runner discovers by initial scan, MutationObserver, or a
     // short poll - never over the shared message bus, whose listener
-    // registration is a timing dependency. The dataset attribute is the
-    // primary channel (proven readable cross-world in headless); the element
-    // is a fallback for engines that limit attribute size.
+    // registration is a timing dependency. The attribute is the primary
+    // channel (proven readable cross-world in headless); the element is a
+    // fallback for engines that limit attribute size.
     const payload: DeliveryPayload = { frameKey: url, scripts: prepared, styles: stylePayload };
     const encoded = encodeDeliveryPayload(payload);
     let carrier = document.getElementById(PAYLOAD_ELEMENT_ID);
@@ -104,7 +104,7 @@ async function deliver(): Promise<void> {
       document.documentElement.appendChild(carrier);
     }
     carrier.textContent = encoded;
-    document.documentElement.dataset[PAYLOAD_DATASET_KEY] = encoded;
+    document.documentElement.setAttribute(PAYLOAD_ATTR, encoded);
     // Cross-world debug marker (in Firefox the page cannot see isolated-world window properties; dataset is shared ✓)
     document.documentElement.dataset.infinBridge = JSON.stringify({
       scripts: prepared.length,

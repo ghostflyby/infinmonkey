@@ -234,6 +234,7 @@ try {
   let bridgeMark = "";
   let bridgeErr = "";
   let runnerTrail = "";
+  let carrierInfo = "";
   if (typeof r === "string") {
     try {
       const o = JSON.parse(r) as { t: string; p: string; b?: string; r?: string; e?: string };
@@ -272,7 +273,7 @@ try {
         bridgeMark = o.b ?? "";
         runnerTrail = o.r ?? "";
         bridgeErr = o.e ?? "";
-        console.log(`[e2e] diag: pay=${o.pay} scripts=${o.scripts}`);
+        carrierInfo = ` pay=${o.pay} scripts=${o.scripts}`;
       } catch { /* ignore */ }
     }
   }
@@ -280,7 +281,9 @@ try {
   ok(
     inj,
     "user script injected (MAIN world)",
-    `${demoText} bridge=${bridgeMark} runner=${runnerTrail} err=${bridgeErr.slice(0, 200)}`,
+    `${demoText} bridge=${bridgeMark} runner=${runnerTrail} err=${
+      bridgeErr.slice(0, 200)
+    }${carrierInfo}`,
   );
   ok(demoText.includes("visits=1"), "GM storage works", demoText);
   ok(injPos === "fixed", "GM_addStyle works", injPos);
