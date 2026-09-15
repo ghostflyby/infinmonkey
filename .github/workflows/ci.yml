@@ -108,12 +108,16 @@ jobs:
         with:
           deno-version: v2.x
           cache: true
-      # CfT stable + a chromedriver matched to it (branded Chrome/Edge ignores --load-extension)
+      # Pinned Chrome for Testing + a chromedriver matched to it. A pinned
+      # version number resolves through the CfT endpoints; the channel names
+      # ("stable" etc.) resolve to BRANDED Chrome, which ignores
+      # --load-extension since 137 (observed: extension silently absent).
+      # Bump the pin deliberately when a new CfT stable is out.
       - name: Set up CfT Chrome + chromedriver
         id: cft
         uses: browser-actions/setup-chrome@v1
         with:
-          chrome-version: stable
+          chrome-version: 153.0.8010.36
           install-chromedriver: true
       - name: Write CI browser config
         run: |
