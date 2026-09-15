@@ -175,7 +175,8 @@ Safari 需在「设置 → 扩展」中手动允许，并注意：Safari 对 `sc
 
 - **static**：fmt / lint / check / 单元测试 / 未使用导出检测 / 构建（dist 作为 artifact）；
 - **e2e-firefox**：ubuntu runner 预装 Firefox + geckodriver，`deno task devserver` 后台 + 全量 E2E；
-- **e2e-chromium**：`browser-actions/setup-chrome` 安装 Chrome for Testing stable 并配对
-  chromedriver（CI 一次性环境的标准做法，规避品牌版 `--load-extension` 政策），跑同一套 E2E。
+- **e2e-chromium**：`browser-actions/setup-chrome` 安装钉死版本的 Chrome for Testing（当前
+  153.0.8010.36，随 CfT Stable 有意升级；channel 名会解析成忽略 `--load-extension` 的品牌版）， 配对
+  chromedriver，跑同一套 E2E。
 
 失败时上传 `.e2e/` 截图与现场。Safari 需人工在系统设置中启用扩展，暂不进 CI（见上方限制说明）。

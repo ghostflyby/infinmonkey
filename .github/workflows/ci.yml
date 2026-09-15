@@ -70,7 +70,9 @@ jobs:
           xcodebuild -project InfinMonkey.xcodeproj -scheme "InfinMonkey (macOS)" \
             -destination "platform=macOS" -derivedDataPath .xcodebuild/DerivedData \
             build CODE_SIGNING_ALLOWED=NO
-          echo "xcodebuild duration: $((SECONDS - start))s"
+          rc=$?
+          echo "xcodebuild duration: $((SECONDS - start))s (rc=$rc)"
+          exit $rc
 
   e2e-firefox:
     name: E2E（Firefox / geckodriver）
