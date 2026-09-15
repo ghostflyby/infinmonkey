@@ -1,4 +1,5 @@
-import XCTest
+import Foundation
+import Testing
 
 @testable import InfinMonkeyCore
 
@@ -8,34 +9,34 @@ func fixtureURL(_ name: String, file: StaticString = #filePath) throws -> URL {
     .appendingPathComponent("../../../../packages/tests/fixtures/protocol/\(name)")
 }
 
-final class LibraryServiceTests: XCTestCase {
+@Suite struct LibraryServiceTests {
 
   private func service(_ store: FakeStore) -> LibraryService {
     LibraryService(store: store, storagePath: "/tmp/fake")
   }
 
-  func testCreateUsesScaffoldAndParsedMeta() async throws {
+  @Test func createUsesScaffoldAndParsedMeta() async throws {
     let store = FakeStore()
     let created = try await service(store).create(kind: .script)
 
-    XCTAssertTrue(created.code.contains("==UserScript=="))
-    XCTAssertEqual(created.record.meta?.name, "新脚本")
-    XCTAssertTrue(created.record.meta?.headerFound ?? false)
-    XCTAssertFalse(created.record.metaStale)
+    #expect(created.code.contains("==UserScript=="))
+    #expect(created.record.meta?.name == "新脚本")
+    #expect(created.record.meta?.headerFound ?? false)
+    #expect(!created.record.metaStale)
     // The scaffold declares its own @match, so it is complete enough to run.
-    XCTAssertEqual(created.record.meta?.matches, ["https://example.org/*"])
-    XCTAssertNotNil(created.values, "a new script starts with an empty values object")
+    #expect(created.record.meta?.matches == ["https://example.org/*"])
+    #expect(created.values != nil, "a new script starts with an empty values object")
   }
 
-  func testCreateStyleHasNoValuesFile() async throws {
+  @Test func createStyleHasNoValuesFile() async throws {
     let store = FakeStore()
     let created = try await service(store).create(kind: .style)
-    XCTAssertEqual(created.record.kind, .style)
-    XCTAssertTrue(created.code.contains("==UserStyle=="))
-    XCTAssertNil(created.values)
+    #expect(created.record.kind == .style)
+    #expect(created.code.contains("==UserStyle=="))
+    #expect(created.values == nil)
   }
 
-  func testSaveMetadataOnUnparsedEntrySurvivesAndStaysStale() async throws {
+  @Test func saveMetadataOnUnparsedEntrySurvivesAndStaysStale() async throws {
     // An entry created from a dropped file: no parsed metadata yet.
     let store = NativeStore(root: temporaryRoot())
     let created = try await store.create(
@@ -44,21 +45,21 @@ final class LibraryServiceTests: XCTestCase {
 
     let saved = try await service.saveMetadata(
       id: created.record.id, name: "我的脚本", version: "1.2.0", description: "说明")
-    XCTAssertEqual(saved.record.meta?.name, "我的脚本")
-    XCTAssertEqual(saved.record.meta?.version, "1.2.0")
-    XCTAssertEqual(saved.record.meta?.description, "说明")
-    XCTAssertTrue(
+    #expect(saved.record.meta?.name == "我的脚本")
+    #expect(saved.record.meta?.version == "1.2.0")
+    #expect(saved.record.meta?.description == "说明")
+    #expect(
       saved.record.metaStale,
       "a hand-written summary says nothing about match rules, so parsing is still required")
 
     // The regression this guards: the edit used to be serialized away, so a
     // fresh reader saw an empty name.
     let reloaded = try await NativeStore(root: store.layout.root).entry(id: created.record.id)
-    XCTAssertEqual(reloaded.record.meta?.name, "我的脚本", "the edit must reach disk")
-    XCTAssertTrue(reloaded.record.metaStale)
+    #expect(reloaded.record.meta?.name == "我的脚本", "the edit must reach disk")
+    #expect(reloaded.record.metaStale)
   }
 
-  func testParsedMetadataClearsStale() async throws {
+  @Test func parsedMetadataClearsStale() async throws {
     let store = NativeStore(root: temporaryRoot())
     let created = try await store.create(
       kind: .script, code: scriptCode(), meta: nil, source: .inline, enabled: true, values: nil)
@@ -67,10 +68,10 @@ final class LibraryServiceTests: XCTestCase {
     var parsed = demoMeta(name: "Parsed")
     parsed = parsed.withSummary(name: "Parsed", version: "", description: "")
     let saved = try await service.saveParsedMetadata(id: created.record.id, meta: parsed)
-    XCTAssertFalse(saved.record.metaStale, "parser output is authoritative")
+    #expect(!saved.record.metaStale, "parser output is authoritative")
   }
 
-  func testSaveMetadataPreservesFieldsBeyondTheThreeEdited() async throws {
+  @Test func saveMetadataPreservesFieldsBeyondTheThreeEdited() async throws {
     let entry = seededEntry(
       meta: ScriptMeta(
         name: "Original", matches: ["https://a.example/*"], grants: ["GM_getValue"],
@@ -80,25 +81,24 @@ final class LibraryServiceTests: XCTestCase {
     let saved = try await service(store).saveMetadata(
       id: entry.record.id, name: "Renamed", version: "", description: "")
 
-    XCTAssertEqual(saved.record.meta?.name, "Renamed")
-    XCTAssertNil(saved.record.meta?.version, "an emptied field clears the value")
-    XCTAssertEqual(
-      saved.record.meta?.matches, ["https://a.example/*"], "match rules survive an edit")
-    XCTAssertEqual(saved.record.meta?.grants, ["GM_getValue"], "grants survive an edit")
-    XCTAssertEqual(
-      saved.record.meta?.others, ["custom": ["kept"]], "unknown directives survive an edit")
+    #expect(saved.record.meta?.name == "Renamed")
+    #expect(saved.record.meta?.version == nil, "an emptied field clears the value")
+    #expect(saved.record.meta?.matches == ["https://a.example/*"], "match rules survive an edit")
+    #expect(saved.record.meta?.grants == ["GM_getValue"], "grants survive an edit")
+    #expect(
+      saved.record.meta?.others == ["custom": ["kept"]], "unknown directives survive an edit")
   }
 
-  func testSaveCodeMarksMetadataStaleRatherThanInventingIt() async throws {
+  @Test func saveCodeMarksMetadataStaleRatherThanInventingIt() async throws {
     let entry = seededEntry(meta: ScriptMeta(name: "Original", matches: ["https://a.example/*"]))
     let store = FakeStore(seeded: [entry])
 
     let saved = try await service(store).saveCode(id: entry.record.id, code: "console.log(2)")
-    XCTAssertEqual(saved.code, "console.log(2)")
-    XCTAssertEqual(saved.record.meta?.matches, ["https://a.example/*"])
+    #expect(saved.code == "console.log(2)")
+    #expect(saved.record.meta?.matches == ["https://a.example/*"])
   }
 
-  func testImportValidBundleMerges() async throws {
+  @Test func importValidBundleMerges() async throws {
     let store = FakeStore()
     let fixture = try fixtureURL("wire-entry.json")
     let entry = try JSONBody(data: try Data(contentsOf: fixture), requiringValidJSON: true)
@@ -114,11 +114,11 @@ final class LibraryServiceTests: XCTestCase {
 
     try await service(store).importFile(at: url)
     let snapshot = try await store.snapshot()
-    XCTAssertEqual(snapshot.entries.count, 1)
-    XCTAssertEqual(snapshot.entries[0].record.id, "e1")
+    #expect(snapshot.entries.count == 1)
+    #expect(snapshot.entries[0].record.id == "e1")
   }
 
-  func testImportSingleScriptFileLeavesMetadataForTheExtension() async throws {
+  @Test func importSingleScriptFileLeavesMetadataForTheExtension() async throws {
     let store = FakeStore()
     let url = FileManager.default.temporaryDirectory
       .appendingPathComponent("dropped-\(UUID().uuidString).user.js")
@@ -127,31 +127,30 @@ final class LibraryServiceTests: XCTestCase {
 
     try await service(store).importFile(at: url)
     let snapshot = try await store.snapshot()
-    let entry = try XCTUnwrap(snapshot.entries.first)
-    XCTAssertNil(
-      entry.record.meta,
+    let entry = try #require(snapshot.entries.first)
+    #expect(
+      entry.record.meta == nil,
       "only the extension parses userscript headers, so the app must not guess")
-    XCTAssertEqual(entry.record.kind, .script)
+    #expect(entry.record.kind == .script)
   }
 
-  func testImportRejectsUnknownFileType() async throws {
+  @Test func importRejectsUnknownFileType() async throws {
     let store = FakeStore()
     let url = FileManager.default.temporaryDirectory
       .appendingPathComponent("notes-\(UUID().uuidString).txt")
     try Data("hello".utf8).write(to: url)
     defer { try? FileManager.default.removeItem(at: url) }
 
-    do {
+    await #expect {
       try await service(store).importFile(at: url)
-      XCTFail("expected the importer to reject an unknown extension")
-    } catch let error as ImportError {
-      guard case .unrecognizedFileType = error else {
-        return XCTFail("unexpected error \(error)")
-      }
+    } throws: { error in
+      guard let importError = error as? ImportError else { return false }
+      if case .unrecognizedFileType = importError { return true }
+      return false
     }
   }
 
-  func testImportBundleStoreFailureIsNotMislabeledAsFileFault() async throws {
+  @Test func importBundleStoreFailureIsNotMislabeledAsFileFault() async throws {
     // A store failure while importing a *valid* bundle is an io error; only a
     // failed decode of the file itself is a verdict on the file.
     let store = FakeStore()
@@ -164,25 +163,19 @@ final class LibraryServiceTests: XCTestCase {
     try JSONEncoder().encode(bundle).write(to: url)
     defer { try? FileManager.default.removeItem(at: url) }
 
-    do {
+    await #expect {
       try await service(store).importFile(at: url)
-      XCTFail("expected the store failure to propagate")
-    } catch let error as StoreError {
-      guard case .io = error else { return XCTFail("unexpected error \(error)") }
-    } catch {
-      XCTFail("expected StoreError.io, got \(error)")
+    } throws: { error in
+      guard let storeError = error as? StoreError, case .io = storeError else { return false }
+      return true
     }
   }
 
-  func testUnavailableServiceReportsReasonInsteadOfWriting() async throws {
+  @Test func unavailableServiceReportsReasonInsteadOfWriting() async throws {
     let service = LibraryService.unavailable(error: "app group missing")
-    XCTAssertNotNil(service.locationError)
-    do {
+    #expect(service.locationError != nil)
+    await #expect(throws: StoreError.io("app group missing")) {
       _ = try await service.summaries()
-      XCTFail("expected operations to fail when the store is unavailable")
-    } catch let error as StoreError {
-      XCTAssertEqual(error, .io("app group missing"))
     }
   }
-
 }
