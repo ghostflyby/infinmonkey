@@ -1,10 +1,14 @@
 {
+  "name": "@infinmonkey/background",
   "compilerOptions": {
     "strict": true,
     "lib": [
       "esnext",
       "webworker"
     ]
+  },
+  "exports": {
+    "./store": "./src/store.ts"
   },
   "imports": {
     "@infinmonkey/shared": "workspace:*",

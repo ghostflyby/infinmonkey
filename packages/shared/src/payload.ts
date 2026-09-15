@@ -16,6 +16,9 @@ import type { PreparedScript } from "./types.ts";
 
 export const PAYLOAD_ELEMENT_ID = "infinmonkey-payload";
 
+/** Primary carrier: this attribute on documentElement (`setAttribute`, readable in every world). */
+export const PAYLOAD_ATTR = "data-infin-payload";
+
 export interface DeliveryPayload {
   /** Page URL of the delivering frame; used to suppress value-change echoes. */
   frameKey: string;

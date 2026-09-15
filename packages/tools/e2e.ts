@@ -220,33 +220,70 @@ try {
   // ---- 2. example.com: injection + GM ----
   console.log("[e2e] 2. example.com…");
   await nav("https://example.com/");
-  await sleep(12000); // TEMP-DIAG: 让 readStore 护栏(5s+0.5s+5s)完整暴露
   const r = await poll(
     20000,
-    `return JSON.stringify({` +
-      `t:document.getElementById('infin-demo')?.textContent.slice(0,40) ?? '',` +
-      `p:document.getElementById('infin-demo') ? getComputedStyle(document.getElementById('infin-demo')).position : '',` +
+    `return document.getElementById('infin-demo') ? JSON.stringify({` +
+      `t:document.getElementById('infin-demo').textContent.slice(0,40),` +
+      `p:getComputedStyle(document.getElementById('infin-demo')).position,` +
       `b:document.documentElement.dataset.infinBridge??'',` +
-      `e:document.documentElement.dataset.infinBridgeErr??''})`,
+      `r:document.documentElement.dataset.infinRunner??'',` +
+      `e:document.documentElement.dataset.infinBridgeErr??''}) : ''`,
   );
   let demoText = "";
   let injPos = "";
   let bridgeMark = "";
   let bridgeErr = "";
+  let runnerTrail = "";
+  let carrierInfo = "";
   if (typeof r === "string") {
     try {
-      const o = JSON.parse(r) as { t: string; p: string; b?: string; e?: string };
+      const o = JSON.parse(r) as { t: string; p: string; b?: string; r?: string; e?: string };
       demoText = o.t;
       injPos = o.p;
       bridgeMark = o.b ?? "";
+      runnerTrail = o.r ?? "";
       bridgeErr = o.e ?? "";
     } catch { /* injection timed out */ }
+  } else {
+    // Poll timed out without injection: read the stage markers for diagnosis.
+    // The payload-visibility probe runs in the page MAIN world, the same world
+    // as the runner, so it shows whether a handoff channel failure is a write
+    // problem (carrier absent/corrupt) or a discovery problem (carrier fine).
+    const diag = await exec(
+      `return JSON.stringify({` +
+        `b:document.documentElement.dataset.infinBridge??'',` +
+        `r:document.documentElement.dataset.infinRunner??'',` +
+        `e:document.documentElement.dataset.infinBridgeErr??'',` +
+        `pay:(function(){var el=document.getElementById('infinmonkey-payload');` +
+        `var ds=document.documentElement.dataset.infinPayload||'';` +
+        `return 'el='+(el?('len='+el.textContent.length+' head='+el.textContent.slice(0,24)):'MISSING')+` +
+        `' ds=len='+ds.length+' head='+ds.slice(0,24);})(),` +
+        `scripts:[].map.call(document.querySelectorAll('script'),function(s){` +
+        `return s.id?s.id+'#'+s.textContent.length:(s.type||'plain')+'#'+s.textContent.length;}).join(',')})`,
+    ).catch(() => "");
+    if (typeof diag === "string" && diag) {
+      try {
+        const o = JSON.parse(diag) as {
+          b?: string;
+          r?: string;
+          e?: string;
+          pay?: string;
+          scripts?: string;
+        };
+        bridgeMark = o.b ?? "";
+        runnerTrail = o.r ?? "";
+        bridgeErr = o.e ?? "";
+        carrierInfo = ` pay=${o.pay} scripts=${o.scripts}`;
+      } catch { /* ignore */ }
+    }
   }
   const inj = demoText.length > 0;
   ok(
     inj,
     "user script injected (MAIN world)",
-    `${demoText} bridge=${bridgeMark} err=${bridgeErr.slice(0, 200)}`,
+    `${demoText} bridge=${bridgeMark} runner=${runnerTrail} err=${
+      bridgeErr.slice(0, 200)
+    }${carrierInfo}`,
   );
   ok(demoText.includes("visits=1"), "GM storage works", demoText);
   ok(injPos === "fixed", "GM_addStyle works", injPos);

@@ -30,6 +30,16 @@ export function emitStoreMutation(m: StoreMutation): void {
 
 let cache: DB | null = null;
 
+// Content scripts (the installer writes entries straight to storage.local)
+// bypass this module's in-memory cache. Without invalidation the background
+// would keep serving a stale DB and write the stale list back over newer
+// entries on its next persist(). Any external write to the store keys drops
+// the cache; the background's own writes re-read once, which is harmless.
+browser.storage.onChanged.addListener((changes: Record<string, unknown>, area: string) => {
+  if (area !== "local") return;
+  if (changes.scripts || changes.styles || changes.settings || changes.pending) cache = null;
+});
+
 /** Keeps well-formed entries, drops the rest; returns how many were dropped. */
 function sanitizeEntryList(raw: unknown): { valid: AnyEntry[]; dropped: number } {
   if (!Array.isArray(raw)) return { valid: [], dropped: 0 };
@@ -64,8 +74,12 @@ export async function getDB(): Promise<DB> {
   return cache;
 }
 
-async function persist(): Promise<void> {
-  const db = await getDB();
+async function persist(db: DB): Promise<void> {
+  // Takes the caller's (already-mutated) DB: re-fetching here would silently
+  // drop the mutation whenever the cache was invalidated by a concurrent
+  // external write between the caller's getDB() and this write. The remaining
+  // window - an external write landing inside that span - is inherent to
+  // full-table read-modify-write without a transactional storage layer.
   await browser.storage.local.set({
     scripts: db.scripts,
     styles: db.styles,
@@ -147,19 +161,25 @@ export async function createEntry(
     style.position = nextPosition(db.styles);
     entry = style;
   }
-  await persist();
+  await persist(db);
   await broadcastEntriesChanged();
   emitStoreMutation({ type: "upsert", entry });
   return entry;
 }
 
-export async function findEntry(id: string): Promise<AnyEntry | undefined> {
-  const db = await getDB();
+/** Finds within an already-fetched DB; mutators use this so persist() can be
+ * handed the same object they mutated. */
+function findIn(db: DB, id: string): AnyEntry | undefined {
   return db.scripts.find((s) => s.id === id) ?? db.styles.find((s) => s.id === id);
 }
 
+export async function findEntry(id: string): Promise<AnyEntry | undefined> {
+  return findIn(await getDB(), id);
+}
+
 export async function updateCode(id: string, code: string): Promise<AnyEntry | undefined> {
-  const entry = await findEntry(id);
+  const db = await getDB();
+  const entry = findIn(db, id);
   if (!entry) return undefined;
   // Type guard: if editor state is out of sync, prevent writing style-headed code into a script entry (or vice versa); headerless code passes through
   const header = extractHeader(code);
@@ -174,24 +194,26 @@ export async function updateCode(id: string, code: string): Promise<AnyEntry | u
   entry.meta = parseMeta(code, fallbackName);
   entry.updatedAt = Date.now();
   if (entry.kind === "script" && entry.source.type === "dev") entry.devCode = code;
-  await persist();
+  await persist(db);
   await broadcastEntriesChanged();
   emitStoreMutation({ type: "upsert", entry });
   return entry;
 }
 
 export async function setEnabled(id: string, enabled: boolean): Promise<AnyEntry | undefined> {
-  const entry = await findEntry(id);
+  const db = await getDB();
+  const entry = findIn(db, id);
   if (!entry) return undefined;
   entry.enabled = enabled;
-  await persist();
+  await persist(db);
   await broadcastEntriesChanged();
   emitStoreMutation({ type: "upsert", entry });
   return entry;
 }
 
 export async function setSource(id: string, source: EntrySource): Promise<AnyEntry | undefined> {
-  const entry = await findEntry(id);
+  const db = await getDB();
+  const entry = findIn(db, id);
   if (!entry) return undefined;
   entry.source = source;
   entry.updatedAt = Date.now();
@@ -199,7 +221,7 @@ export async function setSource(id: string, source: EntrySource): Promise<AnyEnt
     if (source.type === "dev") entry.devCode = entry.code;
     else delete entry.devCode;
   }
-  await persist();
+  await persist(db);
   await broadcastEntriesChanged();
   emitStoreMutation({ type: "upsert", entry });
   return entry;
@@ -212,7 +234,7 @@ export async function deleteEntry(id: string): Promise<boolean> {
   db.styles = db.styles.filter((s) => s.id !== id);
   delete db.pending[id];
   if (db.scripts.length + db.styles.length === before) return false;
-  await persist();
+  await persist(db);
   await broadcastEntriesChanged();
   emitStoreMutation({ type: "delete", id });
   return true;
@@ -234,11 +256,12 @@ export async function setValue(
   key: string,
   value: unknown,
 ): Promise<{ oldValue: unknown; newValue: unknown }> {
-  const entry = await findEntry(scriptId);
+  const db = await getDB();
+  const entry = findIn(db, scriptId);
   if (!entry || entry.kind !== "script") throw new Error("script not found");
   const oldValue = key in entry.values ? entry.values[key] : undefined;
   entry.values[key] = value;
-  await persist();
+  await persist(db);
   emitStoreMutation({ type: "upsert", entry });
   return { oldValue, newValue: value };
 }
@@ -247,13 +270,14 @@ export async function deleteValue(
   scriptId: string,
   key: string,
 ): Promise<{ existed: boolean; oldValue: unknown }> {
-  const entry = await findEntry(scriptId);
+  const db = await getDB();
+  const entry = findIn(db, scriptId);
   if (!entry || entry.kind !== "script") return { existed: false, oldValue: undefined };
   const existed = key in entry.values;
   const oldValue = entry.values[key];
   if (existed) {
     delete entry.values[key];
-    await persist();
+    await persist(db);
     emitStoreMutation({ type: "upsert", entry });
   }
   return { existed, oldValue };
@@ -265,26 +289,29 @@ export async function listValues(scriptId: string): Promise<string[]> {
 }
 
 export async function setDevCode(scriptId: string, code: string): Promise<void> {
-  const entry = await findEntry(scriptId);
+  const db = await getDB();
+  const entry = findIn(db, scriptId);
   if (!entry || entry.kind !== "script") return;
   entry.devCode = code;
-  await persist();
+  await persist(db);
 }
 
 export async function addConnectGrant(scriptId: string, domain: string): Promise<void> {
-  const entry = await findEntry(scriptId);
+  const db = await getDB();
+  const entry = findIn(db, scriptId);
   if (!entry || entry.kind !== "script") return;
   const d = domain.toLowerCase();
   if (!entry.connectGrants.includes(d)) entry.connectGrants.push(d);
-  await persist();
+  await persist(db);
   emitStoreMutation({ type: "upsert", entry });
 }
 
 export async function revokeConnectGrant(scriptId: string, domain: string): Promise<void> {
-  const entry = await findEntry(scriptId);
+  const db = await getDB();
+  const entry = findIn(db, scriptId);
   if (!entry || entry.kind !== "script") return;
   entry.connectGrants = entry.connectGrants.filter((d) => d !== domain.toLowerCase());
-  await persist();
+  await persist(db);
   emitStoreMutation({ type: "upsert", entry });
 }
 
@@ -300,7 +327,7 @@ export async function putPendingInstall(
   for (const [k, v] of Object.entries(db.pending)) {
     if (Date.now() - v.createdAt > 86_400_000) delete db.pending[k];
   }
-  await persist();
+  await persist(db);
   return id;
 }
 
@@ -309,7 +336,7 @@ export async function takePendingInstall(id: string): Promise<PendingInstall | u
   const p = db.pending[id];
   if (p) {
     delete db.pending[id];
-    await persist();
+    await persist(db);
   }
   return p;
 }
@@ -382,7 +409,7 @@ export async function importAll(
     }
     count++;
   }
-  await persist();
+  await persist(db);
   await broadcastEntriesChanged();
   for (const e of [...db.scripts, ...db.styles]) emitStoreMutation({ type: "upsert", entry: e });
   return count;
@@ -400,7 +427,7 @@ export async function mirrorUpsert(entry: AnyEntry): Promise<void> {
     (list as AnyEntry[]).push(entry);
     if (entry.position === 0) entry.position = nextPosition(list);
   }
-  await persist();
+  await persist(db);
   await broadcastEntriesChanged();
 }
 
@@ -411,6 +438,6 @@ export async function mirrorDelete(id: string): Promise<void> {
   db.scripts = db.scripts.filter((s) => s.id !== id);
   db.styles = db.styles.filter((s) => s.id !== id);
   if (db.scripts.length + db.styles.length === before) return;
-  await persist();
+  await persist(db);
   await broadcastEntriesChanged();
 }

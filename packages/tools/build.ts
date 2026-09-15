@@ -108,6 +108,11 @@ for (const browser of targets) {
   await Deno.mkdir(out, { recursive: true });
 
   // deno bundle (oxc): bundles TS directly, resolves npm from the global cache, emits a classic script without import/export
+  // --format=iife is required, not cosmetic: the output is a classic script, and
+  // Firefox runs every content script of one extension in a SINGLE sandbox realm,
+  // so unwrapped top-level bindings would leak between bundles and a later-loaded
+  // bundle overwrites an earlier one's helpers (observed as sporadic
+  // "X is not a function" delivery failures after minification).
   for (const [entryRel, outRel] of ENTRIES) {
     const entry = join(PACKAGES, entryRel);
     const outFile = join(out, outRel);
@@ -116,8 +121,10 @@ for (const browser of targets) {
       args: [
         "bundle",
         "--platform=browser",
+        "--format=iife",
         "--sourcemap=inline",
         "--no-check",
+        "--minify",
         "-o",
         outFile,
         entry,
