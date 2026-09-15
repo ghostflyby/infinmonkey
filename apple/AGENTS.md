@@ -58,14 +58,15 @@ Three rules, and no other conversions anywhere:
 
 | Layer | Mechanism | Why |
 |---|---|---|
-| **Envelope** (`v`, `id`, `type`, `payload`) | read from the object graph, or parsed from text by `JSONBody(data:requiringValidJSON:)` | the payload's type depends on `type`, so the envelope cannot be decoded before it is known |
+| **Envelope** (`v`, `id`, `type`, `payload`) | `RequestMessage`, one `Codable` decode of the whole frame | the discriminator and the payload materialize together; an unknown `type` fails the decode, so dispatch is an exhaustive `switch` over `Operation` |
 | **Payload and result** | `Codable`, compiler-written, fail-fast | a required member is required; a wrongly typed one is an error, never a default |
 | **Opaque members** | `JSONBody` | Codable has no raw-JSON-fragment support, and `Data` means base64 |
 
 A message is a `JSONBody` in both directions, which is what lets one entry point serve every
-transport: Safari hands over a parsed graph, stdio hands over JSON text, and neither is
-re-serialized to fit the router. `JSONBody` is `@unchecked Sendable` because it freezes whatever
-graph it is given, so the value cannot change after construction.
+transport: Safari hands over a parsed graph, stdio hands over JSON text. Decoding the frame
+serializes that representation once and runs one `JSONDecoder` pass over the bytes. `JSONBody` is
+`@unchecked Sendable` because it freezes whatever graph it is given, so the value cannot change
+after construction.
 
 `[String: Any]` is banned outside `JSONBody`. The one unavoidable exception is
 `NSExtensionItem.userInfo`, which is Objective-C typed — wrap it in a `JSONBody` at that boundary and

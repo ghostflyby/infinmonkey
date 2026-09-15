@@ -25,15 +25,28 @@ public actor ProtocolRouter {
   /// This is the single entry point every transport converges on: `JSONBody` is
   /// `Sendable`, so a body can cross into this actor from any caller, and it
   /// carries whichever representation the transport had (a parsed graph from
-  /// Safari, JSON text from stdio) without re-serializing it.
+  /// Safari, JSON text from stdio). One decode pass turns it into a
+  /// `RequestMessage`.
   public func handle(request body: JSONBody) async -> JSONBody {
-    let frame: RequestFrame
+    let message: RequestMessage
     do {
-      frame = try RequestFrame(body: body)
+      message = try body.decoded(as: RequestMessage.self)
+    } catch let error as WireError {
+      let envelope = Self.envelope(of: body)
+      return ResponseFrame.failure(
+        id: envelope.id ?? "unknown", code: Self.code(for: error), message: "\(error)"
+      ).body()
     } catch {
-      return ResponseFrame.failure(id: "unknown", code: "badRequest", message: "\(error)").body()
+      let envelope = Self.envelope(of: body)
+      let described = Self.describe(error)
+      // Name the op when the frame carried one: a bad payload is reported
+      // against the request that brought it.
+      let text = envelope.type.map { "\($0): \(described)" } ?? described
+      return ResponseFrame.failure(
+        id: envelope.id ?? "unknown", code: "badRequest", message: text
+      ).body()
     }
-    return await respond(to: frame).body()
+    return await respond(to: message).body()
   }
 
   /// Convenience for a text transport: JSON in, JSON out.
@@ -42,32 +55,34 @@ public actor ProtocolRouter {
     do {
       request = try JSONBody(data: requestData, requiringValidJSON: true)
     } catch {
-      return ResponseFrame.failure(id: "unknown", code: "badRequest", message: "\(error)")
-        .jsonData()
+      return ResponseFrame.failure(
+        id: "unknown", code: "badRequest", message: "request body is not valid JSON"
+      ).jsonData()
     }
     return await handle(request: request).data
   }
 
   // MARK: - Dispatch
 
-  private func respond(to frame: RequestFrame) async -> ResponseFrame {
-    guard frame.v == CoreConstants.protocolVersion else {
+  private func respond(to message: RequestMessage) async -> ResponseFrame {
+    // Runs after the decode, so precedence is: undecodable frame > wrong
+    // version > dispatch. A frame that names no known op never reaches here.
+    guard message.v == CoreConstants.protocolVersion else {
       return .failure(
-        id: frame.id, code: "badRequest",
+        id: message.id, code: "badRequest",
         message:
-          "unsupported protocol version \(frame.v); expected \(CoreConstants.protocolVersion)")
+          "unsupported protocol version \(message.v); expected \(CoreConstants.protocolVersion)")
     }
 
     do {
-      switch frame.type {
-      case "ping":
-        return try .success(id: frame.id, result: pong())
+      switch message.op {
+      case .ping:
+        return try .success(id: message.id, result: pong())
 
-      case "hello":
-        let payload = try decode(WirePayload.Hello.self, from: frame)
+      case .hello(let payload):
         let snapshot = try await store.summaries(sinceRev: payload.sinceRev)
         return try .success(
-          id: frame.id,
+          id: message.id,
           result: WireResult.Hello(
             proto: CoreConstants.protocolVersion,
             app: CoreConstants.appName,
@@ -75,109 +90,104 @@ public actor ProtocolRouter {
             rev: snapshot.rev,
             entries: snapshot.entries.map(WireSummary.init(summary:))))
 
-      case "listEntries":
+      case .listEntries:
         let snapshot = try await store.snapshot()
         return try .success(
-          id: frame.id,
+          id: message.id,
           result: WireResult.List(
             rev: snapshot.rev, entries: snapshot.entries.map(WireEntry.init(full:))))
 
-      case "getChanges":
-        let payload = try decode(WirePayload.SinceRev.self, from: frame)
+      case .getChanges(let payload):
         let changes = try await store.changes(sinceRev: payload.sinceRev)
         return try .success(
-          id: frame.id,
+          id: message.id,
           result: WireResult.Changes(
             rev: changes.rev,
             upserts: changes.upserts.map(WireEntry.init(full:)),
             deletedIds: changes.deletedIds))
 
-      case "createEntry":
-        let payload = try decode(WirePayload.CreateEntry.self, from: frame)
-        // `values` is opaque, so it is read from the body rather than modeled.
+      case .createEntry(let payload):
         let created = try await store.create(
           kind: payload.kind,
           code: payload.code,
           meta: payload.meta,
           source: payload.source ?? .inline,
           enabled: payload.enabled ?? true,
-          values: try frame.payload.optionalValues(forKey: "values")?.data)
-        return try await entryResponse(frame, created)
+          values: payload.values?.data)
+        return try await entryResponse(message.id, created)
 
-      case "updateCode":
-        let payload = try decode(WirePayload.UpdateCode.self, from: frame)
+      case .updateCode(let payload):
         let updated = try await store.updateCode(
           id: payload.id, code: payload.code, meta: payload.meta)
-        return try await entryResponse(frame, updated)
+        return try await entryResponse(message.id, updated)
 
-      case "updateMeta":
-        let payload = try decode(WirePayload.UpdateMeta.self, from: frame)
+      case .updateMeta(let payload):
         // Over the wire, metadata comes from the extension's parser.
         let updated = try await store.updateMeta(
           id: payload.id, meta: payload.meta, fromParsing: true)
-        return try await entryResponse(frame, updated)
+        return try await entryResponse(message.id, updated)
 
-      case "setEnabled":
-        let payload = try decode(WirePayload.SetEnabled.self, from: frame)
+      case .setEnabled(let payload):
         let updated = try await store.setEnabled(id: payload.id, enabled: payload.enabled)
-        return try await entryResponse(frame, updated)
+        return try await entryResponse(message.id, updated)
 
-      case "putEntry":
-        let payload = try decode(WirePayload.PutEntry.self, from: frame)
+      case .putEntry(let payload):
         let stored = try await store.put(entry: payload.entry.fullEntry())
-        return try await entryResponse(frame, stored)
+        return try await entryResponse(message.id, stored)
 
-      case "reorderEntries":
-        let payload = try decode(WirePayload.Reorder.self, from: frame)
+      case .reorderEntries(let payload):
         try await store.reorder(ids: payload.ids)
-        return try .success(id: frame.id, result: WireResult.Rev(rev: try await store.currentRev()))
+        return try .success(
+          id: message.id, result: WireResult.Rev(rev: try await store.currentRev()))
 
-      case "deleteEntry":
-        let payload = try decode(WirePayload.Id.self, from: frame)
+      case .deleteEntry(let payload):
         let deleted = try await store.delete(id: payload.id)
         return try .success(
-          id: frame.id,
+          id: message.id,
           result: WireResult.Deleted(rev: try await store.currentRev(), deleted: deleted))
 
-      case "getValues":
-        let payload = try decode(WirePayload.Id.self, from: frame)
+      case .getValues(let payload):
         let stored = try await store.values(id: payload.id)
         return try .success(
-          id: frame.id, result: WireResult.Values(values: JSONBody(data: stored ?? Data())))
+          id: message.id, result: WireResult.Values(values: JSONBody(data: stored ?? Data())))
 
-      case "exportAll":
+      case .exportAll:
         let bundle = try await store.exportBundle()
         return try .success(
-          id: frame.id, result: WireResult.Export(bundle: WireBundle(bundle: bundle)))
+          id: message.id, result: WireResult.Export(bundle: WireBundle(bundle: bundle)))
 
-      case "importAll":
-        let payload = try decode(WirePayload.ImportAll.self, from: frame)
+      case .importAll(let payload):
         let count = try await store.importBundle(payload.bundle.exportBundle(), mode: payload.mode)
         return try .success(
-          id: frame.id,
+          id: message.id,
           result: WireResult.Imported(rev: try await store.currentRev(), count: count))
-
-      default:
-        return .failure(id: frame.id, code: "unsupported", message: "unknown op: \(frame.type)")
       }
     } catch let error as StoreError {
-      return .failure(id: frame.id, code: Self.code(for: error), message: Self.message(for: error))
-    } catch let error as DecodingError {
-      return .failure(id: frame.id, code: "badRequest", message: Self.describe(error))
-    } catch let error as WireError {
-      return .failure(id: frame.id, code: "badRequest", message: "\(error)")
+      return .failure(
+        id: message.id, code: Self.code(for: error), message: Self.message(for: error))
     } catch {
-      return .failure(id: frame.id, code: "io", message: String(describing: error))
+      return .failure(id: message.id, code: "io", message: String(describing: error))
     }
   }
 
   // MARK: - Helpers
 
-  private func entryResponse(_ frame: RequestFrame, _ entry: FullEntry) async throws
-    -> ResponseFrame
-  {
+  /// The envelope members readable even when the rest of a frame fails to
+  /// decode: `id` and `type` are decoded before the op, so an error reply can
+  /// still echo the request it belongs to. A body that is not a frame at all
+  /// decodes to empty members.
+  private struct PartialEnvelope: Codable {
+    var id: String?
+    var type: String?
+  }
+
+  private static func envelope(of body: JSONBody) -> PartialEnvelope {
+    (try? body.decoded(as: PartialEnvelope.self)) ?? PartialEnvelope()
+  }
+
+  private func entryResponse(_ id: String, _ entry: FullEntry) async throws -> ResponseFrame {
     try .success(
-      id: frame.id,
+      id: id,
       result: WireResult.Entry(rev: try await store.currentRev(), entry: WireEntry(full: entry)))
   }
 
@@ -186,13 +196,9 @@ public actor ProtocolRouter {
       proto: CoreConstants.protocolVersion, app: CoreConstants.appName, platform: platform)
   }
 
-  /// Decodes an op payload from the frame body. A payload that does not match
-  /// the op's shape is reported as a bad request naming the offending member.
-  private func decode<T: Decodable>(_ type: T.Type, from frame: RequestFrame) throws -> T {
-    do {
-      return try frame.payload.decoded(as: T.self)
-    } catch {
-      throw StoreError.badRequest("\(frame.type): invalid payload: \(Self.describe(error))")
+  private static func code(for error: WireError) -> String {
+    switch error {
+    case .unknownOp: return "unsupported"
     }
   }
 

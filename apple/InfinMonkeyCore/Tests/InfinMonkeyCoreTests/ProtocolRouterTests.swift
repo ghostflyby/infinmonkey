@@ -344,6 +344,8 @@ final class ProtocolRouterTests: XCTestCase {
     let unknown = try await responseObject(
       await router.handle(requestData: requestData("teleport", [:])))
     XCTAssertEqual(errorCode(unknown), "unsupported")
+    XCTAssertEqual(
+      unknown["id"] as? String, "req-1", "the reply echoes the request id even for an unknown op")
 
     let wrongVersion = try await responseObject(
       await router.handle(requestData: requestData("ping", [:], version: 99)))
@@ -375,11 +377,15 @@ final class ProtocolRouterTests: XCTestCase {
   }
 
   func testWrongPayloadTypeIsRejected() async throws {
-    // `enabled` as a string is a type error, not something to coerce.
+    // `enabled` as a string is a type error, not something to coerce. The reply
+    // echoes the request id and names the op that failed.
     let response = try await responseObject(
       await router(FakeStore()).handle(
         requestData: requestData("setEnabled", ["id": "e1", "enabled": "yes"])))
     XCTAssertEqual(errorCode(response), "badRequest")
+    XCTAssertEqual(response["id"] as? String, "req-1")
+    let message = try XCTUnwrap((response["error"] as? [String: Any])?["message"] as? String)
+    XCTAssertTrue(message.hasPrefix("setEnabled:"), "the failure names the op: \(message)")
   }
 
   func testSharedCreateEntryFixtureIsAccepted() async throws {

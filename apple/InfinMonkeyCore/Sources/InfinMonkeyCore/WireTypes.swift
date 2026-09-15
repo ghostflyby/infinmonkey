@@ -176,8 +176,7 @@ struct WireBundle: Codable, Sendable, Equatable {
 }
 
 /// Typed op payloads: what the extension sends. A member is typed when the
-/// native side must reason about it, and absent when it is opaque (those live in
-/// the frame's opaque body).
+/// native side must reason about it, and a `JSONBody` when it must not.
 enum WirePayload {
   struct Hello: Codable, Sendable {
     var sinceRev: Int?
@@ -211,14 +210,15 @@ enum WirePayload {
     var meta: ScriptMeta?
   }
 
-  /// `values` is absent here on purpose: it is opaque, so the router reads it
-  /// from the frame body into a `JSONBody` and never models it.
   struct CreateEntry: Codable, Sendable {
     var kind: EntryKind
     var code: String
     var meta: ScriptMeta?
     var source: EntrySource?
     var enabled: Bool?
+    /// GM values, opaque like on `WireEntry`: decoded as a body and handed to
+    /// the store as bytes.
+    var values: JSONBody?
   }
 
   struct PutEntry: Codable, Sendable {
