@@ -245,18 +245,34 @@ try {
     } catch { /* injection timed out */ }
   } else {
     // Poll timed out without injection: read the stage markers for diagnosis.
+    // The payload-visibility probe runs in the page MAIN world, the same world
+    // as the runner, so it shows whether a handoff channel failure is a write
+    // problem (carrier absent/corrupt) or a discovery problem (carrier fine).
     const diag = await exec(
       `return JSON.stringify({` +
         `b:document.documentElement.dataset.infinBridge??'',` +
         `r:document.documentElement.dataset.infinRunner??'',` +
-        `e:document.documentElement.dataset.infinBridgeErr??''})`,
+        `e:document.documentElement.dataset.infinBridgeErr??'',` +
+        `pay:(function(){var el=document.getElementById('infinmonkey-payload');` +
+        `var ds=document.documentElement.dataset.infinPayload||'';` +
+        `return 'el='+(el?('len='+el.textContent.length+' head='+el.textContent.slice(0,24)):'MISSING')+` +
+        `' ds=len='+ds.length+' head='+ds.slice(0,24);})(),` +
+        `scripts:[].map.call(document.querySelectorAll('script'),function(s){` +
+        `return s.id?s.id+'#'+s.textContent.length:(s.type||'plain')+'#'+s.textContent.length;}).join(',')})`,
     ).catch(() => "");
     if (typeof diag === "string" && diag) {
       try {
-        const o = JSON.parse(diag) as { b?: string; r?: string; e?: string };
+        const o = JSON.parse(diag) as {
+          b?: string;
+          r?: string;
+          e?: string;
+          pay?: string;
+          scripts?: string;
+        };
         bridgeMark = o.b ?? "";
         runnerTrail = o.r ?? "";
         bridgeErr = o.e ?? "";
+        console.log(`[e2e] diag: pay=${o.pay} scripts=${o.scripts}`);
       } catch { /* ignore */ }
     }
   }

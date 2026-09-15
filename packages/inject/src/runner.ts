@@ -7,7 +7,11 @@
 import { PM_TAG, RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
 import type { PreparedScript } from "@infinmonkey/shared/types";
 import { base64ToBytes, bytesToBase64, isRecord } from "@infinmonkey/shared/util";
-import { decodeDeliveryPayload, PAYLOAD_ELEMENT_ID } from "@infinmonkey/shared/payload";
+import {
+  decodeDeliveryPayload,
+  PAYLOAD_DATASET_KEY,
+  PAYLOAD_ELEMENT_ID,
+} from "@infinmonkey/shared/payload";
 
 interface RunnerGlobal {
   __infinRunnerReady?: boolean;
@@ -53,8 +57,11 @@ function main(): void {
   // orders are covered. No listener-registration timing involved.
   const consumedPayloads = new Set<string>();
   function consumePayloadElement(): void {
-    const el = document.getElementById(PAYLOAD_ELEMENT_ID);
-    const text = el?.textContent ?? "";
+    // Primary channel: the dataset attribute (readable cross-world in every
+    // observed headless engine); fallback: the inert carrier element.
+    const text = document.documentElement.dataset[PAYLOAD_DATASET_KEY] ??
+      document.getElementById(PAYLOAD_ELEMENT_ID)?.textContent ??
+      "";
     if (!text || consumedPayloads.has(text)) return;
     const payload = decodeDeliveryPayload(text);
     if (!payload) return;
@@ -62,18 +69,43 @@ function main(): void {
     frameKey = payload.frameKey;
     loadScripts(payload.scripts);
     syncStyles(payload.styles);
+    stage("consumed:" + payload.scripts.length);
   }
 
+  // Observable stage trail for e2e diagnostics (last 8 stages).
+  const stageTrail: string[] = [];
+  function stage(t: string): void {
+    stageTrail.push(t);
+    if (stageTrail.length > 8) stageTrail.shift();
+    try {
+      document.documentElement.dataset.infinRunner = stageTrail.join(";");
+    } catch { /* dataset can be inaccessible in some contexts */ }
+  }
+
+  stage("module-loaded");
   const observer = new MutationObserver(() => consumePayloadElement());
-  observer.observe(document.documentElement, { childList: true, subtree: true });
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: [
+      "data-" + PAYLOAD_DATASET_KEY.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()),
+    ],
+  });
+  stage("observer-ready");
   consumePayloadElement();
+  stage("initial-scan-done");
 
   // MutationObserver can be unreliable in headless Firefox content scripts
   // (observed on CI). A short-interval poll guarantees discovery regardless.
   const payloadPoll = setInterval(() => {
     consumePayloadElement();
-    if (consumedPayloads.size > 0) clearInterval(payloadPoll);
+    if (consumedPayloads.size > 0) {
+      clearInterval(payloadPoll);
+      stage("poll-stopped");
+    }
   }, 100);
+  stage("poll-started");
 
   window.addEventListener("message", (ev: MessageEvent) => {
     if (ev.source !== window) return;

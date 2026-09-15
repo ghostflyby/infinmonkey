@@ -5,7 +5,7 @@
  * to the background via messages. Styles are re-synced automatically on storage.onChanged.
  */
 import browser from "webextension-polyfill";
-import { DEFAULT_DEV_ORIGIN, PM_TAG } from "@infinmonkey/shared/constants";
+import { PM_TAG } from "@infinmonkey/shared/constants";
 import { matchScripts, prepareScripts } from "@infinmonkey/shared/inject";
 import { splitUserStyle, targetsMatch } from "@infinmonkey/shared/mozdoc";
 import type { PreparedScript, ScriptEntry, StyleEntry } from "@infinmonkey/shared/types";
@@ -13,28 +13,9 @@ import { isRecord, withRetry, withTimeout } from "@infinmonkey/shared/util";
 import {
   DeliveryPayload,
   encodeDeliveryPayload,
+  PAYLOAD_DATASET_KEY,
   PAYLOAD_ELEMENT_ID,
 } from "@infinmonkey/shared/payload";
-
-const BROADCAST = (m: Record<string, unknown>): void =>
-  window.postMessage({ [PM_TAG]: true, ...m }, "*");
-
-async function readStore(): Promise<{
-  scripts: ScriptEntry[];
-  styles: StyleEntry[];
-  devOrigin: string;
-}> {
-  const st = (await browser.storage.local.get(["scripts", "styles", "settings"])) as {
-    scripts?: ScriptEntry[];
-    styles?: StyleEntry[];
-    settings?: { devOrigin?: string };
-  };
-  return {
-    scripts: st.scripts ?? [],
-    styles: st.styles ?? [],
-    devOrigin: st.settings?.devOrigin ?? DEFAULT_DEV_ORIGIN,
-  };
-}
 
 /** WORKAROUND (Firefox MV3): storage.local.get from a content script at
  * document_start can hang while the extension is still starting up. Timeout
@@ -105,10 +86,14 @@ async function deliver(): Promise<void> {
       if (parts.length) stylePayload.push({ id: style.id, css: parts.join("\n") });
     }
 
-    // Deterministic handoff: the payload travels as an inert DOM element the
-    // runner discovers by initial scan or MutationObserver - never over the
-    // shared message bus, whose listener registration is a timing dependency.
+    // Deterministic handoff: the payload travels via two redundant inert
+    // carriers the runner discovers by initial scan, MutationObserver, or a
+    // short poll - never over the shared message bus, whose listener
+    // registration is a timing dependency. The dataset attribute is the
+    // primary channel (proven readable cross-world in headless); the element
+    // is a fallback for engines that limit attribute size.
     const payload: DeliveryPayload = { frameKey: url, scripts: prepared, styles: stylePayload };
+    const encoded = encodeDeliveryPayload(payload);
     let carrier = document.getElementById(PAYLOAD_ELEMENT_ID);
     if (!carrier) {
       // Unknown type keeps the element inert; content scripts write it, the
@@ -118,7 +103,8 @@ async function deliver(): Promise<void> {
       (carrier as HTMLScriptElement).type = "application/x-infinmonkey-payload";
       document.documentElement.appendChild(carrier);
     }
-    carrier.textContent = encodeDeliveryPayload(payload);
+    carrier.textContent = encoded;
+    document.documentElement.dataset[PAYLOAD_DATASET_KEY] = encoded;
     // Cross-world debug marker (in Firefox the page cannot see isolated-world window properties; dataset is shared ✓)
     document.documentElement.dataset.infinBridge = JSON.stringify({
       scripts: prepared.length,
