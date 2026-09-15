@@ -35,6 +35,26 @@ jobs:
           name: dist
           path: dist/
 
+  native:
+    name: Native (Swift package / macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Swift format lint
+        run: deno task swift:lint
+      - name: Swift package unit tests
+        run: swift test --disable-sandbox
+        working-directory: apple/InfinMonkeyCore
+      # Compiles the app + extension + the local package through Xcode's graph.
+      # Unsigned: CI verifies code, not provisioning.
+      - name: Build macOS app and extension (unsigned)
+        run: >
+          xcodebuild -project InfinMonkey.xcodeproj -scheme "InfinMonkey (macOS)"
+          -destination "platform=macOS" build CODE_SIGNING_ALLOWED=NO
+
   e2e-firefox:
     name: E2E（Firefox / geckodriver）
     runs-on: ubuntu-latest

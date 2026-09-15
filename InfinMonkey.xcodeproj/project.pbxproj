@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		EC79E6523058095E004AC3C9 /* InfinMonkeyCore in Frameworks */ = {isa = PBXBuildFile; productRef = ECBE7C02055A77C00072D70 /* InfinMonkeyCore */; };
+		EC79E6533058095E004AC3C9 /* InfinMonkeyCore in Frameworks */ = {isa = PBXBuildFile; productRef = ECBE7C04055A77C00072D70 /* InfinMonkeyCore */; };
+		EC79E6543058095E004AC3C9 /* InfinMonkeyCore in Frameworks */ = {isa = PBXBuildFile; productRef = ECBE7C03055A77C00072D70 /* InfinMonkeyCore */; };
+		EC79E6553058095E004AC3C9 /* InfinMonkeyCore in Frameworks */ = {isa = PBXBuildFile; productRef = ECBE7C05055A77C00072D70 /* InfinMonkeyCore */; };
 		ECBE70733055A77C00072D70 /* InfinMonkey Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = ECBE70723055A77C00072D70 /* InfinMonkey Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		ECBE707D3055A77C00072D70 /* InfinMonkey Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = ECBE707C3055A77C00072D70 /* InfinMonkey Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		ECBE70C23055A77C00072D70 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECBE70C13055A77C00072D70 /* SafariWebExtensionHandler.swift */; };
@@ -31,6 +35,10 @@
 		ECBE70E73055A77C00072D70 /* install in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CC3055A77C00072D70 /* install */; };
 		ECBE70E83055A77C00072D70 /* prompt in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CD3055A77C00072D70 /* prompt */; };
 		ECBE70E93055A77C00072D70 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = ECBE70CE3055A77C00072D70 /* icons */; };
+		ECBE7C10055A77C00072D70 /* InfinMonkeyCore in Sources */ = {isa = PBXBuildFile; productRef = ECBE7C02055A77C00072D70 /* InfinMonkeyCore */; };
+		ECBE7C11055A77C00072D70 /* InfinMonkeyCore in Sources */ = {isa = PBXBuildFile; productRef = ECBE7C03055A77C00072D70 /* InfinMonkeyCore */; };
+		ECBE7C12055A77C00072D70 /* InfinMonkeyCore in Sources */ = {isa = PBXBuildFile; productRef = ECBE7C04055A77C00072D70 /* InfinMonkeyCore */; };
+		ECBE7C13055A77C00072D70 /* InfinMonkeyCore in Sources */ = {isa = PBXBuildFile; productRef = ECBE7C05055A77C00072D70 /* InfinMonkeyCore */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -98,7 +106,11 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Assets.xcassets,
+				StoreLocation.swift,
+				ContentView.swift,
+				EntryDetailView.swift,
 				InfinMonkeyApp.swift,
+				StoreModel.swift,
 			);
 			target = ECBE70543055A77C00072D70 /* InfinMonkey (iOS) */;
 		};
@@ -120,7 +132,11 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Assets.xcassets,
+				StoreLocation.swift,
+				ContentView.swift,
+				EntryDetailView.swift,
 				InfinMonkeyApp.swift,
+				StoreModel.swift,
 			);
 			target = ECBE70663055A77C00072D70 /* InfinMonkey (macOS) */;
 		};
@@ -128,6 +144,20 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+			);
+			target = ECBE707B3055A77C00072D70 /* InfinMonkey Extension (macOS) */;
+		};
+		ECBE7D013055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey Extension (iOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				StoreLocation.swift,
+			);
+			target = ECBE70713055A77C00072D70 /* InfinMonkey Extension (iOS) */;
+		};
+		ECBE7D023055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey Extension (macOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				StoreLocation.swift,
 			);
 			target = ECBE707B3055A77C00072D70 /* InfinMonkey Extension (macOS) */;
 		};
@@ -139,6 +169,8 @@
 			exceptions = (
 				ECBE70A03055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey (iOS)" target */,
 				ECBE70AA3055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey (macOS)" target */,
+				ECBE7D013055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey Extension (iOS)" target */,
+				ECBE7D023055A77C00072D70 /* Exceptions for "apple/Shared (App)" folder in "InfinMonkey Extension (macOS)" target */,
 			);
 			path = "apple/Shared (App)";
 			sourceTree = "<group>";
@@ -179,6 +211,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EC79E6523058095E004AC3C9 /* InfinMonkeyCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -186,6 +219,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EC79E6543058095E004AC3C9 /* InfinMonkeyCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -193,6 +227,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EC79E6533058095E004AC3C9 /* InfinMonkeyCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -200,6 +235,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EC79E6553058095E004AC3C9 /* InfinMonkeyCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -279,6 +315,7 @@
 			);
 			name = "InfinMonkey (iOS)";
 			packageProductDependencies = (
+				ECBE7C02055A77C00072D70 /* InfinMonkeyCore */,
 			);
 			productName = "InfinMonkey (iOS)";
 			productReference = ECBE70553055A77C00072D70 /* InfinMonkey.app */;
@@ -303,6 +340,7 @@
 			);
 			name = "InfinMonkey (macOS)";
 			packageProductDependencies = (
+				ECBE7C03055A77C00072D70 /* InfinMonkeyCore */,
 			);
 			productName = "InfinMonkey (macOS)";
 			productReference = ECBE70673055A77C00072D70 /* InfinMonkey.app */;
@@ -326,6 +364,7 @@
 			);
 			name = "InfinMonkey Extension (iOS)";
 			packageProductDependencies = (
+				ECBE7C04055A77C00072D70 /* InfinMonkeyCore */,
 			);
 			productName = "InfinMonkey Extension (iOS)";
 			productReference = ECBE70723055A77C00072D70 /* InfinMonkey Extension.appex */;
@@ -349,6 +388,7 @@
 			);
 			name = "InfinMonkey Extension (macOS)";
 			packageProductDependencies = (
+				ECBE7C05055A77C00072D70 /* InfinMonkeyCore */,
 			);
 			productName = "InfinMonkey Extension (macOS)";
 			productReference = ECBE707C3055A77C00072D70 /* InfinMonkey Extension.appex */;
@@ -387,6 +427,9 @@
 			);
 			mainGroup = ECBE70383055A77A00072D70;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				ECBE7C013055A77C00072D70 /* XCLocalSwiftPackageReference "apple/InfinMonkeyCore" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = ECBE70563055A77C00072D70 /* Products */;
 			projectDirPath = "";
@@ -509,6 +552,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ECBE7C10055A77C00072D70 /* InfinMonkeyCore in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -516,6 +560,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ECBE7C11055A77C00072D70 /* InfinMonkeyCore in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -524,6 +569,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				ECBE70C23055A77C00072D70 /* SafariWebExtensionHandler.swift in Sources */,
+				ECBE7C12055A77C00072D70 /* InfinMonkeyCore in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -532,6 +578,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				ECBE70C33055A77C00072D70 /* SafariWebExtensionHandler.swift in Sources */,
+				ECBE7C13055A77C00072D70 /* InfinMonkeyCore in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -554,6 +601,7 @@
 		ECBE70A23055A77C00072D70 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "apple/iOS (Extension)/InfinMonkey.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -561,7 +609,7 @@
 				INFOPLIST_FILE = "apple/iOS (Extension)/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "InfinMonkey Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -577,6 +625,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "APP_GROUP $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -587,6 +636,7 @@
 		ECBE70A33055A77C00072D70 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "apple/iOS (Extension)/InfinMonkey.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -594,7 +644,7 @@
 				INFOPLIST_FILE = "apple/iOS (Extension)/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "InfinMonkey Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -610,6 +660,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "APP_GROUP $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -623,6 +674,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "apple/iOS (App)/InfinMonkey.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -632,7 +684,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -648,6 +700,7 @@
 				PRODUCT_NAME = InfinMonkey;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "APP_GROUP $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -661,6 +714,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "apple/iOS (App)/InfinMonkey.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -670,7 +724,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -686,6 +740,7 @@
 				PRODUCT_NAME = InfinMonkey;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "APP_GROUP $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -698,6 +753,7 @@
 		ECBE70AC3055A77C00072D70 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "apple/macOS (Extension)/InfinMonkey.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
@@ -724,6 +780,7 @@
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "APP_GROUP $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -733,6 +790,7 @@
 		ECBE70AD3055A77C00072D70 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "apple/macOS (Extension)/InfinMonkey.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
@@ -759,6 +817,7 @@
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "APP_GROUP $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -770,6 +829,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "apple/macOS (App)/InfinMonkey.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
@@ -797,6 +857,7 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "APP_GROUP $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -809,6 +870,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "apple/macOS (App)/InfinMonkey.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_APP_SANDBOX = YES;
@@ -836,6 +898,7 @@
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "APP_GROUP $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1012,6 +1075,32 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		ECBE7C013055A77C00072D70 /* XCLocalSwiftPackageReference "apple/InfinMonkeyCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = apple/InfinMonkeyCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		ECBE7C02055A77C00072D70 /* InfinMonkeyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = InfinMonkeyCore;
+		};
+		ECBE7C03055A77C00072D70 /* InfinMonkeyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = InfinMonkeyCore;
+		};
+		ECBE7C04055A77C00072D70 /* InfinMonkeyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = InfinMonkeyCore;
+		};
+		ECBE7C05055A77C00072D70 /* InfinMonkeyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = InfinMonkeyCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = ECBE70393055A77A00072D70 /* Project object */;
 }

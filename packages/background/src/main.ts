@@ -12,6 +12,7 @@ import type {
 import { compareVersions } from "@infinmonkey/shared/version";
 import { fetchWithTimeout, isRecord } from "@infinmonkey/shared/util";
 import { devClient } from "./devclient.ts";
+import { hasNativeSupport, nativeSync, PULL_ALARM } from "./native.ts";
 import { findTabIdByUrl } from "./injection.ts";
 import { abortXhr, handleDownload, handleXhr, resolveConnectAuth } from "./network.ts";
 import {
@@ -51,6 +52,14 @@ const notificationCallbacks = new Map<
   string,
   { nonce: string; tabId: number | null; scriptId: string; callbackId: string }
 >();
+
+// Native app mirror: pulls on wake, flushes and merges on the periodic alarm.
+browser.alarms.onAlarm.addListener((alarm: { name: string }) => {
+  if (alarm.name === PULL_ALARM) void nativeSync.onAlarm();
+});
+browser.runtime.onInstalled.addListener(() => nativeSync.start());
+browser.runtime.onStartup.addListener(() => nativeSync.start());
+nativeSync.start();
 
 browser.tabs.onRemoved.addListener((tabId: number) => {
   for (const [id, c] of notificationCallbacks) {
@@ -175,6 +184,11 @@ function route(
       return importAll(msg.data as never, msg.mode === "replace" ? "replace" : "merge").then((
         count,
       ) => ({ count }));
+    case "GetNativeStatus":
+      return {
+        supported: hasNativeSupport(),
+        ...nativeSync.status(),
+      };
     case "GetSettings":
       return getDB().then((db) => db.settings);
     case "SetSettings":

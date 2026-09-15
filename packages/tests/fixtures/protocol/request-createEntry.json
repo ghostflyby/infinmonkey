@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "id": "req-2",
+  "type": "createEntry",
+  "payload": {
+    "kind": "script",
+    "code": "// ==UserScript==\n// @name Demo\n// @match https://example.org/*\n// ==/UserScript==\nconsole.log(1);\n",
+    "meta": {
+      "name": "Demo",
+      "runAt": "document-end",
+      "noframes": false,
+      "matches": ["https://example.org/*"],
+      "grants": ["none"]
+    },
+    "source": { "type": "inline" },
+    "enabled": true
+  }
+}

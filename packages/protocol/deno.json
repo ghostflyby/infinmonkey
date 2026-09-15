@@ -1,0 +1,19 @@
+{
+  "name": "@infinmonkey/protocol",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./src/index.ts",
+    "./wire": "./src/index.ts"
+  },
+  "imports": {
+    "@infinmonkey/shared": "workspace:*"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "lib": [
+      "esnext",
+      "webworker"
+    ]
+  },
+  "license": "MPL-2.0"
+}

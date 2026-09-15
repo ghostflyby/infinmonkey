@@ -46,6 +46,7 @@
   },
   "workspace": [
     "packages/shared",
+    "packages/protocol",
     "packages/background",
     "packages/content",
     "packages/inject",

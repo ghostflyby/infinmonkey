@@ -35,7 +35,8 @@ as non-empty; E2E asserts on DOM markers/attributes (e.g. `data-infin-done`), ne
 
 Swift code in `apple/` (the Apple-native app) is formatted with swift-format using its default
 configuration (no `.swift-format` override file): `deno task swift:fmt` formats in place,
-`deno task swift:lint` checks.
+`deno task swift:lint` checks. See `apple/AGENTS.md` for the native-side layout, identity tree,
+data-modeling, concurrency, and build/verify conventions.
 
 ## Validation
 

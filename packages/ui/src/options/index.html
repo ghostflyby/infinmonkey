@@ -85,6 +85,13 @@
         <p
           class="hint">启动本地映射服务：<code>deno task devserver --dir 你的脚本目录</code>。映射后扩展在每次注入时实时拉取最新代码，样式保存即生效，脚本可自动刷新页面。</p>
         <div class="setting-row">
+          <label>Native App 同步</label>
+          <input id="set-native-enabled" type="checkbox" />
+          <span id="set-native-status"></span>
+        </div>
+        <p
+          class="hint">与 InfinMonkey 原生应用（macOS/iOS）通过 native messaging 双向同步脚本库；原生应用不可用时扩展继续以本地存储独立运行。</p>
+        <div class="setting-row">
           <label>导入 / 导出</label>
           <button id="btn-import2">导入 JSON</button>
           <button id="btn-export2">导出 JSON</button>

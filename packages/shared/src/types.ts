@@ -98,6 +98,8 @@ export interface PreparedScript {
 
 export interface Settings {
   devOrigin: string;
+  /** "native": mirror the script library with the companion app via native messaging. */
+  storageBackend: "local" | "native";
 }
 
 export interface PopupScriptInfo {
