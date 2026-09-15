@@ -220,14 +220,14 @@ try {
   // ---- 2. example.com: injection + GM ----
   console.log("[e2e] 2. example.com…");
   await nav("https://example.com/");
+  await sleep(12000); // TEMP-DIAG: 让 readStore 护栏(5s+0.5s+5s)完整暴露
   const r = await poll(
     20000,
-    // Gating: return an empty string until the demo element appears (falsy keeps poll waiting), then return all observations at once
-    `return document.getElementById('infin-demo') ? JSON.stringify({` +
-      `t:document.getElementById('infin-demo').textContent.slice(0,40),` +
-      `p:getComputedStyle(document.getElementById('infin-demo')).position,` +
+    `return JSON.stringify({` +
+      `t:document.getElementById('infin-demo')?.textContent.slice(0,40) ?? '',` +
+      `p:document.getElementById('infin-demo') ? getComputedStyle(document.getElementById('infin-demo')).position : '',` +
       `b:document.documentElement.dataset.infinBridge??'',` +
-      `e:document.documentElement.dataset.infinBridgeErr??''}) : ''`,
+      `e:document.documentElement.dataset.infinBridgeErr??''})`,
   );
   let demoText = "";
   let injPos = "";

@@ -7,6 +7,7 @@
 import { PM_TAG, RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
 import type { PreparedScript } from "@infinmonkey/shared/types";
 import { base64ToBytes, bytesToBase64, isRecord } from "@infinmonkey/shared/util";
+import { decodeDeliveryPayload, PAYLOAD_ELEMENT_ID } from "@infinmonkey/shared/payload";
 
 interface RunnerGlobal {
   __infinRunnerReady?: boolean;
@@ -47,19 +48,30 @@ function main(): void {
     });
   }
 
+  // Deterministic handoff: the payload is consumed by initial scan and by a
+  // MutationObserver, so both write-before-observe and observe-before-write
+  // orders are covered. No listener-registration timing involved.
+  const consumedPayloads = new Set<string>();
+  function consumePayloadElement(): void {
+    const el = document.getElementById(PAYLOAD_ELEMENT_ID);
+    const text = el?.textContent ?? "";
+    if (!text || consumedPayloads.has(text)) return;
+    const payload = decodeDeliveryPayload(text);
+    if (!payload) return;
+    consumedPayloads.add(text);
+    frameKey = payload.frameKey;
+    loadScripts(payload.scripts);
+    syncStyles(payload.styles);
+  }
+
+  const observer = new MutationObserver(() => consumePayloadElement());
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  consumePayloadElement();
+
   window.addEventListener("message", (ev: MessageEvent) => {
     if (ev.source !== window) return;
     const d = ev.data;
     if (!isRecord(d) || d[PM_TAG] !== true) return;
-    if (d.dir === "load") {
-      frameKey = String(d.frameKey ?? "");
-      loadScripts(d.scripts as PreparedScript[]);
-      return;
-    }
-    if (d.dir === "styles") {
-      syncStyles((d.styles ?? []) as { id: string; css: string }[]);
-      return;
-    }
     if (d.dir === "gm-res") {
       const p = pending.get(Number(d.id));
       if (!p) return;
