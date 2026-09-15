@@ -131,6 +131,14 @@ for (const browser of targets) {
       console.error(`[build] deno bundle failed (${outRel})`);
       Deno.exit(1);
     }
+    // The bundle output is a classic script with top-level var/function
+    // declarations. Firefox runs every content script of one extension in a
+    // SINGLE sandbox realm, so per-file globals leak between bundles and a
+    // later-loaded bundle overwrites an earlier one's helpers (observed as
+    // sporadic "X is not a function" delivery failures after minification).
+    // Wrap each bundle in an IIFE so every entry keeps a private scope.
+    const code = await Deno.readTextFile(outFile);
+    await Deno.writeTextFile(outFile, "(()=>{" + code + "})();");
   }
 
   await copyStatic(out);
