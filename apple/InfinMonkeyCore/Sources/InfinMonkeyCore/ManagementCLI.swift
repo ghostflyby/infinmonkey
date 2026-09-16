@@ -1,3 +1,4 @@
+import ArgumentParser
 import Foundation
 
 /// The management command line: the developer-facing half of the app binary.
@@ -8,11 +9,11 @@ import Foundation
 /// JSON to stdout so the output composes with `jq` and with tests; diagnostics
 /// go to stderr.
 ///
-/// Sandbox note: this runs inside the app's sandbox, so it cannot open arbitrary
-/// paths — `~/Downloads/foo.user.js` is refused by the sandbox, not by this code.
-/// Reading a file the shell opened (`infinmonkey import < script.user.js`) works
-/// because the file descriptor is opened by the parent; a caller-supplied path
-/// does not. That is why `import` reads stdin instead of taking a path.
+/// Argument syntax, help text, and usage errors come from ArgumentParser
+/// (`CLICommands.swift`); this type maps a parsed command to an `Invocation` and
+/// executes it against an injected store and streams. That split is what makes
+/// the executor testable — no command reaches for `FileHandle.standardOutput` or
+/// builds its own store — while the grammar stays declarative.
 public struct ManagementCLI: Sendable {
   public typealias Log = @Sendable (String) -> Void
 
@@ -42,32 +43,54 @@ public struct ManagementCLI: Sendable {
     self.log = log
   }
 
-  /// Entry for `main.swift`: runs the subcommand and ends the process with its
-  /// exit code. See `runToCompletionAndExit` for why this does not simply return.
-  public func runAndExit(subcommand: String, arguments: [String]) -> Never {
-    runToCompletionAndExit { await self.run(subcommand: subcommand, arguments: arguments) }
+  /// Entry for `main.swift`: runs the command and ends the process with its exit
+  /// code. See `runToCompletionAndExit` for why this does not simply return.
+  ///
+  /// - Parameter arguments: everything after the executable, as the shell split
+  ///   it. The browsers' calling convention never reaches here — `LaunchMode`
+  ///   recognizes a host launch first.
+  public func runAndExit(arguments: [String]) -> Never {
+    runToCompletionAndExit { await self.run(arguments: arguments) }
   }
 
-  public func run(subcommand: String, arguments: [String]) async -> Int32 {
+  /// Parses `arguments` and runs what they name.
+  public func run(arguments: [String]) async -> Int32 {
+    let command: ParsableCommand
     do {
-      switch subcommand {
-      case "version", "--version": return try emit(VersionReport())
-      case "status": return try await status()
-      case "list": return try await list()
-      case "export": return try await exportBundle()
-      case "import": return try await importFromStdin(arguments: arguments)
-      case "help", "--help", "-h":
-        // Asked for, not an error: help the user requested goes to stdout so
-        // `infinmonkey --help | less` shows something. Usage text printed
-        // *because* of a mistake stays on stderr (see the default case).
-        try write(Data(Self.usage.utf8))
-        return Exit.ok.rawValue
-      default:
-        log("infinmonkey: unknown subcommand '\(subcommand)'\n\n\(Self.usage)")
-        return Exit.usage.rawValue
+      command = try InfinMonkeyCommand.parseAsRoot(arguments)
+    } catch {
+      // A rejected command line. ArgumentParser owns that rendering (its
+      // renderer is internal, `exit(withError:)` is the supported way in), and
+      // it writes to stderr and exits with EX_USAGE — which is what a rejected
+      // command line should do.
+      InfinMonkeyCommand.exit(withError: error)
+    }
+
+    guard let invocation = Invocation(command) else {
+      // Help, or the bare root: nothing to run, so print the help that fits.
+      // This is a normal path, not an error — `--help` parses successfully
+      // rather than throwing, so the request arrives here as a command that maps
+      // to no invocation.
+      write(Data(Self.help(for: arguments).utf8))
+      return Exit.ok.rawValue
+    }
+    return await execute(invocation)
+  }
+
+  // MARK: - Dispatch
+
+  private func execute(_ invocation: Invocation) async -> Int32 {
+    do {
+      switch invocation {
+      case .version: return try emit(VersionReport())
+      case .status: return try await status()
+      case .list: return try await list()
+      case .export: return try await exportBundle()
+      case .importPayload(let fileName, let replace):
+        return try await importFromStdin(fileName: fileName, mode: replace ? .replace : .merge)
       }
     } catch {
-      log("infinmonkey: \(subcommand) failed: \(Self.describe(error))")
+      log("infinmonkey: \(invocation.name) failed: \(Self.describe(error))")
       return Exit.failed.rawValue
     }
   }
@@ -102,40 +125,33 @@ public struct ManagementCLI: Sendable {
   }
 
   private func exportBundle() async throws -> Int32 {
-    try write(try await service.exportData())
+    write(try await service.exportData())
     return Exit.ok.rawValue
   }
 
-  private func importFromStdin(arguments: [String]) async throws -> Int32 {
-    var mode = ImportMode.merge
-    var fileName: String?
-    for argument in arguments {
-      switch argument {
-      case "--replace": mode = .replace
-      case "--merge": mode = .merge
-      default:
-        guard !argument.hasPrefix("-") else {
-          log("infinmonkey: unknown option '\(argument)' for import\n\n\(Self.usage)")
-          return Exit.usage.rawValue
-        }
-        // The shell knows the name; a pipe does not, so the caller supplies it
-        // when what is on stdin is a single script or style rather than a bundle.
-        guard fileName == nil else {
-          // Silently keeping the last one would import under a name the caller
-          // did not intend, and the name decides what the bytes mean.
-          log(
-            "infinmonkey: import takes at most one name (got '\(fileName!)' and '\(argument)')\n\n\(Self.usage)"
-          )
-          return Exit.usage.rawValue
-        }
-        fileName = argument
-      }
-    }
+  private func importFromStdin(fileName: String?, mode: ImportMode) async throws -> Int32 {
+    // The shell knows the name; a pipe does not, so the caller supplies it when
+    // what is on stdin is a single script or style rather than a bundle.
     let name = fileName ?? "bundle.json"
     let data = input.readDataToEndOfFile()
     try await service.importData(data, fileName: name, mode: mode)
     log("infinmonkey: imported \(data.count) bytes from stdin as \(name) (\(mode.rawValue))")
     return Exit.ok.rawValue
+  }
+
+  // MARK: - Help
+
+  /// Help for whichever command the arguments name, or the root's.
+  ///
+  /// The candidates come from the configuration rather than a second list, so
+  /// adding a subcommand updates both the grammar and this lookup at once.
+  static func help(for arguments: [String]) -> String {
+    let types = [InfinMonkeyCommand.self] + InfinMonkeyCommand.configuration.subcommands
+    guard let name = arguments.first(where: { !$0.hasPrefix("-") }) else {
+      return InfinMonkeyCommand.helpMessage()
+    }
+    let match = types.first { $0.configuration.commandName == name }
+    return (match ?? InfinMonkeyCommand.self).helpMessage()
   }
 
   // MARK: - Reports
@@ -190,16 +206,14 @@ public struct ManagementCLI: Sendable {
   private func emit(_ report: some Encodable) throws -> Int32 {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-    try write(try encoder.encode(report))
+    var payload = try encoder.encode(report)
+    payload.append(0x0A)
+    write(payload)
     return Exit.ok.rawValue
   }
 
-  /// Writes a payload followed by a newline, so the output ends a line whether
-  /// or not the caller is looking at a terminal.
-  private func write(_ data: Data) throws {
-    var out = data
-    out.append(0x0A)
-    try output.write(contentsOf: out)
+  private func write(_ data: Data) {
+    try? output.write(contentsOf: data)
   }
 
   /// `ImportError` carries payloads rather than wording (the UI picks the
@@ -215,19 +229,17 @@ public struct ManagementCLI: Sendable {
       return "'\(name)': not valid UTF-8"
     }
   }
+}
 
-  static let usage = """
-    usage: infinmonkey <subcommand>
-
-      version           protocol and store versions this build speaks
-      status            store location, revision, entry counts
-      list              entries with id, kind, name, and enabled state (JSON)
-      export            the export bundle, to stdout
-      import [opts] [name]
-                        read a bundle (name ending .json, the default) or one
-                        entry (.user.js / .user.css) from stdin
-                        --merge (default) | --replace
-
-    Exit codes: 0 ok, 1 failed, 2 usage.
-    """
+extension Invocation {
+  /// The command name, for a failure message.
+  fileprivate var name: String {
+    switch self {
+    case .version: return "version"
+    case .status: return "status"
+    case .list: return "list"
+    case .export: return "export"
+    case .importPayload: return "import"
+    }
+  }
 }

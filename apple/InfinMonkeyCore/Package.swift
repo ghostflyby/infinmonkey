@@ -17,8 +17,17 @@ let package = Package(
   products: [
     .library(name: "InfinMonkeyCore", targets: ["InfinMonkeyCore"])
   ],
+  dependencies: [
+    // Command line parsing, help, and usage errors for the management CLI. It is
+    // a dependency of the target rather than of everything: only the CLI types
+    // import it, so the store, the router, and the frame layer stay free of it.
+    .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0")
+  ],
   targets: [
-    .target(name: "InfinMonkeyCore", swiftSettings: [.swiftLanguageMode(.v6)]),
+    .target(
+      name: "InfinMonkeyCore",
+      dependencies: [.product(name: "ArgumentParser", package: "swift-argument-parser")],
+      swiftSettings: [.swiftLanguageMode(.v6)]),
     .testTarget(
       name: "InfinMonkeyCoreTests",
       dependencies: ["InfinMonkeyCore"],

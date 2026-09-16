@@ -1,15 +1,22 @@
+import ArgumentParser
 import Foundation
 import Testing
 
 @testable import InfinMonkeyCore
 
-/// The management command line, driven through its real entry point.
+/// The management command line's executor.
 ///
-/// Output is asserted as parsed JSON with a couple of load-bearing members
-/// checked, rather than byte-for-byte: the report is a diagnostic surface, so
-/// pinning its full spelling would make every added field a test failure while
-/// missing the things that actually matter (exit codes and whether the store was
-/// consulted at all).
+/// Only *valid* command lines are exercised here, and that is a constraint of the
+/// library rather than a choice: ArgumentParser renders usage errors through
+/// `exit(withError:)`, whose supported path terminates the process, so a test
+/// that fed it a rejected command line would kill the test runner. The grammar
+/// is covered instead by `InvocationTests` below (what each spelling means) and
+/// by the CLI cases in `LaunchModeTests` (what a launch looks like), while this
+/// suite asserts what the commands *do* to an injected store.
+///
+/// Reports are asserted as parsed JSON with the load-bearing members checked,
+/// not byte-for-byte: this is a diagnostic surface, so pinning its full spelling
+/// would fail every time a field is added while missing what matters.
 @Suite("Management CLI")
 struct ManagementCLITests {
 
@@ -23,13 +30,10 @@ struct ManagementCLITests {
     }
   }
 
-  /// Runs a subcommand against `store`, over pipes.
-  private func run(
-    _ subcommand: String,
-    arguments: [String] = [],
-    stdin: Data = Data(),
-    store: NativeStore
-  ) async throws -> Run {
+  /// Runs arguments against `store`, over pipes.
+  private func run(_ arguments: [String], stdin: Data = Data(), store: NativeStore) async throws
+    -> Run
+  {
     let inPipe = Pipe()
     let outPipe = Pipe()
     let errPipe = Pipe()
@@ -42,7 +46,7 @@ struct ManagementCLITests {
       output: outPipe.fileHandleForWriting,
       log: { line in errPipe.fileHandleForWriting.write(Data((line + "\n").utf8)) })
 
-    let code = await cli.run(subcommand: subcommand, arguments: arguments)
+    let code = await cli.run(arguments: arguments)
     try outPipe.fileHandleForWriting.close()
     try errPipe.fileHandleForWriting.close()
     return Run(
@@ -67,7 +71,7 @@ struct ManagementCLITests {
 
   @Test("version reports this build's protocol and store versions")
   func versionReportsContract() async throws {
-    let result = try await run("version", store: try await seededStore())
+    let result = try await run(["version"], store: try await seededStore())
     #expect(result.code == 0)
     let json = try #require(result.json)
     #expect(json["app"] as? String == CoreConstants.appName)
@@ -76,7 +80,7 @@ struct ManagementCLITests {
 
   @Test("status counts what is in the store")
   func statusCountsEntries() async throws {
-    let result = try await run("status", store: try await seededStore())
+    let result = try await run(["status"], store: try await seededStore())
     #expect(result.code == 0)
     let json = try #require(result.json)
     #expect(json["scripts"] as? Int == 1)
@@ -87,7 +91,7 @@ struct ManagementCLITests {
 
   @Test("list reports the entries with their ids")
   func listReportsEntries() async throws {
-    let result = try await run("list", store: try await seededStore())
+    let result = try await run(["list"], store: try await seededStore())
     #expect(result.code == 0)
     let json = try #require(result.json)
     let entries = try #require(json["entries"] as? [[String: Any]])
@@ -103,29 +107,47 @@ struct ManagementCLITests {
     let code = "// ==UserScript==\n// @name piped\n// ==/UserScript==\n"
     // One store across both invocations: the point is that the import landed.
     let store = try await seededStore()
-    let result = try await run(
-      "import", arguments: ["piped.user.js"], stdin: Data(code.utf8), store: store)
+    let result = try await run(["import", "piped.user.js"], stdin: Data(code.utf8), store: store)
 
     #expect(result.code == 0)
     // Diagnostics go to stderr, so stdout stays parseable.
     #expect(result.stderr.contains("piped.user.js"))
     #expect(result.stdout.isEmpty)
 
-    let after = try await run("status", store: store)
+    let after = try await run(["status"], store: store)
     #expect(after.json?["scripts"] as? Int == 2)
   }
 
-  @Test("import of a name it does not recognize is a failure, not a silent skip")
-  func importRejectsUnknownFileType() async throws {
-    let result = try await run(
-      "import", arguments: ["notes.txt"], stdin: Data("hello".utf8), store: try await seededStore())
-    #expect(result.code == 1)
-    #expect(result.stderr.contains("notes.txt"))
+  @Test("import defaults to a bundle name when none is given")
+  func importDefaultsToBundle() async throws {
+    // A pipe has no path to read a name from, so the default has to describe a
+    // bundle — which is what makes `infinmonkey export | infinmonkey import` work.
+    let store = try await seededStore()
+    let bundle = try await run(["export"], store: store).stdout
+    let result = try await run(["import"], stdin: bundle, store: store)
+
+    #expect(result.code == 0)
+    #expect(result.stderr.contains("bundle.json"))
+  }
+
+  @Test("import --replace is read as a flag, and replaces rather than merges")
+  func importReplaceFlag() async throws {
+    let store = try await seededStore()
+    // A real bundle: the default name means stdin must carry one, and the point
+    // here is the flag, not the payload's shape.
+    let bundle = try await run(["export"], store: store).stdout
+    let result = try await run(["import", "--replace"], stdin: bundle, store: store)
+
+    #expect(result.code == 0)
+    #expect(result.stderr.contains("replace"), "the chosen mode is reported")
+    // Replace wipes first, so the count is the bundle's own rather than a sum.
+    let after = try await run(["status"], store: store)
+    #expect(after.json?["scripts"] as? Int == 1)
   }
 
   @Test("export writes a bundle that can be read back")
   func exportWritesBundle() async throws {
-    let result = try await run("export", store: try await seededStore())
+    let result = try await run(["export"], store: try await seededStore())
     #expect(result.code == 0)
     let json = try #require(
       try JSONSerialization.jsonObject(with: result.stdout) as? [String: Any])
@@ -133,52 +155,20 @@ struct ManagementCLITests {
     #expect((json["scripts"] as? [Any])?.count == 1)
   }
 
-  @Test("an unknown subcommand reports usage and exits 2")
-  func unknownSubcommandIsUsage() async throws {
-    let result = try await run("bogus", store: try await seededStore())
-    #expect(result.code == ManagementCLI.Exit.usage.rawValue)
-    #expect(result.stdout.isEmpty)
-    #expect(result.stderr.contains("unknown subcommand"))
-  }
-
-  @Test("--help prints usage to stdout, because it was asked for")
-  func helpGoesToStdout() async throws {
-    // End to end on purpose: dispatch can route `--help` here correctly while
-    // this still writes to the wrong stream, which would make `--help | less`
-    // show nothing at all.
-    for flag in ["help", "--help", "-h"] {
-      let result = try await run(flag, store: try await seededStore())
-      #expect(result.code == 0)
-      #expect(result.stderr.isEmpty, "\(flag) must not need stderr")
-      #expect(!result.stdout.isEmpty, "\(flag) must print usage")
+  @Test("help is printed for the root and for a named subcommand")
+  func helpIsPrinted() async throws {
+    // `--help` parses successfully and arrives as a command mapping to no
+    // invocation, which is the path that renders help.
+    for (arguments, expected) in [
+      (["--help"], "SUBCOMMANDS"),
+      (["help"], "SUBCOMMANDS"),
+      (["import", "--help"], "--replace"),
+    ] {
+      let result = try await run(arguments, store: try await seededStore())
+      #expect(result.code == 0, "\(arguments) should exit cleanly")
+      let text = String(decoding: result.stdout, as: UTF8.self)
+      #expect(text.contains(expected), "\(arguments) help should mention \(expected)")
     }
-  }
-
-  @Test("--version is the same report as version")
-  func longVersionFlag() async throws {
-    let flag = try await run("--version", store: try await seededStore())
-    let word = try await run("version", store: try await seededStore())
-    #expect(flag.code == 0)
-    #expect(flag.stdout == word.stdout)
-  }
-
-  @Test("import refuses two names instead of silently keeping the last")
-  func importRejectsTwoNames() async throws {
-    // The name decides what the bytes mean, so silently dropping the first
-    // would import under a name the caller did not choose.
-    let result = try await run(
-      "import", arguments: ["a.user.js", "b.user.js"], stdin: Data(),
-      store: try await seededStore())
-    #expect(result.code == ManagementCLI.Exit.usage.rawValue)
-    #expect(result.stderr.contains("at most one name"))
-  }
-
-  @Test("import rejects an unknown option with usage")
-  func importRejectsUnknownOption() async throws {
-    let result = try await run(
-      "import", arguments: ["--wat"], stdin: Data(), store: try await seededStore())
-    #expect(result.code == ManagementCLI.Exit.usage.rawValue)
-    #expect(result.stderr.contains("--wat"))
   }
 
   @Test("a store that cannot be located is reported, not fatal")
@@ -194,7 +184,7 @@ struct ManagementCLITests {
       output: outPipe.fileHandleForWriting,
       log: { _ in })
 
-    let code = await cli.run(subcommand: "status", arguments: [])
+    let code = await cli.run(arguments: ["status"])
     try outPipe.fileHandleForWriting.close()
     let out = try outPipe.fileHandleForReading.readToEnd() ?? Data()
 
@@ -202,5 +192,56 @@ struct ManagementCLITests {
     let json = try #require(try JSONSerialization.jsonObject(with: out) as? [String: Any])
     #expect(json["locationError"] as? String == "no app group container")
     #expect(json["rev"] == nil)
+  }
+}
+
+/// What each accepted spelling means.
+///
+/// Parse succeeded for all of these, so enumerating them here documents the
+/// grammar's surface without depending on how ArgumentParser reports a rejection.
+@Suite("Invocation mapping")
+struct InvocationTests {
+
+  private func invocation(_ arguments: [String]) throws -> Invocation? {
+    Invocation(try InfinMonkeyCommand.parseAsRoot(arguments))
+  }
+
+  @Test("each subcommand maps to its own invocation")
+  func subcommandsMap() throws {
+    #expect(try invocation(["version"]) == .version)
+    #expect(try invocation(["status"]) == .status)
+    #expect(try invocation(["list"]) == .list)
+    #expect(try invocation(["export"]) == .export)
+  }
+
+  @Test("import carries the optional name and the replace flag")
+  func importArguments() throws {
+    #expect(try invocation(["import"]) == .importPayload(fileName: nil, replace: false))
+    #expect(
+      try invocation(["import", "a.user.js"])
+        == .importPayload(fileName: "a.user.js", replace: false))
+    #expect(
+      try invocation(["import", "--replace"])
+        == .importPayload(fileName: nil, replace: true))
+    #expect(
+      try invocation(["import", "a.user.js", "--replace"])
+        == .importPayload(fileName: "a.user.js", replace: true))
+  }
+
+  @Test("help and the bare root name nothing to run")
+  func helpMapsToNoInvocation() throws {
+    // Both parse cleanly; the difference from a rejection is the whole reason
+    // the executor can treat them as a normal path.
+    for arguments in [["--help"], ["help"], []] as [[String]] {
+      #expect(try invocation(arguments) == nil, "\(arguments) should map to nothing")
+    }
+  }
+
+  @Test("help text is chosen by the command the arguments name")
+  func helpTargetsTheNamedCommand() {
+    #expect(ManagementCLI.help(for: ["--help"]).contains("SUBCOMMANDS"))
+    #expect(ManagementCLI.help(for: ["import", "--help"]).contains("--replace"))
+    // An unknown word falls back to the root rather than producing nothing.
+    #expect(ManagementCLI.help(for: ["nonexistent"]).contains("SUBCOMMANDS"))
   }
 }

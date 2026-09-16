@@ -17,8 +17,11 @@ import SwiftUI
   case .nativeHost(let invocation):
     runNativeHost(invocation)
   case .management(let subcommand, let arguments):
+    // The subcommand is re-joined with its arguments: parsing belongs to
+    // ArgumentParser, and `LaunchMode` only had to recognize that this launch is
+    // the command line at all.
     ManagementCLI(service: serviceForThisProcess())
-      .runAndExit(subcommand: subcommand, arguments: arguments)
+      .runAndExit(arguments: [subcommand] + arguments)
   case .gui:
     break  // fall through to the app
   }
