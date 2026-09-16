@@ -21,10 +21,6 @@ struct ManagementCLITests {
     var json: [String: Any]? {
       try? JSONSerialization.jsonObject(with: stdout) as? [String: Any]
     }
-    var lines: [String] {
-      String(decoding: stdout, as: UTF8.self)
-        .split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
-    }
   }
 
   /// Runs a subcommand against `store`, over pipes.
@@ -143,6 +139,38 @@ struct ManagementCLITests {
     #expect(result.code == ManagementCLI.Exit.usage.rawValue)
     #expect(result.stdout.isEmpty)
     #expect(result.stderr.contains("unknown subcommand"))
+  }
+
+  @Test("--help prints usage to stdout, because it was asked for")
+  func helpGoesToStdout() async throws {
+    // End to end on purpose: dispatch can route `--help` here correctly while
+    // this still writes to the wrong stream, which would make `--help | less`
+    // show nothing at all.
+    for flag in ["help", "--help", "-h"] {
+      let result = try await run(flag, store: try await seededStore())
+      #expect(result.code == 0)
+      #expect(result.stderr.isEmpty, "\(flag) must not need stderr")
+      #expect(!result.stdout.isEmpty, "\(flag) must print usage")
+    }
+  }
+
+  @Test("--version is the same report as version")
+  func longVersionFlag() async throws {
+    let flag = try await run("--version", store: try await seededStore())
+    let word = try await run("version", store: try await seededStore())
+    #expect(flag.code == 0)
+    #expect(flag.stdout == word.stdout)
+  }
+
+  @Test("import refuses two names instead of silently keeping the last")
+  func importRejectsTwoNames() async throws {
+    // The name decides what the bytes mean, so silently dropping the first
+    // would import under a name the caller did not choose.
+    let result = try await run(
+      "import", arguments: ["a.user.js", "b.user.js"], stdin: Data(),
+      store: try await seededStore())
+    #expect(result.code == ManagementCLI.Exit.usage.rawValue)
+    #expect(result.stderr.contains("at most one name"))
   }
 
   @Test("import rejects an unknown option with usage")

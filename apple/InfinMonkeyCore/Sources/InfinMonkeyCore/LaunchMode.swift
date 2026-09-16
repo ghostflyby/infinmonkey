@@ -79,12 +79,17 @@ extension LaunchMode {
   /// |---|---|
   /// | `<…>.json` `[addon-id]` | Firefox host |
   /// | `chrome-extension://<id>/` | Chrome host |
-  /// | `<subcommand> [args…]` | management |
-  /// | nothing, or a `-flag` | GUI |
+  /// | `--flag`, `<subcommand> [args…]` | management |
+  /// | nothing, or a single-dash `-flag` | GUI |
   ///
-  /// A dash-prefixed first argument means GUI because that is what macOS and
-  /// Xcode inject into an ordinary launch; anything else is a subcommand
-  /// attempt, so a typo reports usage instead of silently opening a window.
+  /// The dash rule is the load-bearing one. macOS and Xcode launch an ordinary
+  /// app with single-dash arguments (`-NSDocumentRevisionsDebugMode YES`), and
+  /// AppKit may read any of them as a user default — so a single-dash argument
+  /// must leave this process as an app, or launching from Finder would print
+  /// usage instead of opening a window. Long options use the POSIX double dash
+  /// (`--help`), which the system does not inject, so those reach the command
+  /// line. Anything else is a subcommand attempt, and a typo there reports usage
+  /// rather than silently opening a window.
   public static func parse(arguments: [String]) -> LaunchMode {
     guard arguments.count > 1 else { return .gui }
     let first = arguments[1]
@@ -98,7 +103,7 @@ extension LaunchMode {
     if first.hasPrefix("chrome-extension://") {
       return .nativeHost(NativeHostInvocation(peer: .chrome(origin: first)))
     }
-    if first.hasPrefix("-") { return .gui }
+    if first.hasPrefix("-") && !first.hasPrefix("--") { return .gui }
 
     return .management(subcommand: first, arguments: Array(arguments.dropFirst(2)))
   }

@@ -14,9 +14,14 @@ public struct StdioHostSession: Sendable {
   /// Where diagnostics go. Injected so tests can capture them.
   public typealias Log = @Sendable (String) -> Void
 
-  /// Largest frame accepted from the browser. Firefox allows 4 GB and Chrome
-  /// 64 MB, so the smaller limit is the one that keeps a garbage length prefix
-  /// from asking for an allocation this process cannot serve.
+  /// Largest frame accepted from the browser.
+  ///
+  /// The browsers disagree here and neither bound is a real limit on what they
+  /// will send: Firefox permits up to 4 GB, while the 64 MB in Chromium is only
+  /// a histogram bucket ceiling. This side therefore picks its own allocation
+  /// bound, stricter than both, so a garbage length prefix cannot ask for memory
+  /// this process has no reason to commit. A legitimate frame above it is
+  /// refused rather than attempted.
   public static let maxIncomingBytes = 64 * 1024 * 1024
 
   private let input: FileHandle
@@ -95,7 +100,7 @@ public struct StdioHostSession: Sendable {
     }
     guard length > 0 else { return Data() }
     guard let body = try readExactly(length) else {
-      throw FrameCodec.Failure.truncatedPrefix(expected: length, got: 0)
+      throw FrameCodec.Failure.truncatedFrame(expected: length, got: 0)
     }
     return body
   }
@@ -128,6 +133,8 @@ public struct StdioHostSession: Sendable {
     guard let failure = error as? FrameCodec.Failure else { return String(describing: error) }
     switch failure {
     case .truncatedPrefix(let expected, let got):
+      return "stdin ended inside a length prefix (wanted \(expected) bytes, got \(got))"
+    case .truncatedFrame(let expected, let got):
       return "stdin ended mid-frame (wanted \(expected) bytes, got \(got))"
     case .oversizedOutgoing(let bytes):
       return "response of \(bytes) bytes exceeds the \(FrameCodec.maxOutgoingBytes)-byte limit"

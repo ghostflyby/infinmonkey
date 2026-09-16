@@ -50,13 +50,16 @@ public struct ManagementCLI: Sendable {
   public func run(subcommand: String, arguments: [String]) async -> Int32 {
     do {
       switch subcommand {
-      case "version": return try emit(VersionReport())
+      case "version", "--version": return try emit(VersionReport())
       case "status": return try await status()
       case "list": return try await list()
       case "export": return try await exportBundle()
       case "import": return try await importFromStdin(arguments: arguments)
       case "help", "--help", "-h":
-        log(Self.usage)
+        // Asked for, not an error: help the user requested goes to stdout so
+        // `infinmonkey --help | less` shows something. Usage text printed
+        // *because* of a mistake stays on stderr (see the default case).
+        try write(Data(Self.usage.utf8))
         return Exit.ok.rawValue
       default:
         log("infinmonkey: unknown subcommand '\(subcommand)'\n\n\(Self.usage)")
@@ -104,7 +107,7 @@ public struct ManagementCLI: Sendable {
 
   private func importFromStdin(arguments: [String]) async throws -> Int32 {
     var mode = ImportMode.merge
-    var fileName = "bundle.json"
+    var fileName: String?
     for argument in arguments {
       switch argument {
       case "--replace": mode = .replace
@@ -116,12 +119,21 @@ public struct ManagementCLI: Sendable {
         }
         // The shell knows the name; a pipe does not, so the caller supplies it
         // when what is on stdin is a single script or style rather than a bundle.
+        guard fileName == nil else {
+          // Silently keeping the last one would import under a name the caller
+          // did not intend, and the name decides what the bytes mean.
+          log(
+            "infinmonkey: import takes at most one name (got '\(fileName!)' and '\(argument)')\n\n\(Self.usage)"
+          )
+          return Exit.usage.rawValue
+        }
         fileName = argument
       }
     }
+    let name = fileName ?? "bundle.json"
     let data = input.readDataToEndOfFile()
-    try await service.importData(data, fileName: fileName, mode: mode)
-    log("infinmonkey: imported \(data.count) bytes from stdin as \(fileName) (\(mode.rawValue))")
+    try await service.importData(data, fileName: name, mode: mode)
+    log("infinmonkey: imported \(data.count) bytes from stdin as \(name) (\(mode.rawValue))")
     return Exit.ok.rawValue
   }
 

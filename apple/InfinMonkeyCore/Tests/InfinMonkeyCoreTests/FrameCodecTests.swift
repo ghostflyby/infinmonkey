@@ -54,4 +54,26 @@ struct FrameCodecTests {
     #expect(FrameCodec.length(from: Data([0x01, 0x02, 0x03])) == nil)
     #expect(FrameCodec.length(from: Data()) == nil)
   }
+
+  @Test("a prefix at an unaligned offset still reads")
+  func unalignedPrefixReads() throws {
+    // A `Data` slice shares storage with its parent and keeps the parent's
+    // indices, so a prefix that follows an odd number of bytes lands on an
+    // unaligned address. Reading that with an alignment-assuming load traps in
+    // debug builds — the configuration a developer actually runs. `subdata`
+    // would not exercise this: it copies into fresh, aligned storage.
+    let body = Data(#"{"v":1}"#.utf8)
+    let frame = try FrameCodec.encode(body)
+
+    // Every padding length 1...3 puts the prefix at a different misalignment.
+    for padding in 1...3 {
+      var padded = Data(repeating: 0xFF, count: padding)
+      padded.append(frame)
+      let start = padded.startIndex + padding
+      let slice = padded[start..<(start + FrameCodec.prefixBytes)]
+      #expect(
+        FrameCodec.length(from: slice) == UInt32(body.count),
+        "a prefix after \(padding) padding byte(s) must still decode")
+    }
+  }
 }

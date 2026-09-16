@@ -22,6 +22,8 @@ public enum FrameCodec {
     /// stdin ended part-way through a length prefix: a truncated frame, not a
     /// clean close.
     case truncatedPrefix(expected: Int, got: Int)
+    /// stdin ended part-way through a frame body.
+    case truncatedFrame(expected: Int, got: Int)
     /// A response larger than the browser will accept.
     case oversizedOutgoing(Int)
     /// A length prefix that cannot be a frame.
@@ -44,7 +46,10 @@ public enum FrameCodec {
   /// The length a prefix declares, in native byte order.
   public static func length(from prefix: Data) -> UInt32? {
     guard prefix.count == prefixBytes else { return nil }
-    // `load` is unaligned-safe and reads in native order, matching `encode`.
-    return prefix.withUnsafeBytes { $0.load(as: UInt32.self) }
+    // `loadUnaligned` makes no alignment assumption, which matters because this
+    // takes arbitrary `Data`: a slice of a larger buffer keeps its original
+    // offset, and `load(as:)` traps on a misaligned pointer in debug builds.
+    // Reading in native order is what makes this the inverse of `encode`.
+    return prefix.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }
   }
 }

@@ -16,12 +16,28 @@ struct LaunchModeTests {
   @Test("flags injected by the system stay in the GUI branch")
   func systemFlagsAreGUI() {
     // macOS and Xcode launch an app with arguments like these; treating them as
-    // a subcommand would open the usage text instead of the app.
-    let mode = LaunchMode.parse(arguments: [
-      "/Applications/InfinMonkey.app/Contents/MacOS/InfinMonkey",
-      "-NSDocumentRevisionsDebugMode", "YES",
-    ])
-    #expect(mode == .gui)
+    // a subcommand would open the usage text instead of the app. AppKit may read
+    // any single-dash argument as a user default, so they must all stay GUI.
+    for flag in ["-NSDocumentRevisionsDebugMode", "-ApplePersistenceIgnoreState", "-psn_0_12345"] {
+      #expect(
+        LaunchMode.parse(arguments: [
+          "/Applications/InfinMonkey.app/Contents/MacOS/InfinMonkey", flag,
+        ]) == .gui,
+        "\(flag) must not be taken for a subcommand")
+    }
+  }
+
+  @Test("POSIX long options reach the command line, not the GUI")
+  func longOptionsAreCommands() {
+    // The other half of the dash rule: the system does not inject double-dash
+    // arguments, so `--help` has to be served by the CLI. Treating it as a GUI
+    // launch opened a window instead of printing usage.
+    for option in ["--help", "--version"] {
+      #expect(
+        LaunchMode.parse(arguments: ["/path/to/InfinMonkey", option])
+          == .management(subcommand: option, arguments: []),
+        "\(option) must reach the management CLI")
+    }
   }
 
   @Test("Firefox's shape is a manifest path plus the add-on id")
