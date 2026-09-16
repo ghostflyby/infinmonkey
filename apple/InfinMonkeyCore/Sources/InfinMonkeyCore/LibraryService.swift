@@ -113,11 +113,22 @@ public struct LibraryService: Sendable {
   }
 
   /// Imports either a bundle (`.json`) or a single script/style file.
-  public func importFile(at url: URL) async throws {
-    let name = url.lastPathComponent
-    let data = try Data(contentsOf: url)
+  public func importFile(at url: URL, mode: ImportMode = .merge) async throws {
+    try await importData(
+      try Data(contentsOf: url), fileName: url.lastPathComponent, mode: mode)
+  }
 
-    if name.hasSuffix(".json") {
+  /// Imports a bundle or a single script/style file that is already in memory.
+  ///
+  /// `fileName` decides what the bytes mean, exactly as `importFile(at:)` uses
+  /// the path: a `.json` name is a bundle, a `.user.js`/`.user.css` name is one
+  /// entry. It is a parameter because the two callers differ in what they know
+  /// — a file import has a URL, while an import from stdin (the only channel a
+  /// sandboxed CLI can read) has nothing but what the caller says.
+  public func importData(
+    _ data: Data, fileName: String, mode: ImportMode = .merge
+  ) async throws {
+    if fileName.hasSuffix(".json") {
       let bundle: WireBundle
       do {
         bundle = try JSONDecoder().decode(WireBundle.self, from: data)
@@ -126,15 +137,15 @@ public struct LibraryService: Sendable {
       }
       // Outside the catch above: a store failure here is an io error, not a
       // verdict on the file.
-      _ = try await store.importBundle(bundle.exportBundle(), mode: .merge)
+      _ = try await store.importBundle(bundle.exportBundle(), mode: mode)
       return
     }
 
-    guard let kind = StoreLayout.kind(ofFileName: name) else {
-      throw ImportError.unrecognizedFileType(name)
+    guard let kind = StoreLayout.kind(ofFileName: fileName) else {
+      throw ImportError.unrecognizedFileType(fileName)
     }
     guard let code = String(data: data, encoding: .utf8) else {
-      throw ImportError.notUTF8(name)
+      throw ImportError.notUTF8(fileName)
     }
     // No metadata: only the extension parses userscript headers, and it does so
     // on its next connection.

@@ -11,11 +11,24 @@ import Foundation
 public actor ProtocolRouter {
   private let store: any EntryStoring
   private let platform: String
+  /// Largest response this transport can carry, or nil when it has no limit.
+  ///
+  /// A transport smaller than a response is a transport fault, not a reason to
+  /// drop the connection: the router answers with an error frame instead, so a
+  /// caller gets a diagnosable reply and the next request still works. The
+  /// native messaging host passes its frame limit here; the appex, whose reply
+  /// is an in-process object graph, leaves it nil.
+  private let maxResponseBytes: Int?
 
-  /// - Parameter platform: defaults to the platform this build runs on.
-  public init(store: any EntryStoring, platform: String = PlatformName.current) {
+  /// - Parameter maxResponseBytes: the transport's response-size limit, if any.
+  public init(
+    store: any EntryStoring,
+    platform: String = PlatformName.current,
+    maxResponseBytes: Int? = nil
+  ) {
     self.store = store
     self.platform = platform
+    self.maxResponseBytes = maxResponseBytes
   }
 
   // MARK: - Entry points
@@ -46,7 +59,7 @@ public actor ProtocolRouter {
         id: envelope.id ?? "unknown", code: "badRequest", message: text
       ).body()
     }
-    return await respond(to: message).body()
+    return sized(await respond(to: message), id: message.id)
   }
 
   /// Convenience for a text transport: JSON in, JSON out.
@@ -171,6 +184,27 @@ public actor ProtocolRouter {
   }
 
   // MARK: - Helpers
+
+  /// Replaces a response the transport cannot carry with an error frame saying so.
+  ///
+  /// Answering beats failing: `listEntries` returns every entry's `code`, so a
+  /// library with a few large scripts exceeds the host's 1 MB frame limit
+  /// legitimately. Letting the write fail there would end the session — one
+  /// oversized reply and every later request is dead, with a single stderr line
+  /// as the only clue. The error frame names the fault instead, and the
+  /// connection survives it.
+  private func sized(_ response: ResponseFrame, id: String) -> JSONBody {
+    guard let limit = maxResponseBytes else { return response.body() }
+    let encoded = response.jsonData()
+    guard encoded.count > limit else { return response.body() }
+    return ResponseFrame.failure(
+      id: id,
+      code: "responseTooLarge",
+      message:
+        "response of \(encoded.count) bytes exceeds the transport limit of \(limit); "
+        + "narrow the request (for example, list entries without their code)"
+    ).body()
+  }
 
   /// The envelope members readable even when the rest of a frame fails to
   /// decode: `id` and `type` are decoded before the op, so an error reply can

@@ -1,0 +1,147 @@
+import Foundation
+
+/// Who is on the other end of a native messaging connection.
+///
+/// The browser supplies this on the host's command line and it cannot be forged
+/// from the extension side: Firefox passes the add-on id as declared in
+/// `browser_specific_settings`, Chrome the extension's origin. The host is the
+/// most privileged process in the system, so a peer it does not recognize is
+/// refused rather than served.
+public enum PeerIdentity: Sendable, Equatable {
+  case firefox(addonID: String)
+  case chrome(origin: String)
+
+  /// The origin spelling Chrome uses on the command line and in a host
+  /// manifest's `allowed_origins` — built here so the expected value cannot be
+  /// misspelled by hand (the trailing slash is part of the origin).
+  public static func chromeOrigin(extensionID: String) -> String {
+    "chrome-extension://\(extensionID)/"
+  }
+}
+
+/// The peers this build is willing to serve.
+public struct AcceptedPeers: Sendable, Equatable {
+  public var addonIDs: Set<String>
+  public var origins: Set<String>
+
+  public init(addonIDs: Set<String> = [], origins: Set<String> = []) {
+    self.addonIDs = addonIDs
+    self.origins = origins
+  }
+
+  /// Reads the configured peers out of an Info.plist.
+  ///
+  /// The values live in the plist (populated from build settings) rather than in
+  /// code, for the same reason the app group id does: they describe the
+  /// *installed* extension, and a literal would go stale the moment either
+  /// side's identity is bumped. Blank values are dropped, so a key that is
+  /// present but unset accepts nobody — this is a gate, so an unconfigured build
+  /// must fail closed rather than open.
+  ///
+  /// Takes the values rather than a `Bundle` so the fail-closed behaviour is
+  /// covered by tests instead of only by launching the binary.
+  public static func from(
+    firefoxAddonID: String?,
+    chromeExtensionID: String?
+  ) -> AcceptedPeers {
+    var peers = AcceptedPeers()
+    if let addonID = normalized(firefoxAddonID) {
+      peers.addonIDs.insert(addonID)
+    }
+    if let extensionID = normalized(chromeExtensionID) {
+      peers.origins.insert(PeerIdentity.chromeOrigin(extensionID: extensionID))
+    }
+    return peers
+  }
+
+  /// The keys the plist carries, so the entry point and the tests agree on them.
+  public enum PlistKey {
+    public static let firefoxAddonID = "InfinMonkeyFirefoxAddonID"
+    public static let chromeExtensionID = "InfinMonkeyChromeExtensionID"
+  }
+
+  /// A configured value, or nil when absent or blank.
+  private static func normalized(_ value: String?) -> String? {
+    guard let value, !value.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+    return value
+  }
+
+  /// Whether `identity` is one of the peers this build accepts.
+  ///
+  /// Comparison is exact: these strings are the browser's claim about who is
+  /// calling, and a near miss is a build-configuration fault to fix rather than
+  /// something to normalize away. An empty set therefore accepts nobody.
+  public func allows(_ identity: PeerIdentity) -> Bool {
+    switch identity {
+    case .firefox(let addonID): return addonIDs.contains(addonID)
+    case .chrome(let origin): return origins.contains(origin)
+    }
+  }
+
+  public var isEmpty: Bool { addonIDs.isEmpty && origins.isEmpty }
+}
+
+/// A native messaging invocation, as the browser hands it to the host.
+public struct NativeHostInvocation: Sendable, Equatable {
+  public var peer: PeerIdentity
+  /// Firefox passes the manifest path first; Chrome passes no manifest.
+  public var manifestPath: String?
+
+  public init(peer: PeerIdentity, manifestPath: String? = nil) {
+    self.peer = peer
+    self.manifestPath = manifestPath
+  }
+}
+
+/// What this process was asked to do, decided from its command line.
+public enum LaunchMode: Sendable, Equatable {
+  /// The normal launch: an app, or an extension's message arriving at the appex.
+  case gui
+  /// A browser started us as its native messaging host.
+  case nativeHost(NativeHostInvocation)
+  /// A developer ran a management subcommand.
+  case management(subcommand: String, arguments: [String])
+}
+
+extension LaunchMode {
+  /// Reads the mode out of a process's arguments (`arguments[0]` is the
+  /// executable, which only the browsers' calling convention is read from).
+  ///
+  /// The rule set is deliberately small, because the host cannot be told apart
+  /// by a flag: a host manifest's `path` is spawned directly (no shell), and the
+  /// only arguments are the ones the browser adds itself — so the mode has to be
+  /// recognized from those.
+  ///
+  /// | arguments after the executable | mode |
+  /// |---|---|
+  /// | `<…>.json` `[addon-id]` | Firefox host |
+  /// | `chrome-extension://<id>/` | Chrome host |
+  /// | `--flag`, `<subcommand> [args…]` | management |
+  /// | nothing, or a single-dash `-flag` | GUI |
+  ///
+  /// The dash rule is the load-bearing one. macOS and Xcode launch an ordinary
+  /// app with single-dash arguments (`-NSDocumentRevisionsDebugMode YES`), and
+  /// AppKit may read any of them as a user default — so a single-dash argument
+  /// must leave this process as an app, or launching from Finder would print
+  /// usage instead of opening a window. Long options use the POSIX double dash
+  /// (`--help`), which the system does not inject, so those reach the command
+  /// line. Anything else is a subcommand attempt, and a typo there reports usage
+  /// rather than silently opening a window.
+  public static func parse(arguments: [String]) -> LaunchMode {
+    guard arguments.count > 1 else { return .gui }
+    let first = arguments[1]
+
+    if first.hasSuffix(".json") {
+      // Firefox: [manifest-path, addon-id] (addons.mozilla.org documents both).
+      let addonID = arguments.count > 2 ? arguments[2] : ""
+      return .nativeHost(
+        NativeHostInvocation(peer: .firefox(addonID: addonID), manifestPath: first))
+    }
+    if first.hasPrefix("chrome-extension://") {
+      return .nativeHost(NativeHostInvocation(peer: .chrome(origin: first)))
+    }
+    if first.hasPrefix("-") && !first.hasPrefix("--") { return .gui }
+
+    return .management(subcommand: first, arguments: Array(arguments.dropFirst(2)))
+  }
+}

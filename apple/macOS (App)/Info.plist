@@ -4,5 +4,12 @@
 <dict>
 	<key>InfinMonkeyAppGroupID</key>
 	<string>$(APP_GROUP_ID)</string>
+	<!-- Native messaging peers this binary may serve. Populated from build
+	     settings so the installed extension's identity is stated once rather
+	     than compiled in; a missing or blank value accepts nobody. -->
+	<key>InfinMonkeyFirefoxAddonID</key>
+	<string>$(INFINMONKEY_FIREFOX_ADDON_ID)</string>
+	<key>InfinMonkeyChromeExtensionID</key>
+	<string>$(INFINMONKEY_CHROME_EXTENSION_ID)</string>
 </dict>
 </plist>
