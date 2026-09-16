@@ -17,11 +17,13 @@ import Foundation
 public struct ManagementCLI: Sendable {
   public typealias Log = @Sendable (String) -> Void
 
-  /// Exit codes, conventional for a command line tool.
+  /// Exit codes this executor returns.
+  ///
+  /// A rejected command line is not here: ArgumentParser owns that path and
+  /// exits with EX_USAGE (64) itself, which is why the executor never returns a
+  /// usage code of its own.
   public enum Exit: Int32 {
     case ok = 0
-    /// The command line itself was wrong.
-    case usage = 2
     /// The command ran and failed.
     case failed = 1
   }
@@ -71,7 +73,9 @@ public struct ManagementCLI: Sendable {
       // This is a normal path, not an error — `--help` parses successfully
       // rather than throwing, so the request arrives here as a command that maps
       // to no invocation.
-      write(Data(Self.help(for: arguments).utf8))
+      // Help does not end in a newline of its own, so the shell prompt would
+      // land on the last line.
+      write(Data((Self.help(for: arguments) + "\n").utf8))
       return Exit.ok.rawValue
     }
     return await execute(invocation)
@@ -143,15 +147,20 @@ public struct ManagementCLI: Sendable {
 
   /// Help for whichever command the arguments name, or the root's.
   ///
-  /// The candidates come from the configuration rather than a second list, so
-  /// adding a subcommand updates both the grammar and this lookup at once.
+  /// Candidates come from the configuration rather than a second list, so adding
+  /// a subcommand updates both the grammar and this lookup at once. The match is
+  /// by subcommand *type*: `configuration.commandName` is only set for commands
+  /// whose name differs from the type (`import`), so matching on it sent every
+  /// other command's `--help` to the root's help.
   static func help(for arguments: [String]) -> String {
-    let types = [InfinMonkeyCommand.self] + InfinMonkeyCommand.configuration.subcommands
     guard let name = arguments.first(where: { !$0.hasPrefix("-") }) else {
       return InfinMonkeyCommand.helpMessage()
     }
-    let match = types.first { $0.configuration.commandName == name }
-    return (match ?? InfinMonkeyCommand.self).helpMessage()
+    let match = InfinMonkeyCommand.configuration.subcommands.first { $0._commandName == name }
+    guard let match else { return InfinMonkeyCommand.helpMessage() }
+    // The library resolves the command stack, so the rendered screen is the same
+    // one `--help` would produce for that subcommand.
+    return InfinMonkeyCommand.helpMessage(for: match)
   }
 
   // MARK: - Reports

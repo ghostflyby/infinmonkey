@@ -228,6 +228,20 @@ struct InvocationTests {
         == .importPayload(fileName: "a.user.js", replace: true))
   }
 
+  @Test("every declared subcommand maps to an invocation")
+  func everySubcommandIsReachable() throws {
+    // A subcommand declared in the grammar but missing from `Invocation.init`
+    // would parse fine and then silently print help. Enumerating the
+    // configuration keeps those two lists in step.
+    for type in InfinMonkeyCommand.configuration.subcommands {
+      let name = type._commandName
+      let command = try InfinMonkeyCommand.parseAsRoot([name])
+      #expect(
+        Invocation(command) != nil,
+        "subcommand '\(name)' parses but maps to no invocation, so it would print help")
+    }
+  }
+
   @Test("help and the bare root name nothing to run")
   func helpMapsToNoInvocation() throws {
     // Both parse cleanly; the difference from a rejection is the whole reason
@@ -240,8 +254,30 @@ struct InvocationTests {
   @Test("help text is chosen by the command the arguments name")
   func helpTargetsTheNamedCommand() {
     #expect(ManagementCLI.help(for: ["--help"]).contains("SUBCOMMANDS"))
-    #expect(ManagementCLI.help(for: ["import", "--help"]).contains("--replace"))
-    // An unknown word falls back to the root rather than producing nothing.
     #expect(ManagementCLI.help(for: ["nonexistent"]).contains("SUBCOMMANDS"))
+  }
+
+  @Test("every subcommand gets its own help, not the root's")
+  func everySubcommandHasItsOwnHelp() {
+    // Only commands whose name differs from their type set
+    // `configuration.commandName`, so matching on that sent every other
+    // command's help to the root's. Checking them all is the point: the earlier
+    // cases happened to cover only the root and the one command that *did* set it.
+    let root = ManagementCLI.help(for: ["--help"])
+    for (name, abstract) in [
+      ("version", "Protocol and store versions this build speaks."),
+      ("status", "Store location, revision, and entry counts."),
+      ("list", "Entries with id, kind, name, and enabled state, as JSON."),
+      ("export", "The export bundle, written to stdout."),
+      ("import", "Read a bundle or one entry from stdin."),
+    ] {
+      let text = ManagementCLI.help(for: [name, "--help"])
+      // The subcommand's own abstract and usage line, not the root's.
+      #expect(text.contains(abstract), "\(name) help should carry its abstract, got: \(text)")
+      #expect(
+        text.contains("USAGE: infinmonkey \(name)"),
+        "\(name) help should carry its usage line, got: \(text)")
+      #expect(text != root, "\(name) --help should not print the root's screen")
+    }
   }
 }

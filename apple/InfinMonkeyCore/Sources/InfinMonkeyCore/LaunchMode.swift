@@ -29,6 +29,43 @@ public struct AcceptedPeers: Sendable, Equatable {
     self.origins = origins
   }
 
+  /// Reads the configured peers out of an Info.plist.
+  ///
+  /// The values live in the plist (populated from build settings) rather than in
+  /// code, for the same reason the app group id does: they describe the
+  /// *installed* extension, and a literal would go stale the moment either
+  /// side's identity is bumped. Blank values are dropped, so a key that is
+  /// present but unset accepts nobody — this is a gate, so an unconfigured build
+  /// must fail closed rather than open.
+  ///
+  /// Takes the values rather than a `Bundle` so the fail-closed behaviour is
+  /// covered by tests instead of only by launching the binary.
+  public static func from(
+    firefoxAddonID: String?,
+    chromeExtensionID: String?
+  ) -> AcceptedPeers {
+    var peers = AcceptedPeers()
+    if let addonID = normalized(firefoxAddonID) {
+      peers.addonIDs.insert(addonID)
+    }
+    if let extensionID = normalized(chromeExtensionID) {
+      peers.origins.insert(PeerIdentity.chromeOrigin(extensionID: extensionID))
+    }
+    return peers
+  }
+
+  /// The keys the plist carries, so the entry point and the tests agree on them.
+  public enum PlistKey {
+    public static let firefoxAddonID = "InfinMonkeyFirefoxAddonID"
+    public static let chromeExtensionID = "InfinMonkeyChromeExtensionID"
+  }
+
+  /// A configured value, or nil when absent or blank.
+  private static func normalized(_ value: String?) -> String? {
+    guard let value, !value.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+    return value
+  }
+
   /// Whether `identity` is one of the peers this build accepts.
   ///
   /// Comparison is exact: these strings are the browser's claim about who is

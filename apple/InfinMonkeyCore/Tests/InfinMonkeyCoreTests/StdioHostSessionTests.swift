@@ -30,22 +30,29 @@ struct StdioHostSessionTests {
   private func runSession(
     store: any EntryStoring,
     input: Data
-  ) async throws -> (out: Data, code: Int32) {
+  ) async throws -> (out: Data, code: Int32, logged: String) {
     let inPipe = Pipe()
     let outPipe = Pipe()
     inPipe.fileHandleForWriting.write(input)
     try inPipe.fileHandleForWriting.close()
 
+    // The log is captured because a truncated frame's *classification* is the
+    // only signal a browser forwards to the extension console: exit code 1 and
+    // empty stdout are the same whether the prefix or the body was cut short.
+    let logPipe = Pipe()
     let session = StdioHostSession(
       store: store,
       input: inPipe.fileHandleForReading,
       output: outPipe.fileHandleForWriting,
-      log: { _ in })
+      log: { line in logPipe.fileHandleForWriting.write(Data((line + "\n").utf8)) })
 
     let code = await session.run()
     try outPipe.fileHandleForWriting.close()
+    try logPipe.fileHandleForWriting.close()
     let out = try outPipe.fileHandleForReading.readToEnd() ?? Data()
-    return (out, code)
+    let logged = String(
+      decoding: try logPipe.fileHandleForReading.readToEnd() ?? Data(), as: UTF8.self)
+    return (out, code, logged)
   }
 
   /// Decodes a stream of frames into its message bodies.
@@ -69,7 +76,7 @@ struct StdioHostSessionTests {
   func servesOneRequest() async throws {
     let (store, _) = try await seededStore()
     let request = Data(#"{"v":1,"id":"r1","type":"hello","payload":{}}"#.utf8)
-    let (out, code) = try await runSession(
+    let (out, code, _) = try await runSession(
       store: store, input: try FrameCodec.encode(request))
 
     #expect(code == 0)
@@ -91,7 +98,7 @@ struct StdioHostSessionTests {
         try FrameCodec.encode(
           Data(#"{"v":1,"id":"\#(id)","type":"listEntries","payload":{}}"#.utf8)))
     }
-    let (out, code) = try await runSession(store: store, input: input)
+    let (out, code, _) = try await runSession(store: store, input: input)
 
     #expect(code == 0)
     let ids = try messages(in: out).compactMap {
@@ -108,7 +115,7 @@ struct StdioHostSessionTests {
   @Test("stdin closing at a frame boundary is a clean exit")
   func cleanExitOnEOF() async throws {
     let (store, _) = try await seededStore()
-    let (out, code) = try await runSession(
+    let (out, code, _) = try await runSession(
       store: store, input: try FrameCodec.encode(Data(#"{"v":1,"id":"x","type":"ping"}"#.utf8)))
 
     #expect(code == 0)
@@ -118,34 +125,91 @@ struct StdioHostSessionTests {
   @Test("a stream ending before any byte is a clean exit with no output")
   func immediateEOF() async throws {
     let (store, _) = try await seededStore()
-    let (out, code) = try await runSession(store: store, input: Data())
+    let (out, code, _) = try await runSession(store: store, input: Data())
 
     #expect(code == 0)
     #expect(out.isEmpty)
   }
 
-  @Test("a body truncated mid-frame fails rather than answering half a message")
+  @Test("a body truncated mid-frame is reported as a body, not as a prefix")
   func truncatedBodyFails() async throws {
     let (store, _) = try await seededStore()
     // Declare 100 bytes, supply 10: the browser would only do this by dying, and
-    // answering would be worse than reporting it.
-    var input = Data()
-    var declared = UInt32(100)
-    withUnsafeBytes(of: &declared) { input.append(contentsOf: $0) }
-    input.append(Data(repeating: 0x20, count: 10))
+    // answering would be worse than reporting it. The classification matters
+    // because it is the only diagnostic that reaches the extension console.
+    for supplied in [1, 10, 99] {
+      var input = Data()
+      var declared = UInt32(100)
+      withUnsafeBytes(of: &declared) { input.append(contentsOf: $0) }
+      input.append(Data(repeating: 0x20, count: supplied))
 
-    let (out, code) = try await runSession(store: store, input: input)
-    #expect(code == 1)
-    #expect(out.isEmpty)
+      let (out, code, logged) = try await runSession(store: store, input: input)
+      #expect(code == 1)
+      #expect(out.isEmpty)
+      #expect(
+        logged.contains("mid-frame"),
+        "a \(supplied)-byte body should be reported as mid-frame, got: \(logged)")
+      #expect(
+        !logged.contains("length prefix"),
+        "a short body must not be blamed on the prefix, got: \(logged)")
+    }
   }
 
-  @Test("a truncated length prefix fails")
+  @Test("a truncated length prefix is reported as a prefix")
   func truncatedPrefixFails() async throws {
     let (store, _) = try await seededStore()
-    let (out, code) = try await runSession(store: store, input: Data([0x01, 0x02]))
+    let (out, code, logged) = try await runSession(store: store, input: Data([0x01, 0x02]))
 
     #expect(code == 1)
     #expect(out.isEmpty)
+    #expect(logged.contains("length prefix"), "got: \(logged)")
+  }
+
+  @Test("an oversized response is an error frame, and the session survives it")
+  func oversizedResponseDoesNotEndTheSession() async throws {
+    // `listEntries` returns every entry's code, so a library with a few large
+    // scripts exceeds the host's 1 MB frame limit legitimately. Rejecting the
+    // write would end the session — one big reply and every later request is
+    // dead. The reply must be an error frame carrying the same id instead.
+    let store = NativeStore(layout: StoreLayout(root: temporaryRoot()))
+    let big = String(repeating: "x", count: 200_000)
+    for index in 0..<6 {
+      _ = try await store.create(
+        kind: .script,
+        code: "// ==UserScript==\n// @name big-\(index)\n// ==/UserScript==\n// \(big)\n",
+        meta: nil,
+        source: .inline,
+        enabled: true,
+        values: NativeStore.emptyJSONObject)
+    }
+
+    var input = Data()
+    for id in ["oversized", "after"] {
+      input.append(
+        try FrameCodec.encode(
+          Data(#"{"v":1,"id":"\#(id)","type":"listEntries","payload":{}}"#.utf8)))
+    }
+    let (out, code, logged) = try await runSession(store: store, input: input)
+
+    #expect(code == 0, "the session should end by clean EOF, not by a failed write")
+    #expect(logged.isEmpty, "an oversized reply is expected, not a fault to log")
+
+    let bodies = messages(in: out)
+    #expect(bodies.count == 2, "both requests are answered")
+    let firstBody = try #require(bodies.first)
+    let first = try #require(
+      try JSONSerialization.jsonObject(with: firstBody) as? [String: Any])
+    #expect(first["ok"] as? Bool == false)
+    #expect(first["id"] as? String == "oversized")
+    #expect((first["error"] as? [String: Any])?["code"] as? String == "responseTooLarge")
+
+    // The second request still gets a real answer: that is the point.
+    let secondBody = try #require(bodies.dropFirst().first)
+    let second = try #require(
+      try JSONSerialization.jsonObject(with: secondBody) as? [String: Any])
+    #expect(second["id"] as? String == "after")
+    #expect(second["ok"] as? Bool == false)
+    #expect((second["error"] as? [String: Any])?["code"] as? String == "responseTooLarge")
   }
 
   @Test("an implausible length is refused instead of allocating for it")
@@ -155,7 +219,7 @@ struct StdioHostSessionTests {
     var declared = UInt32.max
     withUnsafeBytes(of: &declared) { input.append(contentsOf: $0) }
 
-    let (out, code) = try await runSession(store: store, input: input)
+    let (out, code, _) = try await runSession(store: store, input: input)
     #expect(code == 1)
     #expect(out.isEmpty)
   }
@@ -164,7 +228,7 @@ struct StdioHostSessionTests {
   func unknownOpIsAnErrorFrame() async throws {
     let (store, _) = try await seededStore()
     let request = Data(#"{"v":1,"id":"u1","type":"notAnOp","payload":{}}"#.utf8)
-    let (out, code) = try await runSession(store: store, input: try FrameCodec.encode(request))
+    let (out, code, _) = try await runSession(store: store, input: try FrameCodec.encode(request))
 
     // The stream stayed healthy: the browser gets a reply it can log, which is
     // what makes a version mismatch diagnosable from the extension side.

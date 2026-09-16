@@ -42,8 +42,10 @@ Everything testable lives in Core: `FrameCodec` (the length prefix is **native b
 own samples unpack with `=I` — and `maxOutgoingBytes` is the 1 MB the browser enforces),
 `StdioHostSession` (the loop; stdout carries frames only, diagnostics go to stderr because both
 browsers forward it to the extension console), `ManagementCLI`, and `LaunchMode`. `main.swift` is
-dispatch and wiring only. `blockingValue` exists because the command modes must run to completion
-before the entry thread returns while the GUI branch must stay synchronous.
+dispatch and wiring only. `runToCompletionAndExit` exists because the command modes must run to
+completion and end the process while the GUI branch must stay synchronous: it hands the work to a
+task and joins the dispatch main queue rather than blocking the entry thread, because blocking a
+thread while a task needs one from the same pool deadlocks on a machine with few cores.
 
 `LibraryService.importData(_:fileName:)` takes the name separately from any path because the only
 channel a sandboxed CLI can read a file through is stdin — a caller-supplied path is refused by the

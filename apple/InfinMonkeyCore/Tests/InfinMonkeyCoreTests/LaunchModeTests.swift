@@ -141,4 +141,39 @@ struct AcceptedPeersTests {
     let peers = AcceptedPeers(addonIDs: ["addon@example"], origins: [])
     #expect(!peers.allows(.chrome(origin: "addon@example")))
   }
+
+  @Test("peers are read from configured values")
+  func readsConfiguredValues() {
+    // The values arrive from the Info.plist passthrough keys; the Chrome side is
+    // turned into a full origin so the trailing slash cannot be forgotten.
+    let peers = AcceptedPeers.from(
+      firefoxAddonID: "{3f7d2a91-6b5e-4c8a-9d20-51e8f0b7c642}",
+      chromeExtensionID: "abcdefghijklmnopabcdefghijklmnop")
+
+    #expect(peers.allows(.firefox(addonID: "{3f7d2a91-6b5e-4c8a-9d20-51e8f0b7c642}")))
+    #expect(peers.allows(.chrome(origin: "chrome-extension://abcdefghijklmnopabcdefghijklmnop/")))
+  }
+
+  @Test("an unset configuration accepts nobody, whatever the value looks like")
+  func unsetConfigurationFailsClosed() {
+    // The build ships the Chrome key as an empty string and a build without the
+    // Firefox key expands to one, so blank must mean "not configured" rather than
+    // "matches the empty id a malformed invocation carries".
+    for (addon, chrome) in [
+      (nil, nil),
+      ("", ""),
+      ("   ", "\t"),
+      ("", "abcdefghijklmnopabcdefghijklmnop"),
+    ] as [(String?, String?)] {
+      let peers = AcceptedPeers.from(firefoxAddonID: addon, chromeExtensionID: chrome)
+      #expect(!peers.allows(.firefox(addonID: "")), "blank add-on id must not match")
+      #expect(!peers.allows(.chrome(origin: "chrome-extension:///")), "blank id must not match")
+    }
+
+    // A value that *is* set is not silently trimmed into something narrower.
+    let configured = AcceptedPeers.from(
+      firefoxAddonID: "addon@example", chromeExtensionID: nil)
+    #expect(configured.allows(.firefox(addonID: "addon@example")))
+    #expect(!configured.allows(.chrome(origin: "chrome-extension:///")))
+  }
 }

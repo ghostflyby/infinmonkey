@@ -18,8 +18,9 @@ import Foundation
 public func runToCompletionAndExit(_ work: @escaping @Sendable () async -> Int32) -> Never {
   Task {
     let code = await work()
-    // stdout is block-buffered when it is a pipe, so a buffered line would be
-    // lost when `exit` skips the normal teardown.
+    // `exit` flushes the standard streams, so this is belt-and-braces: it keeps
+    // the output intact if the call below ever changes to `_exit`, which does
+    // not flush, and costs nothing on a process that is ending anyway.
     fflush(stdout)
     exit(code)
   }

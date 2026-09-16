@@ -74,27 +74,15 @@ import SwiftUI
 
   /// The peers this build serves, from the Info.plist passthrough keys.
   ///
-  /// Read from the bundle (not compiled in) for the same reason the app group id
-  /// is: the values describe the installed extension, and a literal would go
-  /// stale the moment either side's identity is bumped. Blank values are
-  /// dropped, so a key that is present but unset accepts nobody — this is a gate,
-  /// so an unconfigured build must fail closed rather than open.
+  /// The mapping and its fail-closed rule live in Core (`AcceptedPeers.from`),
+  /// so they are covered by tests; this only hands over the plist's values.
   func acceptedPeers(bundle: Bundle = .main) -> AcceptedPeers {
-    var peers = AcceptedPeers()
-    if let addonID = string(forKey: "InfinMonkeyFirefoxAddonID", in: bundle) {
-      peers.addonIDs.insert(addonID)
+    func value(_ key: String) -> String? {
+      bundle.object(forInfoDictionaryKey: key) as? String
     }
-    if let extensionID = string(forKey: "InfinMonkeyChromeExtensionID", in: bundle) {
-      peers.origins.insert(PeerIdentity.chromeOrigin(extensionID: extensionID))
-    }
-    return peers
-  }
-
-  func string(forKey key: String, in bundle: Bundle) -> String? {
-    guard let value = bundle.object(forInfoDictionaryKey: key) as? String,
-      !value.trimmingCharacters(in: .whitespaces).isEmpty
-    else { return nil }
-    return value
+    return AcceptedPeers.from(
+      firefoxAddonID: value(AcceptedPeers.PlistKey.firefoxAddonID),
+      chromeExtensionID: value(AcceptedPeers.PlistKey.chromeExtensionID))
   }
 
   func describe(_ peer: PeerIdentity) -> String {

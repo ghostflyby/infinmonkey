@@ -16,12 +16,12 @@ public struct StdioHostSession: Sendable {
 
   /// Largest frame accepted from the browser.
   ///
-  /// The browsers disagree here and neither bound is a real limit on what they
-  /// will send: Firefox permits up to 4 GB, while the 64 MB in Chromium is only
-  /// a histogram bucket ceiling. This side therefore picks its own allocation
-  /// bound, stricter than both, so a garbage length prefix cannot ask for memory
-  /// this process has no reason to commit. A legitimate frame above it is
-  /// refused rather than attempted.
+  /// Matches the binding limit both browsers impose in this direction — Chromium
+  /// through `kMaxMessageBytes` in its message-port mojom, and Chrome's own
+  /// documentation ("the message sent to the native messaging host is 64 MiB").
+  /// Firefox would allow up to 4 GB, so this is the stricter of the two: a
+  /// garbage length prefix cannot ask for more memory than a conforming caller
+  /// could ever need.
   public static let maxIncomingBytes = 64 * 1024 * 1024
 
   private let input: FileHandle
@@ -42,6 +42,9 @@ public struct StdioHostSession: Sendable {
   }
 
   /// Convenience over the store, which is what the entry point has.
+  ///
+  /// The router is told this transport's frame limit so an oversized reply comes
+  /// back as an error frame rather than as a write that ends the session.
   public init(
     store: any EntryStoring,
     platform: String = PlatformName.current,
@@ -50,7 +53,9 @@ public struct StdioHostSession: Sendable {
     log: @escaping Log = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
   ) {
     self.init(
-      router: ProtocolRouter(store: store, platform: platform),
+      router: ProtocolRouter(
+        store: store, platform: platform,
+        maxResponseBytes: FrameCodec.maxOutgoingBytes),
       input: input, output: output, log: log)
   }
 
@@ -89,7 +94,7 @@ public struct StdioHostSession: Sendable {
   // MARK: - Framing
 
   private func readFrame() throws -> Data? {
-    guard let prefix = try readExactly(FrameCodec.prefixBytes) else { return nil }
+    guard let prefix = try readExactly(FrameCodec.prefixBytes, part: .prefix) else { return nil }
     guard let declared = FrameCodec.length(from: prefix) else {
       throw FrameCodec.Failure.truncatedPrefix(
         expected: FrameCodec.prefixBytes, got: prefix.count)
@@ -99,7 +104,9 @@ public struct StdioHostSession: Sendable {
       throw FrameCodec.Failure.implausibleLength(declared)
     }
     guard length > 0 else { return Data() }
-    guard let body = try readExactly(length) else {
+    // The prefix was read, so a body is owed: the stream ending here is a
+    // truncation, not a clean close.
+    guard let body = try readExactly(length, part: .body) else {
       throw FrameCodec.Failure.truncatedFrame(expected: length, got: 0)
     }
     return body
@@ -109,20 +116,37 @@ public struct StdioHostSession: Sendable {
     try output.write(contentsOf: FrameCodec.encode(body))
   }
 
+  /// Which part of a frame a read is filling, so a short read is reported
+  /// against the right one. Both are fatal, but the message is the only signal a
+  /// browser forwards to the extension console, and "inside a length prefix"
+  /// sends the reader looking at the wrong bytes.
+  private enum FramePart {
+    case prefix
+    case body
+
+    func failure(expected: Int, got: Int) -> FrameCodec.Failure {
+      switch self {
+      case .prefix: return .truncatedPrefix(expected: expected, got: got)
+      case .body: return .truncatedFrame(expected: expected, got: got)
+      }
+    }
+  }
+
   /// Reads exactly `count` bytes.
   ///
-  /// Returns nil only when the stream ended before *any* byte was read (a clean
-  /// close at a frame boundary); a stream that ends mid-frame throws, because
-  /// that is a truncated message rather than a normal end.
+  /// Returns nil only when the stream ended before *any* byte was read — a clean
+  /// close, which is only meaningful while starting a frame (`part: .prefix`);
+  /// a caller reading a body turns nil into a truncation. A stream that ends
+  /// mid-read throws.
   ///
   /// `FileHandle.read(upToCount:)` may return fewer bytes than asked for, so
   /// this loops: a pipe hands over what it has, not what the caller wanted.
-  private func readExactly(_ count: Int) throws -> Data? {
+  private func readExactly(_ count: Int, part: FramePart) throws -> Data? {
     var buffer = Data()
     while buffer.count < count {
       guard let chunk = try input.read(upToCount: count - buffer.count), !chunk.isEmpty else {
         if buffer.isEmpty { return nil }
-        throw FrameCodec.Failure.truncatedPrefix(expected: count, got: buffer.count)
+        throw part.failure(expected: count, got: buffer.count)
       }
       buffer.append(chunk)
     }
