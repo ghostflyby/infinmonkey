@@ -44,6 +44,15 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      # SwiftPM's clone cache, for the package's one external dependency. Keyed
+      # on the resolved file so it is reused until a dependency actually changes;
+      # without it every run re-clones (measured: +48s on the job).
+      - name: Cache SwiftPM checkouts
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: swiftpm-${{ hashFiles('apple/InfinMonkeyCore/Package.resolved') }}
+          restore-keys: swiftpm-
       # Warm DerivedData for the xcodebuild step below. Key is per-run so every
       # job saves a fresh entry; restore-keys picks the newest previous entry,
       # and the action restores source mtimes so Xcode's incremental engine can
