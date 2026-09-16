@@ -106,11 +106,12 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Assets.xcassets,
-				StoreLocation.swift,
 				ContentView.swift,
 				EntryDetailView.swift,
 				InfinMonkeyApp.swift,
+				StoreLocation.swift,
 				StoreModel.swift,
+				main.swift,
 			);
 			target = ECBE70543055A77C00072D70 /* InfinMonkey (iOS) */;
 		};
@@ -132,11 +133,12 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Assets.xcassets,
-				StoreLocation.swift,
 				ContentView.swift,
 				EntryDetailView.swift,
 				InfinMonkeyApp.swift,
+				StoreLocation.swift,
 				StoreModel.swift,
+				main.swift,
 			);
 			target = ECBE70663055A77C00072D70 /* InfinMonkey (macOS) */;
 		};
@@ -913,6 +915,8 @@
 				APP_GROUP_ID = "$(TeamIdentifierPrefix)group.$(BASE_BUNDLE_ID)";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BASE_BUNDLE_ID = dev.ghostflyby.InfinMonkey;
+				INFINMONKEY_CHROME_EXTENSION_ID = "";
+				INFINMONKEY_FIREFOX_ADDON_ID = "{3f7d2a91-6b5e-4c8a-9d20-51e8f0b7c642}";
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -977,6 +981,8 @@
 				APP_GROUP_ID = "$(TeamIdentifierPrefix)group.$(BASE_BUNDLE_ID)";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				BASE_BUNDLE_ID = dev.ghostflyby.InfinMonkey;
+				INFINMONKEY_CHROME_EXTENSION_ID = "";
+				INFINMONKEY_FIREFOX_ADDON_ID = "{3f7d2a91-6b5e-4c8a-9d20-51e8f0b7c642}";
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";

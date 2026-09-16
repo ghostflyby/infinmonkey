@@ -20,6 +20,35 @@ Every target-specific file (Info.plist, entitlements) lives in that target's own
 folders hold only code that genuinely compiles for both platforms — platform differences are
 `#if os(...)` blocks or per-platform files, never a diverging copy of the same file.
 
+## One binary, three roles
+
+The app binary serves three callers, so the entry point is `Shared (App)/main.swift` and the SwiftUI
+type is **not** `@main` — two entry points in one module do not compile, and a `@main` app cannot
+dispatch before SwiftUI installs its run loop.
+
+| Invocation | Role |
+|---|---|
+| no arguments, or a `-flag` (macOS/Xcode inject these) | GUI |
+| `<…>.json` `[addon-id]`, or `chrome-extension://<id>/` | native messaging host |
+| `<subcommand> [args…]` | management CLI |
+
+The host case cannot be recognized by a flag of ours: a host manifest's `path` is spawned
+**directly** (no shell), and the only arguments are the ones the browser adds itself. Firefox
+passes `[manifest-path, addon-id]`, Chrome one origin. So `LaunchMode.parse` reads those shapes,
+and `AcceptedPeers` (from Info.plist passthrough keys, so a blank value fails closed) refuses any
+caller the build does not name.
+
+Everything testable lives in Core: `FrameCodec` (the length prefix is **native byte order** — MDN's
+own samples unpack with `=I` — and `maxOutgoingBytes` is the 1 MB the browser enforces),
+`StdioHostSession` (the loop; stdout carries frames only, diagnostics go to stderr because both
+browsers forward it to the extension console), `ManagementCLI`, and `LaunchMode`. `main.swift` is
+dispatch and wiring only. `blockingValue` exists because the command modes must run to completion
+before the entry thread returns while the GUI branch must stay synchronous.
+
+`LibraryService.importData(_:fileName:)` takes the name separately from any path because the only
+channel a sandboxed CLI can read a file through is stdin — a caller-supplied path is refused by the
+sandbox, while `cmd < file` works (the shell opens the descriptor, not us).
+
 ## Core versus UI
 
 `apple/InfinMonkeyCore` holds everything that is not UI and not UI-adjacent: the store, the wire
@@ -231,11 +260,17 @@ SDK=$(xcrun -sdk iphonesimulator -show-sdk-path)
 cd apple/InfinMonkeyCore
 swift build --disable-sandbox --triple arm64-apple-ios17.0-simulator -Xswiftc -sdk -Xswiftc "$SDK"
 cd ../..
-swiftc -typecheck -sdk "$SDK" -target arm64-apple-ios17.0-simulator \
+# The products land in .build/out/Products/Debug-iphonesimulator (SwiftPM's layout changed;
+# the older .build/arm64-apple-ios-simulator/debug/Modules path is stale).
+xcrun swiftc -typecheck -sdk "$SDK" -target arm64-apple-ios17.0-simulator \
   -swift-version 6 -default-isolation=MainActor -DAPP_GROUP \
-  -I apple/InfinMonkeyCore/.build/arm64-apple-ios-simulator/debug/Modules \
+  -I apple/InfinMonkeyCore/.build/out/Products/Debug-iphonesimulator \
   "apple/Shared (App)"/*.swift
 ```
+
+Use `xcrun swiftc`, not a bare `swiftc`: a toolchain on `PATH` that differs from the one SwiftPM
+built the package with makes the module unimportable ("compiled with Swift 6.3.3 cannot be imported
+by the Swift 6.4 compiler"), which reads like a source error but is not one.
 
 `xcodebuild -target X -sdk ...` bypasses package resolution and fails with "unable to resolve module
 dependency"; use a scheme, or resolve dependencies first.
