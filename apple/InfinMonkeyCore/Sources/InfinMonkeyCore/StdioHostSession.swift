@@ -80,10 +80,10 @@ public struct StdioHostSession: Sendable {
     }
   }
 
-  /// Synchronous entry for `main.swift`, which must not be async. See
-  /// `blockingValue`.
-  public func runBlocking() -> Int32 {
-    blockingValue { await self.run() }
+  /// Entry for `main.swift`: runs to completion and ends the process with the
+  /// session's exit code. See `runToCompletionAndExit` for why this does not simply return.
+  public func runAndExit() -> Never {
+    runToCompletionAndExit { await self.run() }
   }
 
   // MARK: - Framing

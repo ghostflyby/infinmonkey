@@ -15,19 +15,21 @@ import SwiftUI
 
   switch LaunchMode.parse(arguments: CommandLine.arguments) {
   case .nativeHost(let invocation):
-    exit(runNativeHost(invocation))
+    runNativeHost(invocation)
   case .management(let subcommand, let arguments):
-    exit(runManagement(subcommand: subcommand, arguments: arguments))
+    ManagementCLI(service: serviceForThisProcess())
+      .runAndExit(subcommand: subcommand, arguments: arguments)
   case .gui:
     break  // fall through to the app
   }
 
-  /// Serves one browser's native messaging session on stdin/stdout.
+  /// Serves one browser's native messaging session on stdin/stdout, ending the
+  /// process with the session's exit code.
   ///
   /// The peer check happens before any frame is read: refusing an unrecognized
   /// caller is the whole point of the browser-supplied identity, and a host that
-  /// answers first would have already done the work.
-  func runNativeHost(_ invocation: NativeHostInvocation) -> Int32 {
+  /// answered first would already have done the work.
+  func runNativeHost(_ invocation: NativeHostInvocation) -> Never {
     let accepted = acceptedPeers()
     guard accepted.allows(invocation.peer) else {
       FileHandle.standardError.write(
@@ -38,15 +40,9 @@ import SwiftUI
             ? "no peers are configured in this build (Info.plist has no accepted ids)"
             : "configured peers: \(describe(accepted))")
           """.utf8))
-      return 1
+      exit(1)
     }
-    return StdioHostSession(store: storeForThisProcess()).runBlocking()
-  }
-
-  /// Runs a management subcommand.
-  func runManagement(subcommand: String, arguments: [String]) -> Int32 {
-    ManagementCLI(service: serviceForThisProcess())
-      .runBlocking(subcommand: subcommand, arguments: arguments)
+    StdioHostSession(store: storeForThisProcess()).runAndExit()
   }
 
   /// The store, as this process can reach it.

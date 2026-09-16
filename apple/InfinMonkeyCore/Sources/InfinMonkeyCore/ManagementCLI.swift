@@ -42,9 +42,10 @@ public struct ManagementCLI: Sendable {
     self.log = log
   }
 
-  /// Synchronous entry for `main.swift`, which must not be async.
-  public func runBlocking(subcommand: String, arguments: [String]) -> Int32 {
-    blockingValue { await self.run(subcommand: subcommand, arguments: arguments) }
+  /// Entry for `main.swift`: runs the subcommand and ends the process with its
+  /// exit code. See `runToCompletionAndExit` for why this does not simply return.
+  public func runAndExit(subcommand: String, arguments: [String]) -> Never {
+    runToCompletionAndExit { await self.run(subcommand: subcommand, arguments: arguments) }
   }
 
   public func run(subcommand: String, arguments: [String]) async -> Int32 {
