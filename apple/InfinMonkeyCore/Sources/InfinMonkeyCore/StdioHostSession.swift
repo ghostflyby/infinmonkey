@@ -11,9 +11,6 @@ import Foundation
 /// Blocking reads are deliberate: this process exists to answer frames in
 /// order, and the browsers write a request then wait for its response.
 public struct StdioHostSession: Sendable {
-  /// Where diagnostics go. Injected so tests can capture them.
-  public typealias Log = @Sendable (String) -> Void
-
   /// Largest frame accepted from the browser.
   ///
   /// Matches the binding limit both browsers impose in this direction — Chromium
@@ -27,13 +24,13 @@ public struct StdioHostSession: Sendable {
   private let input: FileHandle
   private let output: FileHandle
   private let router: ProtocolRouter
-  private let log: Log
+  private let log: LogSink
 
   public init(
     router: ProtocolRouter,
     input: FileHandle = .standardInput,
     output: FileHandle = .standardOutput,
-    log: @escaping Log = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
+    log: @escaping LogSink = stderrLog(label: "infinmonkey host")
   ) {
     self.router = router
     self.input = input
@@ -50,7 +47,7 @@ public struct StdioHostSession: Sendable {
     platform: String = PlatformName.current,
     input: FileHandle = .standardInput,
     output: FileHandle = .standardOutput,
-    log: @escaping Log = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
+    log: @escaping LogSink = stderrLog(label: "infinmonkey host")
   ) {
     self.init(
       router: ProtocolRouter(
@@ -63,14 +60,18 @@ public struct StdioHostSession: Sendable {
   /// clean close, non-zero when the stream is unusable — a truncated frame or a
   /// response the browser would reject.
   public func run() async -> Int32 {
+    log(.debug, "session started")
     while true {
       let body: Data
       do {
         // nil is EOF at a frame boundary: the browser closed the port normally.
-        guard let frame = try readFrame() else { return 0 }
+        guard let frame = try readFrame() else {
+          log(.debug, "stdin closed at a frame boundary; session ended")
+          return 0
+        }
         body = frame
       } catch {
-        log("InfinMonkey host: \(Self.describe(error))")
+        log(.error, Self.describe(error))
         return 1
       }
 
@@ -79,7 +80,7 @@ public struct StdioHostSession: Sendable {
       do {
         try writeFrame(response)
       } catch {
-        log("InfinMonkey host: \(Self.describe(error))")
+        log(.error, Self.describe(error))
         return 1
       }
     }

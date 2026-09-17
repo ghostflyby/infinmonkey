@@ -42,14 +42,15 @@ import SwiftUI
   func runNativeHost(_ invocation: NativeHostInvocation) -> Never {
     let accepted = acceptedPeers()
     guard accepted.allows(invocation.peer) else {
-      FileHandle.standardError.write(
-        Data(
-          """
-          infinmonkey host: refusing \(describe(invocation.peer))
-          \(accepted.isEmpty
-            ? "no peers are configured in this build (Info.plist has no accepted ids)"
-            : "configured peers: \(describe(accepted))")
-          """.utf8))
+      // The browser forwards host stderr to the extension console, so this is
+      // where a refusal is read; the process ends before any frame is served.
+      let log = stderrLog(label: "infinmonkey host")
+      log(.error, "refusing \(describe(invocation.peer))")
+      log(
+        .error,
+        accepted.isEmpty
+          ? "no peers are configured in this build (Info.plist has no accepted ids)"
+          : "configured peers: \(describe(accepted))")
       exit(1)
     }
     StdioHostSession(store: storeForThisProcess()).runAndExit()

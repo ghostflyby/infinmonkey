@@ -9,7 +9,7 @@
 import Foundation
 import InfinMonkeyCore
 import SafariServices
-import os.log
+import os
 
 /// Carries the request context across the async hop.
 ///
@@ -29,6 +29,16 @@ private struct RequestContext: @unchecked Sendable {
 
 class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
+  /// Unified logging, read through Console.app — an extension process has no
+  /// stderr a reader reaches, unlike the host and CLI roles.
+  ///
+  /// The subsystem is this bundle's identifier, and the categories split the
+  /// two things the handler does: locating the store once at startup, and the
+  /// per-request bridge work.
+  private static let subsystem = Bundle.main.bundleIdentifier ?? "infinmonkey"
+  private static let storeLog = Logger(subsystem: subsystem, category: "store")
+  private static let bridgeLog = Logger(subsystem: subsystem, category: "bridge")
+
   /// One router for the process: it is an actor, so concurrent requests
   /// serialize on it, and the store reloads from disk per operation rather than
   /// caching a document other processes can invalidate.
@@ -41,10 +51,10 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
   private static func makeStore() -> any EntryStoring {
     do {
       let layout = try StoreLocation.layout()
-      os_log(.default, "InfinMonkey native store at %@", layout.root.path)
+      storeLog.info("native store at \(layout.root.path, privacy: .public)")
       return NativeStore(layout: layout)
     } catch {
-      os_log(.error, "InfinMonkey: shared store unavailable (%@)", "\(error)")
+      storeLog.fault("shared store unavailable: \(String(describing: error), privacy: .public)")
       return UnavailableStore(reason: "\(error)")
     }
   }
@@ -58,7 +68,9 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
     // Every profile shares the single app group store; per-profile routing would
     // mean per-profile store roots.
     if let profile {
-      os_log(.default, "InfinMonkey native request from profile %@", profile.uuidString)
+      Self.bridgeLog.debug("native request from profile \(profile.uuidString, privacy: .public)")
+    } else {
+      Self.bridgeLog.debug("native request without a profile")
     }
 
     // This boundary arrives as an Objective-C object graph, which is neither
@@ -70,9 +82,14 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
 
     Task {
       let response = await SafariWebExtensionHandler.router.handle(request: body)
+      let reply = response.object as? [String: Any]
+      let id = (reply?["id"] as? String) ?? "?"
+      let outcome = (reply?["ok"] as? Bool) == true ? "ok" : "error"
+      SafariWebExtensionHandler.bridgeLog.debug(
+        "completed request \(id, privacy: .public) (\(outcome))")
       // The response crosses back out as a graph for `userInfo`, which is
       // Objective-C typed. This is the boundary's own conversion.
-      requestContext.complete(with: response.object as? [String: Any] ?? [:])
+      requestContext.complete(with: reply ?? [:])
     }
   }
 

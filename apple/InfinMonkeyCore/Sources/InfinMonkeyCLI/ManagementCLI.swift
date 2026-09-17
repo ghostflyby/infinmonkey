@@ -16,8 +16,6 @@ import InfinMonkeyCore
 /// the executor testable — no command reaches for `FileHandle.standardOutput` or
 /// builds its own store — while the grammar stays declarative.
 public struct ManagementCLI: Sendable {
-  public typealias Log = @Sendable (String) -> Void
-
   /// Exit codes this executor returns.
   ///
   /// A rejected command line is not here: ArgumentParser owns that path and
@@ -32,13 +30,13 @@ public struct ManagementCLI: Sendable {
   private let service: LibraryService
   private let input: FileHandle
   private let output: FileHandle
-  private let log: Log
+  private let log: LogSink
 
   public init(
     service: LibraryService,
     input: FileHandle = .standardInput,
     output: FileHandle = .standardOutput,
-    log: @escaping Log = { FileHandle.standardError.write(Data(($0 + "\n").utf8)) }
+    log: @escaping LogSink = stderrLog(label: "infinmonkey")
   ) {
     self.service = service
     self.input = input
@@ -95,7 +93,7 @@ public struct ManagementCLI: Sendable {
         return try await importFromStdin(fileName: fileName, mode: replace ? .replace : .merge)
       }
     } catch {
-      log("infinmonkey: \(invocation.name) failed: \(Self.describe(error))")
+      log(.error, "\(invocation.name) failed: \(Self.describe(error))")
       return Exit.failed.rawValue
     }
   }
@@ -140,7 +138,7 @@ public struct ManagementCLI: Sendable {
     let name = fileName ?? "bundle.json"
     let data = input.readDataToEndOfFile()
     try await service.importData(data, fileName: name, mode: mode)
-    log("infinmonkey: imported \(data.count) bytes from stdin as \(name) (\(mode.rawValue))")
+    log(.info, "imported \(data.count) bytes from stdin as \(name) (\(mode.rawValue))")
     return Exit.ok.rawValue
   }
 
