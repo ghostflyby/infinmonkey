@@ -69,7 +69,7 @@ jobs:
       - name: Swift format lint
         run: deno task swift:lint
       - name: Swift package unit tests
-        run: swift test --disable-sandbox
+        run: swift test
         working-directory: apple/InfinMonkeyCore
       # Compiles the app + extension + the local package through Xcode's graph.
       # Unsigned: CI verifies code, not provisioning.

@@ -236,8 +236,8 @@ records whose file vanished, and a content hash mismatch marks the entry as need
 ## Build and verify
 
 ```bash
-# Package logic (fast loop; --disable-sandbox is required inside the agent sandbox)
-cd apple/InfinMonkeyCore && swift test --disable-sandbox
+# Package logic (fast loop)
+cd apple/InfinMonkeyCore && swift test
 
 # macOS app + extension (resolves the package graph; -target does NOT)
 xcodebuild -project InfinMonkey.xcodeproj -scheme "InfinMonkey (macOS)" \
@@ -248,7 +248,7 @@ deno task swift:fmt && deno task swift:lint
 ```
 
 To confirm the language mode is really applied, check the flag rather than trusting a clean build:
-`swift build --disable-sandbox -v | grep -o '\-swift-version [0-9]*'` must print `6`. A passing
+`swift build -v | grep -o '\-swift-version [0-9]*'` must print `6`. A passing
 build only means nothing was flagged — a mutable global is a reliable probe for whether strict
 checking is on.
 
@@ -260,7 +260,7 @@ been built against the macOS SDK:
 ```bash
 SDK=$(xcrun -sdk iphonesimulator -show-sdk-path)
 cd apple/InfinMonkeyCore
-swift build --disable-sandbox --triple arm64-apple-ios17.0-simulator -Xswiftc -sdk -Xswiftc "$SDK"
+swift build --triple arm64-apple-ios17.0-simulator -Xswiftc -sdk -Xswiftc "$SDK"
 cd ../..
 # The products land in .build/out/Products/Debug-iphonesimulator (SwiftPM's layout changed;
 # the older .build/arm64-apple-ios-simulator/debug/Modules path is stale).
@@ -294,7 +294,7 @@ Verified on this project, worth not re-discovering:
 
 ## Tests
 
-Unit tests live in `apple/InfinMonkeyCore/Tests` and run with `swift test --disable-sandbox`. They
+Unit tests live in `apple/InfinMonkeyCore/Tests` and run with `swift test`. They
 are written with Swift Testing (`import Testing`, `@Suite`/`@Test`, `#expect`/`#require`), not
 XCTest. Tests run concurrently by default, so every test must create its own temporary directories
 (`temporaryRoot()` names them by UUID). Test names and messages are English; do not assert on
