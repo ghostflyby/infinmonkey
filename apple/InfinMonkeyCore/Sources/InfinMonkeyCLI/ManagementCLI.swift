@@ -1,5 +1,6 @@
 import ArgumentParser
 import Foundation
+import InfinMonkeyCore
 
 /// The management command line: the developer-facing half of the app binary.
 ///

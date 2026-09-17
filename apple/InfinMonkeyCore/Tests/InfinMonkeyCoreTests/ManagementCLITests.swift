@@ -2,6 +2,7 @@ import ArgumentParser
 import Foundation
 import Testing
 
+@testable import InfinMonkeyCLI
 @testable import InfinMonkeyCore
 
 /// The management command line's executor.
