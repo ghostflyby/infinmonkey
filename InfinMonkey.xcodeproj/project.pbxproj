@@ -99,6 +99,7 @@
 		ECBE70CC3055A77C00072D70 /* install */ = {isa = PBXFileReference; lastKnownFileType = folder; path = install; sourceTree = "<group>"; };
 		ECBE70CD3055A77C00072D70 /* prompt */ = {isa = PBXFileReference; lastKnownFileType = folder; path = prompt; sourceTree = "<group>"; };
 		ECBE70CE3055A77C00072D70 /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; path = icons; sourceTree = "<group>"; };
+		ECE184B3305BBD84007638D9 /* InfinMonkeyCore */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = InfinMonkeyCore; path = apple/InfinMonkeyCore; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -247,6 +248,7 @@
 		ECBE70383055A77A00072D70 = {
 			isa = PBXGroup;
 			children = (
+				ECE184B3305BBD84007638D9 /* InfinMonkeyCore */,
 				ECBE703D3055A77A00072D70 /* apple/Shared (App) */,
 				ECBE70683055A77C00072D70 /* apple/macOS (App) */,
 				ECBE70573055A77C00072D70 /* apple/iOS (App) */,
