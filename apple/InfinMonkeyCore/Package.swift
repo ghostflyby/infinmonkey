@@ -15,22 +15,35 @@ let package = Package(
   // support platforms nothing can actually run on.
   platforms: [.iOS(.v17), .macOS(.v14)],
   products: [
-    .library(name: "InfinMonkeyCore", targets: ["InfinMonkeyCore"])
+    .library(name: "InfinMonkeyCore", targets: ["InfinMonkeyCore"]),
+    .library(name: "InfinMonkeyCLI", targets: ["InfinMonkeyCLI"]),
   ],
   dependencies: [
-    // Command line parsing, help, and usage errors for the management CLI. It is
-    // a dependency of the target rather than of everything: only the CLI types
-    // import it, so the store, the router, and the frame layer stay free of it.
     .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0")
   ],
   targets: [
     .target(
       name: "InfinMonkeyCore",
-      dependencies: [.product(name: "ArgumentParser", package: "swift-argument-parser")],
+      dependencies: [],
       swiftSettings: [.swiftLanguageMode(.v6)]),
+
+    // The command line, in a target of its own so its dependency stays out of
+    // everything else. SwiftPM links a target's dependencies into every product
+    // that includes it, so declaring ArgumentParser on Core would put it into
+    // the app extension too — which has no argv and never runs a command. The
+    // core library therefore declares no dependencies, and the targets that want
+    // the CLI link this product.
+    .target(
+      name: "InfinMonkeyCLI",
+      dependencies: [
+        "InfinMonkeyCore",
+        .product(name: "ArgumentParser", package: "swift-argument-parser"),
+      ],
+      swiftSettings: [.swiftLanguageMode(.v6)]),
+
     .testTarget(
       name: "InfinMonkeyCoreTests",
-      dependencies: ["InfinMonkeyCore"],
+      dependencies: ["InfinMonkeyCore", "InfinMonkeyCLI"],
       swiftSettings: [.swiftLanguageMode(.v6)]),
   ]
 )

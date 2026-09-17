@@ -11,6 +11,7 @@
 		EC79E6533058095E004AC3C9 /* InfinMonkeyCore in Frameworks */ = {isa = PBXBuildFile; productRef = ECBE7C04055A77C00072D70 /* InfinMonkeyCore */; };
 		EC79E6543058095E004AC3C9 /* InfinMonkeyCore in Frameworks */ = {isa = PBXBuildFile; productRef = ECBE7C03055A77C00072D70 /* InfinMonkeyCore */; };
 		EC79E6553058095E004AC3C9 /* InfinMonkeyCore in Frameworks */ = {isa = PBXBuildFile; productRef = ECBE7C05055A77C00072D70 /* InfinMonkeyCore */; };
+		EC79E6563058095E004AC3C9 /* InfinMonkeyCLI in Frameworks */ = {isa = PBXBuildFile; productRef = ECBE7C063055A77C00072D70 /* InfinMonkeyCLI */; };
 		ECBE70733055A77C00072D70 /* InfinMonkey Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = ECBE70723055A77C00072D70 /* InfinMonkey Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		ECBE707D3055A77C00072D70 /* InfinMonkey Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = ECBE707C3055A77C00072D70 /* InfinMonkey Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		ECBE70C23055A77C00072D70 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECBE70C13055A77C00072D70 /* SafariWebExtensionHandler.swift */; };
@@ -222,6 +223,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				EC79E6543058095E004AC3C9 /* InfinMonkeyCore in Frameworks */,
+				EC79E6563058095E004AC3C9 /* InfinMonkeyCLI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -343,6 +345,7 @@
 			name = "InfinMonkey (macOS)";
 			packageProductDependencies = (
 				ECBE7C03055A77C00072D70 /* InfinMonkeyCore */,
+				ECBE7C063055A77C00072D70 /* InfinMonkeyCLI */,
 			);
 			productName = "InfinMonkey (macOS)";
 			productReference = ECBE70673055A77C00072D70 /* InfinMonkey.app */;
@@ -1105,6 +1108,10 @@
 		ECBE7C05055A77C00072D70 /* InfinMonkeyCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = InfinMonkeyCore;
+		};
+		ECBE7C063055A77C00072D70 /* InfinMonkeyCLI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = InfinMonkeyCLI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -9,7 +9,9 @@ non-localized content, Chinese for user-facing UI copy.
 ```
 InfinMonkey.xcodeproj/          project file at the repo root (so dist/ stays inside the container)
 apple/
-  InfinMonkeyCore/              local Swift package: all non-UI logic, unit-testable on its own
+  InfinMonkeyCore/              local Swift package:
+    Sources/InfinMonkeyCore/      all non-UI logic, no dependencies, unit-testable on its own
+    Sources/InfinMonkeyCLI/       the management command line, in its own target (see below)
   Shared (App)/                 sources compiled into BOTH app targets
   Shared (Extension)/           sources compiled into BOTH extension targets
   iOS (App)/  iOS (Extension)/  per-platform sources + Info.plist + entitlements
@@ -37,6 +39,13 @@ The host case cannot be recognized by a flag of ours: a host manifest's `path` i
 passes `[manifest-path, addon-id]`, Chrome one origin. So `LaunchMode.parse` reads those shapes,
 and `AcceptedPeers` (from Info.plist passthrough keys, so a blank value fails closed) refuses any
 caller the build does not name.
+
+The command line lives in a **second target** (`InfinMonkeyCLI`) rather than in Core, because
+SwiftPM links a target's dependencies into every product that includes it: declaring
+swift-argument-parser on Core would put it into the app extension too, which has no argv and never
+runs a command (measured: 1.08 MB vs 2.72 MB, 5463 ArgumentParser symbols). Only the macOS app links
+the CLI product; the iOS app and both extensions link Core alone. The CLI's own logic stays testable
+through `swift test`, which is why this is a target rather than code in the app target.
 
 Everything testable lives in Core: `FrameCodec` (the length prefix is **native byte order** — MDN's
 own samples unpack with `=I` — and `maxOutgoingBytes` is the 1 MB the browser enforces),

@@ -2,6 +2,13 @@ import Foundation
 import InfinMonkeyCore
 import SwiftUI
 
+// Only macOS has command-line roles, and only macOS links the CLI product — an
+// unconditional import would make the iOS target link it too, for an argv it
+// never has.
+#if os(macOS)
+  import InfinMonkeyCLI
+#endif
+
 // The one entry point of the app binary, shared by both platforms.
 //
 // It is `main.swift` rather than `@main` so the process can decide what it is
