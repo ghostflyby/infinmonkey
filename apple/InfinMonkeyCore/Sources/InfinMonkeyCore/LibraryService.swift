@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 /// Library operations, expressed in domain terms.
 ///

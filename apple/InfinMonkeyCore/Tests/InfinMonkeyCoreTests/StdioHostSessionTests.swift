@@ -39,12 +39,15 @@ struct StdioHostSessionTests {
     // The log is captured because a truncated frame's *classification* is the
     // only signal a browser forwards to the extension console: exit code 1 and
     // empty stdout are the same whether the prefix or the body was cut short.
+    // Lines render as `level: message` so tests can match on both.
     let logPipe = Pipe()
     let session = StdioHostSession(
       store: store,
       input: inPipe.fileHandleForReading,
       output: outPipe.fileHandleForWriting,
-      log: { line in logPipe.fileHandleForWriting.write(Data((line + "\n").utf8)) })
+      log: { level, message in
+        logPipe.fileHandleForWriting.write(Data("\(level.rawValue): \(message)\n".utf8))
+      })
 
     let code = await session.run()
     try outPipe.fileHandleForWriting.close()
@@ -192,7 +195,9 @@ struct StdioHostSessionTests {
     let (out, code, logged) = try await runSession(store: store, input: input)
 
     #expect(code == 0, "the session should end by clean EOF, not by a failed write")
-    #expect(logged.isEmpty, "an oversized reply is expected, not a fault to log")
+    // An oversized reply is answered in protocol, so nothing above the session
+    // lifecycle's debug lines is logged.
+    #expect(!logged.contains("error:"), "got: \(logged)")
 
     let bodies = messages(in: out)
     #expect(bodies.count == 2, "both requests are answered")

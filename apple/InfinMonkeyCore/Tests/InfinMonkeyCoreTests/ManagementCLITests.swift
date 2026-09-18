@@ -45,7 +45,9 @@ struct ManagementCLITests {
       service: LibraryService(store: store, storagePath: store.layout.root.path),
       input: inPipe.fileHandleForReading,
       output: outPipe.fileHandleForWriting,
-      log: { line in errPipe.fileHandleForWriting.write(Data((line + "\n").utf8)) })
+      log: { level, message in
+        errPipe.fileHandleForWriting.write(Data("\(level.rawValue): \(message)\n".utf8))
+      })
 
     let code = await cli.run(arguments: arguments)
     try outPipe.fileHandleForWriting.close()
@@ -183,7 +185,7 @@ struct ManagementCLITests {
       service: .unavailable(error: "no app group container"),
       input: inPipe.fileHandleForReading,
       output: outPipe.fileHandleForWriting,
-      log: { _ in })
+      log: { _, _ in })
 
     let code = await cli.run(arguments: ["status"])
     try outPipe.fileHandleForWriting.close()

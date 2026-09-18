@@ -2,6 +2,7 @@ import Foundation
 import InfinMonkeyCore
 import SwiftUI
 import UniformTypeIdentifiers
+import os
 
 /// The app's view model: observable state plus calls into the Core library.
 ///
@@ -12,6 +13,12 @@ import UniformTypeIdentifiers
 @Observable
 @MainActor
 final class StoreModel {
+  /// Console.app diagnostics for the GUI process, which has no stderr a reader
+  /// reaches. `lastError` is what the user is shown; this carries the technical
+  /// error for post-mortems.
+  private static let log = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "infinmonkey", category: "library")
+
   private(set) var summaries: [EntrySummary] = []
   private(set) var rev = 0
   var lastError: String?
@@ -37,6 +44,7 @@ final class StoreModel {
     } catch {
       // A missing app group key is a build fault; surface it instead of
       // silently writing into a per-process container.
+      Self.log.fault("shared store unavailable: \(String(describing: error), privacy: .public)")
       return LibraryService.unavailable(error: "\(error)")
     }
   }
@@ -50,6 +58,7 @@ final class StoreModel {
       rev = snapshot.rev
       lastError = nil
     } catch {
+      Self.log.error("refresh failed: \(String(describing: error), privacy: .public)")
       lastError = Self.describe(error)
     }
   }
@@ -62,6 +71,7 @@ final class StoreModel {
     do {
       return try await library.entry(id: id)
     } catch {
+      Self.log.error("load failed: \(String(describing: error), privacy: .public)")
       lastError = Self.describe(error)
       return nil
     }
@@ -96,7 +106,12 @@ final class StoreModel {
   }
 
   func exportData() async -> Data {
-    (try? await library.exportData()) ?? Data()
+    do {
+      return try await library.exportData()
+    } catch {
+      Self.log.error("export failed: \(String(describing: error), privacy: .public)")
+      return Data()
+    }
   }
 
   // MARK: - Helpers
@@ -106,6 +121,7 @@ final class StoreModel {
       try await body()
       await refresh()
     } catch {
+      Self.log.error("operation failed: \(String(describing: error), privacy: .public)")
       lastError = Self.describe(error)
     }
   }
