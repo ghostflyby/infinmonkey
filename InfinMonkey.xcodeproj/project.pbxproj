@@ -623,10 +623,6 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SafariServices,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID).Extension";
 				PRODUCT_NAME = "InfinMonkey Extension";
 				SDKROOT = iphoneos;
@@ -658,10 +654,6 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SafariServices,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID).Extension";
 				PRODUCT_NAME = "InfinMonkey Extension";
 				SDKROOT = iphoneos;
@@ -697,12 +689,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SafariServices,
-					"-framework",
-					WebKit,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID)";
 				PRODUCT_NAME = InfinMonkey;
 				SDKROOT = iphoneos;
@@ -737,12 +723,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SafariServices,
-					"-framework",
-					WebKit,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID)";
 				PRODUCT_NAME = InfinMonkey;
 				SDKROOT = iphoneos;
@@ -778,10 +758,6 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SafariServices,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID).Extension";
 				PRODUCT_NAME = "InfinMonkey Extension";
 				SDKROOT = macosx;
@@ -815,10 +791,6 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SafariServices,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID).Extension";
 				PRODUCT_NAME = "InfinMonkey Extension";
 				SDKROOT = macosx;
@@ -853,12 +825,6 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SafariServices,
-					"-framework",
-					WebKit,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID)";
 				PRODUCT_NAME = InfinMonkey;
 				REGISTER_APP_GROUPS = YES;
@@ -894,12 +860,6 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SafariServices,
-					"-framework",
-					WebKit,
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BASE_BUNDLE_ID)";
 				PRODUCT_NAME = InfinMonkey;
 				REGISTER_APP_GROUPS = YES;
