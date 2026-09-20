@@ -48,7 +48,7 @@ jobs:
       # on the resolved file so it is reused until a dependency actually changes;
       # without it every run re-clones (measured: +48s on the job).
       - name: Cache SwiftPM checkouts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/Library/Caches/org.swift.swiftpm
           key: swiftpm-${{ hashFiles('apple/InfinMonkeyCore/Package.resolved') }}
