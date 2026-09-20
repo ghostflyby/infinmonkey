@@ -128,7 +128,7 @@ jobs:
       # Bump the pin deliberately when a new CfT stable is out.
       - name: Set up CfT Chrome + chromedriver
         id: cft
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@v2
         with:
           chrome-version: 153.0.8010.36
           install-chromedriver: true
