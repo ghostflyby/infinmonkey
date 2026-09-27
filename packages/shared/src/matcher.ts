@@ -13,10 +13,10 @@ export function matchPatternToRegExp(pattern: string): RegExp | null {
   re += "://";
   if (scheme !== "file") {
     if (host === "*") re += "[^/]*";
-    else if (host.startsWith("*.")) re += "(?:[^/]*\\.)?" + escapeRe(host.slice(2));
-    else if (host) re += escapeRe(host);
+    else if (host.startsWith("*.")) re += "(?:[^/]*\\.)?" + RegExp.escape(host.slice(2));
+    else if (host) re += RegExp.escape(host);
   } else if (host) {
-    re += escapeRe(host);
+    re += RegExp.escape(host);
   }
   // path: glob conversion; be lenient about query strings when no wildcard is present.
   let pathRe = globBody(path);
@@ -58,13 +58,9 @@ function globBody(g: string): string {
     if (ch === STAR_DOT) out += "(?:[^/]*\\.)?";
     else if (ch === "*") out += ".*";
     else if (ch === "?") out += ".?";
-    else out += escapeRe(ch);
+    else out += RegExp.escape(ch);
   }
   return out;
-}
-
-function escapeRe(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Whether a URL hits an entry (@match/@include hit and not blocked by @exclude; when both are empty, matches everywhere — GM legacy semantics). */

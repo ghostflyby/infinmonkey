@@ -10,7 +10,7 @@ import type {
   Settings,
   StyleEntry,
 } from "@infinmonkey/shared/types";
-import { isRecord, randomId } from "@infinmonkey/shared/util";
+import { isRecord } from "@infinmonkey/shared/util";
 
 interface DB {
   scripts: ScriptEntry[];
@@ -134,7 +134,7 @@ export async function createEntry(
     ? { type: "dev", url: opts.url!, autoReload: true }
     : { type: "inline" };
   const base = {
-    id: randomId(),
+    id: crypto.randomUUID(),
     enabled: opts.enabled ?? true,
     code: opts.code,
     meta,
@@ -321,7 +321,7 @@ export async function putPendingInstall(
   p: Omit<PendingInstall, "id" | "createdAt">,
 ): Promise<string> {
   const db = await getDB();
-  const id = randomId();
+  const id = crypto.randomUUID();
   db.pending[id] = { ...p, id, createdAt: Date.now() };
   // Clean up leftovers older than 1 day
   for (const [k, v] of Object.entries(db.pending)) {
@@ -376,7 +376,7 @@ export async function importAll(
     const meta = isScriptMeta(raw.meta) ? raw.meta : parseMeta(raw.code);
     const entry: AnyEntry = raw.kind === "script"
       ? {
-        id: randomId(),
+        id: crypto.randomUUID(),
         kind: "script",
         enabled: raw.enabled,
         position: 0,
@@ -390,7 +390,7 @@ export async function importAll(
         devCode: raw.source.type === "dev" ? raw.code : undefined,
       }
       : {
-        id: randomId(),
+        id: crypto.randomUUID(),
         kind: "style",
         enabled: raw.enabled,
         position: 0,

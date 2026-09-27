@@ -6,7 +6,7 @@
  */
 import { PM_TAG, RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
 import type { PreparedScript } from "@infinmonkey/shared/types";
-import { base64ToBytes, bytesToBase64, isRecord } from "@infinmonkey/shared/util";
+import { isRecord } from "@infinmonkey/shared/util";
 import {
   decodeDeliveryPayload,
   PAYLOAD_ATTR,
@@ -249,7 +249,11 @@ function main(): void {
       return sp.toString();
     }
     if (typeof ArrayBuffer !== "undefined" && data instanceof ArrayBuffer) {
-      return { __binary: true, b64: bytesToBase64(data), mime: "application/octet-stream" };
+      return {
+        __binary: true,
+        b64: new Uint8Array(data).toBase64(),
+        mime: "application/octet-stream",
+      };
     }
     if (typeof Blob !== "undefined" && data instanceof Blob) {
       return blobToBinary(data);
@@ -271,7 +275,7 @@ function main(): void {
         const buf = (fr.result as ArrayBuffer) ?? new ArrayBuffer(0);
         resolve({
           __binary: true,
-          b64: bytesToBase64(buf),
+          b64: new Uint8Array(buf).toBase64(),
           mime: b.type || "application/octet-stream",
         });
       };
@@ -503,8 +507,9 @@ function main(): void {
             size?: number;
           };
           let response: unknown;
-          if (responseType === "arraybuffer") response = base64ToBytes(r.base64 ?? "").buffer;
-          else if (responseType === "json") {
+          if (responseType === "arraybuffer") {
+            response = Uint8Array.fromBase64(r.base64 ?? "").buffer;
+          } else if (responseType === "json") {
             try {
               response = JSON.parse(r.text ?? "");
             } catch {

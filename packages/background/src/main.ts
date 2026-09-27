@@ -11,7 +11,7 @@ import type {
 } from "@infinmonkey/shared/types";
 import { compareVersions } from "@infinmonkey/shared/version";
 import { authorizeGmCall } from "@infinmonkey/shared/authorize";
-import { fetchWithTimeout, isRecord } from "@infinmonkey/shared/util";
+import { isRecord } from "@infinmonkey/shared/util";
 import { devClient } from "./devclient.ts";
 import { hasNativeSupport, nativeSync, PULL_ALARM } from "./native.ts";
 import { findTabIdByUrl } from "./injection.ts";
@@ -251,7 +251,10 @@ async function pingDevServer(origin?: string) {
   const db = await getDB();
   const target = (origin ?? db.settings.devOrigin).replace(/\/$/, "");
   try {
-    const r = await fetchWithTimeout(target + "/__infin/health", 2000, { cache: "no-store" });
+    const r = await fetch(target + "/__infin/health", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(2000),
+    });
     if (!r.ok) return { ok: false, message: `HTTP ${r.status}` };
     const info = await r.json().catch(() => ({}));
     devClient.ensureConnected(target);
@@ -487,7 +490,7 @@ async function startInstallFromUrl(url: string, openerTabId?: number) {
   if (!/^https?:\/\//.test(url)) return { ok: false, message: "仅支持 http(s) URL" };
   let code: string;
   try {
-    const r = await fetchWithTimeout(url, 10000, { cache: "no-store" });
+    const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
     if (!r.ok) return { ok: false, message: `HTTP ${r.status}` };
     code = await r.text();
     if (code.length > 5_000_000) return { ok: false, message: "文件过大（>5MB）" };
@@ -543,7 +546,7 @@ async function checkUpdate(id: string) {
   if (!url) return { status: "error", message: "未配置 @updateURL/@downloadURL，且非 dev 映射" };
   let code: string;
   try {
-    const r = await fetchWithTimeout(url, 10000, { cache: "no-store" });
+    const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
     if (!r.ok) return { status: "error", message: `HTTP ${r.status}` };
     code = await r.text();
   } catch (e) {

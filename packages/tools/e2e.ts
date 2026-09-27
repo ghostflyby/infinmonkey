@@ -64,7 +64,7 @@ async function nav(url: string): Promise<void> {
 async function screenshot(tag: string): Promise<void> {
   try {
     const b64 = await wd("GET", "/session/" + sid + "/screenshot");
-    const bytes = Uint8Array.from(atob(b64 as string), (c) => c.charCodeAt(0));
+    const bytes = Uint8Array.fromBase64(b64 as string);
     await Deno.writeFile(join(SHOTS, tag + ".png"), bytes);
     console.log("  shot: " + tag + ".png");
   } catch { /* ignore */ }
