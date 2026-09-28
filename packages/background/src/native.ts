@@ -8,7 +8,6 @@ import {
 } from "@infinmonkey/protocol/wire";
 import type { AnyEntry, ScriptEntry, ScriptMeta, StyleEntry } from "@infinmonkey/shared/types";
 import { parseMeta } from "@infinmonkey/shared/meta";
-import { randomId } from "@infinmonkey/shared/util";
 import { isEntryCore, isScriptMeta } from "@infinmonkey/shared/guards";
 import {
   findEntry,
@@ -210,8 +209,8 @@ class NativeSync {
     if (local.updatedAt >= w.updatedAt) return; // local wins (equal = no-op)
     if (this.dirtyUpserts.has(w.id)) {
       // Both sides changed: keep the local version as a conflict copy.
-      const copy = JSON.parse(JSON.stringify(local)) as AnyEntry;
-      copy.id = randomId();
+      const copy = structuredClone(local);
+      copy.id = crypto.randomUUID();
       copy.meta = { ...copy.meta, name: `${copy.meta.name}（冲突副本）` };
       copy.position = 0;
       await mirrorUpsert(copy);

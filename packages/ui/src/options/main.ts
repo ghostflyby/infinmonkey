@@ -9,7 +9,6 @@ import type {
   ScriptEntry,
   StyleEntry,
 } from "@infinmonkey/shared/types";
-import { randomId } from "@infinmonkey/shared/util";
 import { NEW_SCRIPT_TEMPLATE, NEW_STYLE_TEMPLATE } from "@infinmonkey/shared/templates";
 import { isRecord } from "@infinmonkey/shared/util";
 import { debounce, h, msg, toast } from "../dom.ts";
@@ -357,7 +356,7 @@ $("#add-script").addEventListener("click", async () => {
       type: "CreateEntry",
       kind: "script",
       code: NEW_SCRIPT_TEMPLATE,
-      token: randomId(),
+      token: crypto.randomUUID(),
     });
     await openEditor(res.entry.id);
     void loadList();
@@ -371,7 +370,7 @@ $("#add-style").addEventListener("click", async () => {
       type: "CreateEntry",
       kind: "style",
       code: NEW_STYLE_TEMPLATE,
-      token: randomId(),
+      token: crypto.randomUUID(),
     });
     await openEditor(res.entry.id);
     void loadList();

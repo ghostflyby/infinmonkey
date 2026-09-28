@@ -1,5 +1,4 @@
 import browser from "webextension-polyfill";
-import { base64ToBytes, bytesToBase64 } from "@infinmonkey/shared/util";
 import { isConnectAllowed } from "@infinmonkey/shared/connect";
 import { addConnectGrant, findEntry } from "./store.ts";
 
@@ -111,7 +110,7 @@ export async function handleXhr(ctxKey: string, scriptId: string, args: XhrArgs)
     if (body != null && init.method !== "GET" && init.method !== "HEAD") init.body = body;
     const res = await fetch(url.href, init);
     if (args.responseType === "arraybuffer") {
-      const base64 = bytesToBase64(await res.arrayBuffer());
+      const base64 = new Uint8Array(await res.arrayBuffer()).toBase64();
       return packXhr(res, { base64, text: undefined });
     }
     const text = await res.text();
@@ -156,7 +155,7 @@ function decodeData(d: unknown): BodyInit | null {
   if (typeof d === "string") return d;
   if (typeof d === "object" && "__binary" in (d as Record<string, unknown>)) {
     const o = d as { __binary: true; b64: string; mime?: string };
-    return new Blob([base64ToBytes(o.b64) as unknown as BlobPart], {
+    return new Blob([Uint8Array.fromBase64(o.b64)], {
       type: o.mime || "application/octet-stream",
     });
   }
@@ -187,7 +186,7 @@ export async function handleDownload(
   if (!res.ok) throw new Error(`GM_download: HTTP ${res.status}`);
   const buf = await res.arrayBuffer();
   const mime = res.headers.get("content-type") ?? "application/octet-stream";
-  const dataUrl = `data:${mime};base64,${bytesToBase64(buf)}`;
+  const dataUrl = `data:${mime};base64,${new Uint8Array(buf).toBase64()}`;
   const filename = (args.name || decodeURIComponent(url.pathname.split("/").pop() || "download"))
     .replace(
       /[/\\:*?"<>|]/g,

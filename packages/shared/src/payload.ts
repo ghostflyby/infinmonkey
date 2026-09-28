@@ -1,4 +1,3 @@
-import { base64ToBytes, bytesToBase64 } from "./util.ts";
 import type { PreparedScript } from "./types.ts";
 
 /**
@@ -27,12 +26,12 @@ export interface DeliveryPayload {
 }
 
 export function encodeDeliveryPayload(payload: DeliveryPayload): string {
-  return bytesToBase64(new TextEncoder().encode(JSON.stringify(payload)));
+  return new TextEncoder().encode(JSON.stringify(payload)).toBase64();
 }
 
 export function decodeDeliveryPayload(text: string): DeliveryPayload | null {
   try {
-    const bytes = base64ToBytes(text);
+    const bytes = Uint8Array.fromBase64(text);
     const parsed = JSON.parse(new TextDecoder().decode(bytes)) as DeliveryPayload;
     if (
       typeof parsed !== "object" ||
