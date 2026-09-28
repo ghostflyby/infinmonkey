@@ -150,7 +150,12 @@ function showBanner(found: Found): void {
       card.innerHTML = `<div class="done">✓ 已安装</div>`;
     } catch (e) {
       card.dataset.infinDone = "error";
-      card.innerHTML = `<div class="done">安装失败：${String((e as Error).message ?? e)}</div>`;
+      const done = document.createElement("div");
+      done.className = "done";
+      // Error text can carry page-influenced data; it must not go through
+      // innerHTML (this script runs in the ISOLATED world).
+      done.textContent = `安装失败：${String((e as Error).message ?? e)}`;
+      card.replaceChildren(done);
     }
     setTimeout(() => host.remove(), 3000);
   });

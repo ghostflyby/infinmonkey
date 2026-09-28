@@ -41,10 +41,14 @@ export async function resolveConnectAuth(
 ): Promise<void> {
   const key = `${scriptId}:${domain}`;
   const waiters = authWaiters.get(key);
+  // Only an outstanding prompt may be resolved. Without this guard a caller
+  // could persist a grant for an arbitrary (script, domain) pair with no
+  // prompt ever shown to the user.
+  if (!waiters) return;
   authWaiters.delete(key);
   if (scope === "always") await addConnectGrant(scriptId, domain);
   else if (scope === "once") sessionGrants.add(`${scriptId}:${domain.toLowerCase()}`);
-  waiters?.forEach((r) => r(scope !== "deny"));
+  waiters.forEach((r) => r(scope !== "deny"));
   const winId = authWindows.get(key);
   if (winId != null) {
     authWindows.delete(key);

@@ -10,7 +10,7 @@
  */
 import { parseMeta } from "@infinmonkey/shared/meta";
 import type { ScriptEntry } from "@infinmonkey/shared/types";
-import { assert } from "@std/assert";
+import { assert, assertRejects } from "@std/assert";
 
 type Listener = (changes: Record<string, unknown>, area: string) => void;
 
@@ -55,7 +55,9 @@ const storageLocal = {
   },
 };
 
-const { getDB } = await import("@infinmonkey/background/store");
+const { getDB, deleteValue, getValue, setValue } = await import(
+  "@infinmonkey/background/store"
+);
 
 function demoScriptEntry(id: string) {
   const header = [
@@ -109,8 +111,7 @@ Deno.test("background store drops malformed entries but keeps valid ones", async
   assert(!scripts.some((s) => s.id === "broken"), "malformed entry is dropped");
 });
 
-Deno.test("cache invalidation keys: store keys yes, other keys and areas no", async () => {
-  // Warm the cache and record its storage-read baseline.
+Deno.test("cache invalidation keys: store keys yes, other keys and areas no", async () => { // Warm the cache and record its storage-read baseline.
   await storageLocal.set({ settings: { devOrigin: "http://127.0.0.1:9999" } });
   await getDB();
   const baseline = storageGets;
@@ -133,4 +134,25 @@ Deno.test("cache invalidation keys: store keys yes, other keys and areas no", as
     (db.settings as { devOrigin?: string }).devOrigin === "http://127.0.0.1:7777",
     "fresh settings are visible after invalidation",
   );
+});
+
+Deno.test("GM value keys that cannot round-trip are rejected or invisible", async () => {
+  await storageLocal.set({ scripts: [demoScriptEntry("gmkeys-1")] });
+
+  // Assignment via values["__proto__"] would hit the prototype setter: the
+  // value silently vanishes on the next persist. It must be rejected.
+  await assertRejects(
+    () => setValue("gmkeys-1", "__proto__", { polluted: true }),
+    Error,
+    "reserved key",
+  );
+
+  // Reads and deletes must treat it as absent, not as `in` answers via
+  // Object.prototype (found: true with the prototype as the value).
+  assert(!(await getValue("gmkeys-1", "__proto__")).found, "__proto__ reads as absent");
+  assert(!(await deleteValue("gmkeys-1", "__proto__")).existed, "__proto__ deletes as absent");
+
+  // Ordinary keys keep working end to end.
+  await setValue("gmkeys-1", "counter", 1);
+  assert((await getValue("gmkeys-1", "counter")).value === 1, "plain keys still round-trip");
 });
