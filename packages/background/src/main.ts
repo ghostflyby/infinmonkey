@@ -11,6 +11,7 @@ import type {
 } from "@infinmonkey/shared/types";
 import { compareVersions } from "@infinmonkey/shared/version";
 import { authorizeGmCall } from "@infinmonkey/shared/authorize";
+import { isDevOrigin } from "@infinmonkey/shared/settings";
 import { isRecord } from "@infinmonkey/shared/util";
 import { devClient } from "./devclient.ts";
 import { hasNativeSupport, nativeSync, PULL_ALARM } from "./native.ts";
@@ -608,7 +609,6 @@ async function confirmInstall(pendingId: string, decision: "install" | "cancel")
     if (existing) {
       entry = await updateCode(existing.id, pending.code);
       if (entry && pending.url) {
-        const { isDevOrigin } = await import("./store.ts");
         const db = await getDB();
         if (isDevOrigin(pending.url, db.settings)) {
           entry = await setSource(entry.id, { type: "dev", url: pending.url, autoReload: true });

@@ -17,6 +17,26 @@ struct ContentView: View {
         .foregroundStyle(.secondary)
     }
     .toolbar { toolbarContent }
+    .safeAreaInset(edge: .bottom) {
+      if let error = model.lastError {
+        HStack(alignment: .firstTextBaseline) {
+          Image(systemName: "exclamationmark.triangle.fill")
+          Text(error)
+            .font(.callout)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          Button {
+            model.clearLastError()
+          } label: {
+            Image(systemName: "xmark")
+          }
+          .buttonStyle(.borderless)
+          .accessibilityLabel("关闭")
+        }
+        .padding(10)
+        .foregroundStyle(.white)
+        .background(.red.opacity(0.92), in: .rect)
+      }
+    }
     .fileImporter(
       isPresented: $model.importPresented,
       allowedContentTypes: StoreModel.importTypes
@@ -51,8 +71,11 @@ struct ContentView: View {
       }
       Button {
         Task {
-          exportData = await model.exportData()
-          model.exportPresented = true
+          // A failed export stays closed: the error banner carries the reason.
+          if let data = await model.exportData() {
+            exportData = data
+            model.exportPresented = true
+          }
         }
       } label: {
         Label("导出", systemImage: "square.and.arrow.up")
