@@ -68,6 +68,9 @@ export async function getDB(): Promise<DB> {
     settings: {
       devOrigin: DEFAULT_DEV_ORIGIN,
       storageBackend: "local",
+      masterEnabled: true,
+      siteBlacklist: [],
+      autoUpdate: true,
       ...(isRecord(all.settings) ? (all.settings as Partial<Settings>) : {}),
     },
     pending: (all.pending as Record<string, PendingInstall>) ?? {},

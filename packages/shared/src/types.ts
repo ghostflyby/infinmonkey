@@ -100,6 +100,12 @@ export interface Settings {
   devOrigin: string;
   /** "native": mirror the script library with the companion app via native messaging. */
   storageBackend: "local" | "native";
+  /** Master switch: false stops injection and denies GM calls on every site. */
+  masterEnabled: boolean;
+  /** Chrome match patterns; a URL matching any of them is treated as disabled. */
+  siteBlacklist: string[];
+  /** Daily silent update pass applying newer remote @version values. */
+  autoUpdate: boolean;
 }
 
 export interface PopupScriptInfo {
@@ -122,6 +128,9 @@ export interface PopupData {
   commands: PopupCommand[];
   devConnected: boolean;
   devOrigin: string;
+  /** Site controls state: the master switch, and whether this URL is disabled. */
+  masterEnabled: boolean;
+  siteBlocked: boolean;
 }
 
 export interface PendingInstall {

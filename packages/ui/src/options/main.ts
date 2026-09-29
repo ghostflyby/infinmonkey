@@ -431,11 +431,21 @@ $("#btn-export2").addEventListener("click", () => void doExport());
 // ---- Settings ----
 
 async function loadSettings(): Promise<void> {
-  const settings = await msg<{ devOrigin: string; storageBackend: "local" | "native" }>({
-    type: "GetSettings",
-  });
+  const settings = await msg<{
+    devOrigin: string;
+    storageBackend: "local" | "native";
+    masterEnabled: boolean;
+    siteBlacklist: string[];
+    autoUpdate: boolean;
+  }>({ type: "GetSettings" });
   ($("#set-dev-origin") as HTMLInputElement).value = settings.devOrigin;
   ($("#set-native-enabled") as HTMLInputElement).checked = settings.storageBackend === "native";
+  ($("#set-master-enabled") as HTMLInputElement).checked = settings.masterEnabled;
+  ($("#set-auto-update") as HTMLInputElement).checked = settings.autoUpdate;
+  ($("#set-blacklist") as HTMLTextAreaElement).value = settings.siteBlacklist.join("\n");
+  ($("#set-blacklist-status") as HTMLElement).textContent = settings.siteBlacklist.length > 0
+    ? `当前 ${settings.siteBlacklist.length} 条`
+    : "";
   void refreshNativeStatus();
   $("#about").textContent = `${RUNTIME_NAME} v${RUNTIME_VERSION} · MV3 运行时 · Firefox ${
     browser.runtime.getBrowserInfo ? "✓" : "✗"
@@ -463,6 +473,30 @@ $("#set-native-enabled").addEventListener("change", async (ev) => {
   await msg({ type: "SetSettings", patch: { storageBackend: enabled ? "native" : "local" } });
   toast(enabled ? "已启用 Native App 同步" : "已关闭 Native App 同步");
   await refreshNativeStatus();
+});
+
+$("#set-master-enabled").addEventListener("change", async (ev) => {
+  const on = (ev.target as HTMLInputElement).checked;
+  await msg({ type: "SetSettings", patch: { masterEnabled: on } });
+  toast(on ? "已启用全部站点" : "已停用全部站点");
+});
+
+$("#set-auto-update").addEventListener("change", async (ev) => {
+  const on = (ev.target as HTMLInputElement).checked;
+  await msg({ type: "SetSettings", patch: { autoUpdate: on } });
+  toast(on ? "已开启每日自动更新" : "已关闭自动更新");
+});
+
+$("#set-blacklist-save").addEventListener("click", async () => {
+  const lines = ($("#set-blacklist") as HTMLTextAreaElement).value
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  await msg({ type: "SetSettings", patch: { siteBlacklist: lines } });
+  ($("#set-blacklist-status") as HTMLElement).textContent = lines.length > 0
+    ? `已保存 ${lines.length} 条`
+    : "已清空";
+  toast("站点黑名单已保存");
 });
 
 $("#set-dev-ping").addEventListener("click", async () => {

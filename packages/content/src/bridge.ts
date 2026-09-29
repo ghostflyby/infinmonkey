@@ -8,6 +8,7 @@ import browser from "webextension-polyfill";
 import { PM_TAG } from "@infinmonkey/shared/constants";
 import { matchScripts, prepareScripts } from "@infinmonkey/shared/inject";
 import { splitUserStyle, targetsMatch } from "@infinmonkey/shared/mozdoc";
+import { userAllows } from "@infinmonkey/shared/settings";
 import type { PreparedScript, ScriptEntry, StyleEntry } from "@infinmonkey/shared/types";
 import { isRecord, withRetry, withTimeout } from "@infinmonkey/shared/util";
 import {
@@ -39,12 +40,12 @@ const BRIDGE_NONCE = typeof crypto.randomUUID === "function"
 function readStoreGuarded(): Promise<{
   scripts: ScriptEntry[];
   styles: StyleEntry[];
-  devOrigin: string;
+  settings: { devOrigin?: string; masterEnabled?: boolean; siteBlacklist?: string[] };
 }> {
   const read = async (): Promise<{
     scripts?: ScriptEntry[];
     styles?: StyleEntry[];
-    settings?: { devOrigin?: string };
+    settings?: { devOrigin?: string; masterEnabled?: boolean; siteBlacklist?: string[] };
   }> => {
     const st = (await withTimeout(
       browser.storage.local.get(["scripts", "styles", "settings"]) as Promise<
@@ -55,20 +56,20 @@ function readStoreGuarded(): Promise<{
     )) as {
       scripts?: ScriptEntry[];
       styles?: StyleEntry[];
-      settings?: { devOrigin?: string };
+      settings?: { devOrigin?: string; masterEnabled?: boolean; siteBlacklist?: string[] };
     };
     // Normalize: storage.local.get returns only keys that exist, so a fresh
     // store omits `styles`/`settings` entirely.
     return {
       scripts: st.scripts ?? [],
       styles: st.styles ?? [],
-      settings: st.settings,
+      settings: st.settings ?? {},
     };
   };
   return withRetry(read, 2, STORAGE_READ_RETRY_DELAY_MS) as Promise<{
     scripts: ScriptEntry[];
     styles: StyleEntry[];
-    devOrigin: string;
+    settings: { devOrigin?: string; masterEnabled?: boolean; siteBlacklist?: string[] };
   }>;
 }
 
@@ -78,10 +79,18 @@ async function deliver(): Promise<void> {
   };
   mark("start");
   try {
-    const { scripts, styles } = await readStoreGuarded();
-    mark("store:" + scripts.length);
+    const { scripts, styles, settings } = await readStoreGuarded();
     const url = location.href;
     const top = window.top === window;
+
+    // Site controls short-circuit before matching: nothing injects, and the
+    // carriers are overwritten with an empty payload so the runner cannot
+    // re-consume a previous delivery.
+    if (!userAllows(url, settings)) {
+      writeCarriers(encodeDeliveryPayload({ frameKey: url, scripts: [], styles: [] }));
+      mark("disabled");
+      return;
+    }
 
     const prepared: PreparedScript[] = [];
     for (const s of matchScripts(scripts, url, top)) {
@@ -105,18 +114,7 @@ async function deliver(): Promise<void> {
     // channel (proven readable cross-world in headless); the element is a
     // fallback for engines that limit attribute size.
     const payload: DeliveryPayload = { frameKey: url, scripts: prepared, styles: stylePayload };
-    const encoded = encodeDeliveryPayload(payload);
-    let carrier = document.getElementById(PAYLOAD_ELEMENT_ID);
-    if (!carrier) {
-      // Unknown type keeps the element inert; content scripts write it, the
-      // MAIN-world runner reads it.
-      carrier = document.createElement("script");
-      carrier.id = PAYLOAD_ELEMENT_ID;
-      (carrier as HTMLScriptElement).type = "application/x-infinmonkey-payload";
-      document.documentElement.appendChild(carrier);
-    }
-    carrier.textContent = encoded;
-    document.documentElement.setAttribute(PAYLOAD_ATTR, encoded);
+    writeCarriers(encodeDeliveryPayload(payload));
     // Cross-world debug marker (in Firefox the page cannot see isolated-world window properties; dataset is shared ✓)
     document.documentElement.dataset.infinBridge = JSON.stringify({
       scripts: prepared.length,
@@ -129,6 +127,20 @@ async function deliver(): Promise<void> {
     console.warn("[InfinMonkey] deliver failed:", e);
     mark("ERR: " + (e instanceof Error ? `${e.name}: ${e.message}` : String(e)));
   }
+}
+
+function writeCarriers(encoded: string): void {
+  let carrier = document.getElementById(PAYLOAD_ELEMENT_ID);
+  if (!carrier) {
+    // Unknown type keeps the element inert; content scripts write it, the
+    // MAIN-world runner reads it.
+    carrier = document.createElement("script");
+    carrier.id = PAYLOAD_ELEMENT_ID;
+    (carrier as HTMLScriptElement).type = "application/x-infinmonkey-payload";
+    document.documentElement.appendChild(carrier);
+  }
+  carrier.textContent = encoded;
+  document.documentElement.setAttribute(PAYLOAD_ATTR, encoded);
 }
 
 /** Content-side fetch; on failure fall back to a background fetch (no CORS limits). */
@@ -158,10 +170,11 @@ const fetchTextWith = async (
   throw new Error("error" in (res as object) ? (res as { error: string }).error : "fetch failed");
 };
 
-/** storage.onChanged: sync styles and entries immediately (no reload) */
+/** storage.onChanged: sync styles and entries immediately (no reload); site
+ * controls changes re-evaluate the gate the same way. */
 browser.storage.onChanged.addListener((changes: Record<string, unknown>, area: string) => {
   if (area !== "local") return;
-  if (!("styles" in changes)) return;
+  if (!("styles" in changes) && !("settings" in changes)) return;
   void deliver();
 });
 

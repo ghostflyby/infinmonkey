@@ -10,10 +10,14 @@ let activeTabId: number | null = null;
 void (async () => {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
   activeTabId = tab?.id ?? null;
+  await refresh();
+})();
+
+async function refresh(): Promise<void> {
   if (activeTabId == null) return;
   const data = await msg<PopupData>({ type: "GetPopupData", tabId: activeTabId });
   render(data);
-})();
+}
 
 function render(data: PopupData): void {
   try {
@@ -25,28 +29,33 @@ function render(data: PopupData): void {
   $("#dev-dot").title = data.devConnected
     ? `dev server 已连接：${data.devOrigin}`
     : "dev server 未连接";
+  renderSiteControls(data);
 
   const list = $("#scripts");
   list.textContent = "";
-  if (data.scripts.length === 0) {
+  if (data.siteBlocked) {
+    list.append(h("div", { class: "empty" }, "此站点已停用：不注入，不响应 GM 调用"));
+  } else if (data.scripts.length === 0) {
     list.append(h("div", { class: "empty" }, "没有在此页面运行的脚本或样式"));
   }
-  for (const s of data.scripts) {
-    list.append(
-      h(
-        "div",
-        { class: "row", title: "点击在管理面板中编辑" },
-        h("div", { class: "glyph" }, s.kind === "script" ? "📜" : "🎨"),
+  if (!data.siteBlocked) {
+    for (const s of data.scripts) {
+      list.append(
         h(
           "div",
-          { class: "name" },
-          s.name,
-          " ",
-          s.version ? h("span", { class: "ver" }, `v${s.version}`) : null,
+          { class: "row", title: "点击在管理面板中编辑" },
+          h("div", { class: "glyph" }, s.kind === "script" ? "📜" : "🎨"),
+          h(
+            "div",
+            { class: "name" },
+            s.name,
+            " ",
+            s.version ? h("span", { class: "ver" }, `v${s.version}`) : null,
+          ),
+          popupToggle(s.id, s.enabled),
         ),
-        popupToggle(s.id, s.enabled),
-      ),
-    );
+      );
+    }
   }
 
   const cmdSection = $("#cmd-section");
@@ -63,13 +72,40 @@ function render(data: PopupData): void {
   }
 }
 
-function popupToggle(id: string, on: boolean): HTMLElement {
+function renderSiteControls(data: PopupData): void {
+  $("#site-section").hidden = false;
+  $("#master-switch").replaceChildren(
+    switchToggle(
+      data.masterEnabled,
+      (on) => void msg({ type: "SetSettings", patch: { masterEnabled: on } }).then(refresh),
+    ),
+  );
+  const siteToggle = switchToggle(!data.siteBlocked, (allow) => {
+    void toggleSite(data.url, allow).then(refresh);
+  });
+  // Without a URL (or with the master off) there is nothing to toggle per site.
+  (siteToggle.querySelector("input") as HTMLInputElement).disabled = !data.masterEnabled ||
+    !data.url;
+  $("#site-switch").replaceChildren(siteToggle);
+}
+
+/** Site switch = add/remove a host-wide pattern for this page's origin. */
+async function toggleSite(url: string, allow: boolean): Promise<void> {
+  const pattern = `*://${new URL(url).host}/*`;
+  const { siteBlacklist } = await msg<{ siteBlacklist: string[] }>({ type: "GetSettings" });
+  const next = allow
+    ? siteBlacklist.filter((p) => p !== pattern)
+    : siteBlacklist.includes(pattern)
+    ? siteBlacklist
+    : [...siteBlacklist, pattern];
+  await msg({ type: "SetSettings", patch: { siteBlacklist: next } });
+}
+
+/** Shared switch control; callers attach behavior in onChange. */
+function switchToggle(on: boolean, onChange: (on: boolean) => void): HTMLElement {
   const input = h("input", { type: "checkbox" }) as HTMLInputElement;
   input.checked = on;
-  input.addEventListener("change", () => {
-    void msg({ type: "SetEnabled", id, enabled: input.checked });
-  });
-  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("change", () => onChange(input.checked));
   return h(
     "label",
     { class: "switch" },
@@ -77,6 +113,12 @@ function popupToggle(id: string, on: boolean): HTMLElement {
     h("span", { class: "track" }),
     h("span", { class: "knob" }),
   );
+}
+
+function popupToggle(id: string, on: boolean): HTMLElement {
+  const el = switchToggle(on, (enabled) => void msg({ type: "SetEnabled", id, enabled }));
+  el.addEventListener("click", (e) => e.stopPropagation());
+  return el;
 }
 
 $("#open-options").addEventListener("click", () => void browser.runtime.openOptionsPage());
