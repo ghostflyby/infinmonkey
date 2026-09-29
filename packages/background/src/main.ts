@@ -117,7 +117,9 @@ browser.runtime.onMessage.addListener((msg: unknown, sender: browser.Runtime.Mes
   return route(msg, sender) as unknown;
 });
 
-function route(
+/** Exported for route_test.ts; the polyfill's listener wrapper swallows
+ * return values, so tests drive this function directly. */
+export function route(
   msg: unknown,
   sender: browser.Runtime.MessageSender,
 ): Promise<unknown> | unknown {
