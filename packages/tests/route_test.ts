@@ -448,21 +448,34 @@ Deno.test("CheckUpdate: checks @updateURL, not @downloadURL (convention order)",
     };
     assertEquals(r.status, "available");
     assertEquals(r.version, "2.0");
-    assertEquals(fetched, ["https://upd.test/s.user.js"]);
+    // Probe the check URL, then fetch the installable body from the download
+    // URL (a meta-only @updateURL must never be installed as code).
+    assertEquals(fetched, ["https://upd.test/s.user.js", "https://dl.test/s.user.js"]);
   } finally {
     globalThis.fetch = realFetch;
   }
 });
 
 Deno.test("auto update: applies a newer version, and honors the switch", async () => {
+  // Created once at startup with the daily period (a get-guarded create so
+  // event-page wakes cannot reset the schedule).
+  assertEquals(alarmScheduled, { name: UPDATE_ALARM, periodInMinutes: 1440 });
   const realFetch = globalThis.fetch;
   const fetched: string[] = [];
   const arm = () =>
     (globalThis as Record<string, unknown>).fetch = (url: string | URL) => {
       fetched.push(String(url));
+      // The download source serves a distinguishable body so the assertion
+      // proves the applied code came from there, not from the probe.
+      const code = (updEntry() as { code: string }).code.replace("1.0", "2.0");
       return Promise.resolve({
         ok: true,
-        text: () => Promise.resolve((updEntry() as { code: string }).code.replace("1.0", "2.0")),
+        text: () =>
+          Promise.resolve(
+            String(url).includes("dl.test")
+              ? code.replace("void 0;", "/*from-download*/ void 0;")
+              : code,
+          ),
       });
     };
   try {
@@ -477,11 +490,15 @@ Deno.test("auto update: applies a newer version, and honors the switch", async (
     await storageLocal.set({ scripts: [updEntry()], settings: { autoUpdate: true } });
     fireAlarm(UPDATE_ALARM);
     await new Promise((r) => setTimeout(r, 20));
-    assertEquals(fetched, ["https://upd.test/s.user.js"]);
+    assertEquals(fetched, ["https://upd.test/s.user.js", "https://dl.test/s.user.js"]);
     const got = await route({ type: "GetEntry", id: "upd1" }, pageSender) as {
       entry: ScriptEntry | null;
     };
     assert(got.entry?.code.includes("@version  2.0"), "newer version must be applied");
+    assert(
+      got.entry?.code.includes("/*from-download*/"),
+      "the applied body must come from the download source",
+    );
   } finally {
     globalThis.fetch = realFetch;
   }

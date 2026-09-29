@@ -16,7 +16,8 @@ export function isDevOrigin(url: string, settings?: { devOrigin?: string }): boo
 
 /**
  * Whether the manager may act on this URL at all: the master switch is on and
- * no blacklist pattern matches. An unknown URL passes the site checks (the GM
+ * no blacklist pattern matches. Match-pattern semantics apply to the URL
+ * without its #fragment. An unknown URL passes the site checks (the GM
  * authorization layer fails closed on it separately); malformed blacklist
  * patterns are skipped so a single typo cannot take down injection.
  */
@@ -26,9 +27,10 @@ export function userAllows(
 ): boolean {
   if (settings?.masterEnabled === false) return false;
   if (url === undefined) return true;
+  const bare = url.split("#")[0];
   for (const pattern of settings?.siteBlacklist ?? []) {
     // matchPatternToRegExp yields null for a malformed pattern: skipped.
-    if (matchPatternToRegExp(pattern)?.test(url)) return false;
+    if (matchPatternToRegExp(pattern)?.test(bare)) return false;
   }
   return true;
 }

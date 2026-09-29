@@ -708,14 +708,66 @@ async function checkUpdate(id: string) {
   const remoteMeta = parseMeta(code);
   const cmp = compareVersions(remoteMeta.version ?? "0", entry.meta.version ?? "0");
   if (cmp <= 0) return { status: "current", version: entry.meta.version ?? "" };
+  // Newer on the check URL. The installable body comes from the download
+  // source: @updateURL often serves a meta-only file, so installing the
+  // probe body verbatim would clobber working code.
+  if (targets.downloadUrl !== targets.checkUrl) {
+    try {
+      const r = await fetch(targets.downloadUrl, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!r.ok) return { status: "error", message: `HTTP ${r.status}` };
+      code = await r.text();
+    } catch (e) {
+      return { status: "error", message: String((e as Error).message ?? e) };
+    }
+    const dlKind = detectKind(code);
+    if (dlKind !== entry.kind) {
+      return { status: "error", message: `远端类型不匹配（${dlKind} ≠ ${entry.kind}）` };
+    }
+  }
   const pendingId = await putPendingInstall({
     kind,
     code,
-    url: targets.checkUrl,
+    url: targets.downloadUrl,
     replaceId: entry.id,
   });
   await openInstallPage(pendingId);
   return { status: "available", version: remoteMeta.version ?? "" };
+}
+
+/** Fetches an entry's update source; returns the new code when the check URL
+ * carries a newer @version of the same kind, else null. The installable body
+ * comes from the download source (see checkUpdate); every failure mode
+ * collapses to null so one bad entry cannot abort the daily pass. */
+async function fetchNewerVersion(
+  entry: AnyEntry,
+  targets: { checkUrl: string; downloadUrl: string },
+): Promise<string | null> {
+  try {
+    const r = await fetch(targets.checkUrl, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) return null;
+    const probe = await r.text();
+    if (probe === entry.code || detectKind(probe) !== entry.kind) return null;
+    const meta = parseMeta(probe);
+    if (!meta.version || compareVersions(meta.version, entry.meta.version ?? "0") <= 0) {
+      return null;
+    }
+    if (targets.downloadUrl === targets.checkUrl) return probe;
+    const dl = await fetch(targets.downloadUrl, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!dl.ok) return null;
+    const body = await dl.text();
+    return detectKind(body) === entry.kind ? body : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Daily silent pass: apply newer remote @version values in place (values
@@ -729,19 +781,10 @@ async function runAutoUpdate(): Promise<void> {
     const targets = updateTargets(entry);
     if (!targets) continue;
     try {
-      const r = await fetch(targets.checkUrl, {
-        cache: "no-store",
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!r.ok) continue;
-      const code = await r.text();
-      if (code === entry.code || detectKind(code) !== entry.kind) continue;
-      const remote = parseMeta(code);
-      if (!remote.version) continue;
-      if (compareVersions(remote.version, entry.meta.version ?? "0") <= 0) continue;
-      await updateCode(entry.id, code);
+      const code = await fetchNewerVersion(entry, targets);
+      if (code !== null) await updateCode(entry.id, code);
     } catch {
-      // Unreachable mirror or malformed remote: skip this entry, keep going.
+      // One failing entry must not abort the pass.
     }
   }
 }

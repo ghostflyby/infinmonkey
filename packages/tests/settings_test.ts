@@ -34,6 +34,15 @@ Deno.test("a malformed pattern is skipped, not fatal", () => {
   assert(userAllows("https://a.test/x", settings));
 });
 
+Deno.test("an unknown URL passes the site checks (the GM layer fails closed on it)", () => {
+  assert(userAllows(undefined, { masterEnabled: true, siteBlacklist: ["https://a.test/*"] }));
+});
+
+Deno.test("fragments do not let a page escape the blacklist", () => {
+  const settings = { masterEnabled: true, siteBlacklist: ["https://a.test/page"] };
+  assertFalse(userAllows("https://a.test/page#section", settings));
+});
+
 Deno.test("defaulting: missing settings or an empty list allow everything", () => {
   assert(userAllows("https://a.test/", undefined));
   assert(userAllows("https://a.test/", {}));

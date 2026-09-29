@@ -33,7 +33,9 @@ function render(data: PopupData): void {
 
   const list = $("#scripts");
   list.textContent = "";
-  if (data.siteBlocked) {
+  if (!data.masterEnabled) {
+    list.append(h("div", { class: "empty" }, "总开关已关闭：所有站点停止注入，GM 调用一并拒绝"));
+  } else if (data.siteBlocked) {
     list.append(h("div", { class: "empty" }, "此站点已停用：不注入，不响应 GM 调用"));
   } else if (data.scripts.length === 0) {
     list.append(h("div", { class: "empty" }, "没有在此页面运行的脚本或样式"));
@@ -84,8 +86,9 @@ function renderSiteControls(data: PopupData): void {
     void toggleSite(data.url, allow).then(refresh);
   });
   // Without a URL (or with the master off) there is nothing to toggle per site.
+  // Non-web pages (about:*/chrome://*) have no meaningful host pattern.
   (siteToggle.querySelector("input") as HTMLInputElement).disabled = !data.masterEnabled ||
-    !data.url;
+    !/^https?:/i.test(data.url);
   $("#site-switch").replaceChildren(siteToggle);
 }
 
