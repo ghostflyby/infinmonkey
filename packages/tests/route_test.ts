@@ -403,6 +403,23 @@ Deno.test("site controls: master switch and blacklist gate GM calls", async () =
   await storageLocal.set({ settings: {} });
 });
 
+Deno.test("SaveCode: kind-mismatched code is refused, not silently kept", async () => {
+  seedScripts();
+  // A style-headed body must not go into a script entry: the old behavior
+  // returned the unmodified entry and the editor showed a false "saved".
+  const styleCode = [
+    "/* ==UserStyle==",
+    "   @name   x",
+    "   ==/UserStyle== */",
+    "body { color: red; }",
+  ].join("\n");
+  await assertRejects(
+    () => Promise.resolve(route({ type: "SaveCode", id: "s1", code: styleCode }, pageSender)),
+    Error,
+    "类型不匹配",
+  );
+});
+
 function updEntry(): unknown {
   const header = [
     "// ==UserScript==",

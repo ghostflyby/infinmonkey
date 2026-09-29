@@ -15,8 +15,16 @@ void (async () => {
 
 async function refresh(): Promise<void> {
   if (activeTabId == null) return;
-  const data = await msg<PopupData>({ type: "GetPopupData", tabId: activeTabId });
-  render(data);
+  try {
+    const data = await msg<PopupData>({ type: "GetPopupData", tabId: activeTabId });
+    render(data);
+  } catch (e) {
+    const list = $("#scripts");
+    list.textContent = "";
+    list.append(
+      h("div", { class: "empty" }, `加载失败：${String((e as Error)?.message ?? e)}`),
+    );
+  }
 }
 
 function render(data: PopupData): void {
@@ -53,6 +61,7 @@ function render(data: PopupData): void {
             s.name,
             " ",
             s.version ? h("span", { class: "ver" }, `v${s.version}`) : null,
+            s.error ? h("span", { class: "err-dot", title: s.error }) : null,
           ),
           popupToggle(s.id, s.enabled),
         ),

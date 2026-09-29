@@ -474,3 +474,19 @@ button.danger {
   border-color: #ff6b81;
   color: #ff8a9b;
 }
+
+.badge.err {
+  color: #ff6b6b;
+  border-color: #ff6b6b55;
+}
+
+.ed-error {
+  border: 1px solid #ff6b6b55;
+  background: #ff6b6b14;
+  color: #ff9b9b;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  margin-bottom: 8px;
+  word-break: break-all;
+}

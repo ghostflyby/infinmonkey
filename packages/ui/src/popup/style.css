@@ -148,3 +148,13 @@ footer button {
 footer button:hover {
   background: #2b2b33;
 }
+
+.err-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff6b6b;
+  margin-left: 4px;
+  vertical-align: middle;
+}

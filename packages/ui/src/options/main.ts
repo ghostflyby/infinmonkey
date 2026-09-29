@@ -46,8 +46,17 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("#nav button")) {
 
 // ---- List ----
 
+interface ErrorTable {
+  imErrors?: Record<string, { message: string; at: number; url: string }>;
+}
+
+async function loadErrors(): Promise<ErrorTable["imErrors"]> {
+  return (await browser.storage.local.get("imErrors") as ErrorTable).imErrors;
+}
+
 async function loadList(): Promise<void> {
   const res = await msg<ListEntriesResult>({ type: "ListEntries" });
+  const errors = await loadErrors();
   const list = $("#entry-list");
   list.textContent = "";
   const items: AnyEntry[] = view === "scripts" ? res.scripts : res.styles;
@@ -65,10 +74,10 @@ async function loadList(): Promise<void> {
     );
     return;
   }
-  for (const entry of items) list.append(renderEntry(entry));
+  for (const entry of items) list.append(renderEntry(entry, errors?.[entry.id]));
 }
 
-function renderEntry(entry: AnyEntry): HTMLElement {
+function renderEntry(entry: AnyEntry, error?: { message: string; at: number }): HTMLElement {
   const isScript = entry.kind === "script";
   const src = entry.source;
   const dev = src.type === "dev";
@@ -86,6 +95,12 @@ function renderEntry(entry: AnyEntry): HTMLElement {
         entry.meta.name,
         dev ? h("span", { class: "badge" }, "DEV") : null,
         disabled ? h("span", { class: "badge off" }, "已禁用") : null,
+        error
+          ? h("span", {
+            class: "badge err",
+            title: `${new Date(error.at).toLocaleString()} · ${error.message}`,
+          }, "错误")
+          : null,
       ),
       h(
         "div",
@@ -151,7 +166,21 @@ async function openEditor(id: string): Promise<void> {
   current = res.entry;
   editingId = id;
   fillEditor();
+  void showEditorError(id);
   show("editor");
+}
+
+/** Shows the entry's most recent runtime error above the editor; hidden once
+ * new code is saved (updateCode clears the record). */
+async function showEditorError(id: string): Promise<void> {
+  const bar = $("#ed-error");
+  const error = (await loadErrors())?.[id];
+  if (!error) {
+    bar.hidden = true;
+    return;
+  }
+  bar.textContent = `最近运行错误（${new Date(error.at).toLocaleString()}）：${error.message}`;
+  bar.hidden = false;
 }
 
 function fillEditor(): void {
@@ -229,6 +258,7 @@ async function saveEditor(): Promise<void> {
     }
     current = res.entry;
     updateChips();
+    $("#ed-error").hidden = true;
     toast("已保存");
   } catch (e) {
     toast(`保存失败：${String(e)}`, true);

@@ -199,7 +199,10 @@ function main(): void {
   function executeScript(s: PreparedScript): void {
     const sb = makeSandbox(s);
     const fn = createEvalFunction(sb.params, s.code);
-    if (!fn) return;
+    if (!fn) {
+      reportScriptError(s.id, new Error("脚本编译失败（可能被页面 CSP/Trusted Types 拦截）"));
+      return;
+    }
     try {
       fn.call(window, ...sb.args);
       console.debug(
@@ -209,7 +212,21 @@ function main(): void {
       );
     } catch (e) {
       console.error(`[InfinMonkey] runtime error: ${s.name}`, e);
+      reportScriptError(s.id, e);
     }
+  }
+
+  /** Surfaces a script failure to the bridge, which persists it for the
+   * management UI (the page console alone is invisible to the user). The
+   * channel is page-observable by design; the bridge truncates fields. */
+  function reportScriptError(scriptId: string, error: unknown): void {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    window.postMessage({
+      [PM_TAG]: true,
+      dir: "script-error",
+      scriptId,
+      message: message.slice(0, 500),
+    }, "*");
   }
 
   /** Trusted Types fallback: try to create a default policy so that new Function works. */

@@ -180,11 +180,13 @@ export async function updateCode(id: string, code: string): Promise<AnyEntry | u
   const db = await getDB();
   const entry = findIn(db, id);
   if (!entry) return undefined;
-  // Type guard: if editor state is out of sync, prevent writing style-headed code into a script entry (or vice versa); headerless code passes through
+  // Type guard: if editor state is out of sync, prevent writing style-headed code into a script entry (or vice versa); headerless code passes through.
+  // Throws instead of returning the unmodified entry: callers (editor toast,
+  // install confirmation, auto-update) must see the refusal, not a fake save.
   const header = extractHeader(code);
   if (header && header.kind !== entry.kind) {
     await reportError("updateCode:kind-mismatch", `${entry.kind} ← ${header.kind}`);
-    return entry;
+    throw new Error(`代码类型不匹配：${entry.kind} 条目不接受 ${header.kind} 代码`);
   }
   const fallbackName = entry.source.type === "dev"
     ? decodeURIComponent(new URL(entry.source.url).pathname.split("/").pop() || "")
@@ -196,7 +198,22 @@ export async function updateCode(id: string, code: string): Promise<AnyEntry | u
   await persist(db);
   await broadcastEntriesChanged();
   emitStoreMutation({ type: "upsert", entry });
+  await clearScriptError(entry.id);
   return entry;
+}
+
+/** New code invalidates the previous runtime error record. */
+async function clearScriptError(id: string): Promise<void> {
+  try {
+    const st = (await browser.storage.local.get("imErrors")) as {
+      imErrors?: Record<string, unknown>;
+    };
+    if (!st.imErrors || !(id in st.imErrors)) return;
+    delete st.imErrors[id];
+    await browser.storage.local.set({ imErrors: st.imErrors });
+  } catch {
+    // Diagnostics only: a failed cleanup must not fail the save.
+  }
 }
 
 export async function setEnabled(id: string, enabled: boolean): Promise<AnyEntry | undefined> {

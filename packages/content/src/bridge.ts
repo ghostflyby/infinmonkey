@@ -9,7 +9,12 @@ import { PM_TAG } from "@infinmonkey/shared/constants";
 import { matchScripts, prepareScripts } from "@infinmonkey/shared/inject";
 import { splitUserStyle, targetsMatch } from "@infinmonkey/shared/mozdoc";
 import { userAllows } from "@infinmonkey/shared/settings";
-import type { PreparedScript, ScriptEntry, StyleEntry } from "@infinmonkey/shared/types";
+import type {
+  PreparedScript,
+  ScriptEntry,
+  ScriptErrorRecord,
+  StyleEntry,
+} from "@infinmonkey/shared/types";
 import { isRecord, withRetry, withTimeout } from "@infinmonkey/shared/util";
 import {
   DeliveryPayload,
@@ -188,10 +193,18 @@ browser.runtime.onMessage.addListener((msg: unknown) => {
   window.postMessage({ [PM_TAG]: true, dir: "gm-event", ...msg }, "*");
 });
 
+// Runner-reported script failures persist to `imErrors` (management UI only).
+// The frame is page-forgeable by design: fields are truncated and the record
+// never leaves this extension's storage.
 window.addEventListener("message", (ev: MessageEvent) => {
   if (ev.source !== window) return;
   const d = ev.data;
-  if (!isRecord(d) || d[PM_TAG] !== true || d.dir !== "gm" || typeof d.id !== "number") return;
+  if (!isRecord(d) || d[PM_TAG] !== true) return;
+  if (d.dir === "script-error") {
+    void recordScriptError(String(d.scriptId ?? ""), String(d.message ?? ""));
+    return;
+  }
+  if (d.dir !== "gm" || typeof d.id !== "number") return;
   const id = d.id;
   if (d.op === "setClipboard") {
     const cbArgs = isRecord(d.args) ? d.args : {};
@@ -213,6 +226,37 @@ window.addEventListener("message", (ev: MessageEvent) => {
     .catch((e: unknown) => postRes(id, false, (e as Error)?.message ?? String(e)));
   // The caller awaits the GM call on the runner side, so a single send suffices (timeouts follow each API's semantics)
 });
+
+const SCRIPT_ERROR_LIMIT = 100;
+const SCRIPT_ERROR_REPEAT_MS = 30_000;
+
+/** Per-document throttle state: identical messages within the window are
+ * collapsed (scripts often throw in a loop). */
+const lastScriptError = new Map<string, { message: string; at: number }>();
+
+async function recordScriptError(scriptId: string, rawMessage: string): Promise<void> {
+  const message = rawMessage.slice(0, 500);
+  if (!scriptId || !message) return;
+  const prev = lastScriptError.get(scriptId);
+  if (prev && prev.message === message && Date.now() - prev.at < SCRIPT_ERROR_REPEAT_MS) return;
+  lastScriptError.set(scriptId, { message, at: Date.now() });
+  try {
+    const st = (await browser.storage.local.get("imErrors")) as {
+      imErrors?: Record<string, ScriptErrorRecord>;
+    };
+    const errors = st.imErrors ?? {};
+    errors[scriptId] = { message, at: Date.now(), url: location.href.slice(0, 500) };
+    const ids = Object.keys(errors);
+    if (ids.length > SCRIPT_ERROR_LIMIT) {
+      const oldest = ids.sort((a, b) => errors[a].at - errors[b].at)
+        .slice(0, ids.length - SCRIPT_ERROR_LIMIT);
+      for (const id of oldest) delete errors[id];
+    }
+    await browser.storage.local.set({ imErrors: errors });
+  } catch (e) {
+    console.warn("[InfinMonkey] failed to record script error:", e);
+  }
+}
 
 function postRes(id: number, ok: boolean, data: unknown): void {
   window.postMessage(

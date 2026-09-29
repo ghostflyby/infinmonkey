@@ -226,23 +226,20 @@ try {
       `t:document.getElementById('infin-demo').textContent.slice(0,40),` +
       `p:getComputedStyle(document.getElementById('infin-demo')).position,` +
       `b:document.documentElement.dataset.infinBridge??'',` +
-      `r:document.documentElement.dataset.infinRunner??'',` +
-      `e:document.documentElement.dataset.infinBridgeErr??''}) : ''`,
+      `r:document.documentElement.dataset.infinRunner??''}) : ''`,
   );
   let demoText = "";
   let injPos = "";
   let bridgeMark = "";
-  let bridgeErr = "";
   let runnerTrail = "";
   let carrierInfo = "";
   if (typeof r === "string") {
     try {
-      const o = JSON.parse(r) as { t: string; p: string; b?: string; r?: string; e?: string };
+      const o = JSON.parse(r) as { t: string; p: string; b?: string; r?: string };
       demoText = o.t;
       injPos = o.p;
       bridgeMark = o.b ?? "";
       runnerTrail = o.r ?? "";
-      bridgeErr = o.e ?? "";
     } catch { /* injection timed out */ }
   } else {
     // Poll timed out without injection: read the stage markers for diagnosis.
@@ -253,7 +250,6 @@ try {
       `return JSON.stringify({` +
         `b:document.documentElement.dataset.infinBridge??'',` +
         `r:document.documentElement.dataset.infinRunner??'',` +
-        `e:document.documentElement.dataset.infinBridgeErr??'',` +
         `pay:(function(){var el=document.getElementById('infinmonkey-payload');` +
         `var ds=document.documentElement.dataset.infinPayload||'';` +
         `return 'el='+(el?('len='+el.textContent.length+' head='+el.textContent.slice(0,24)):'MISSING')+` +
@@ -266,13 +262,11 @@ try {
         const o = JSON.parse(diag) as {
           b?: string;
           r?: string;
-          e?: string;
           pay?: string;
           scripts?: string;
         };
         bridgeMark = o.b ?? "";
         runnerTrail = o.r ?? "";
-        bridgeErr = o.e ?? "";
         carrierInfo = ` pay=${o.pay} scripts=${o.scripts}`;
       } catch { /* ignore */ }
     }
@@ -281,9 +275,7 @@ try {
   ok(
     inj,
     "user script injected (MAIN world)",
-    `${demoText} bridge=${bridgeMark} runner=${runnerTrail} err=${
-      bridgeErr.slice(0, 200)
-    }${carrierInfo}`,
+    `${demoText} bridge=${bridgeMark} runner=${runnerTrail}${carrierInfo}`,
   );
   ok(demoText.includes("visits=1"), "GM storage works", demoText);
   ok(injPos === "fixed", "GM_addStyle works", injPos);
