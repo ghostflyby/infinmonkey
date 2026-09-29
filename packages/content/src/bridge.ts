@@ -92,7 +92,14 @@ async function deliver(): Promise<void> {
     // carriers are overwritten with an empty payload so the runner cannot
     // re-consume a previous delivery.
     if (!userAllows(url, settings)) {
-      writeCarriers(encodeDeliveryPayload({ frameKey: url, scripts: [], styles: [] }));
+      writeCarriers(
+        encodeDeliveryPayload({
+          frameKey: url,
+          bridgeNonce: BRIDGE_NONCE,
+          scripts: [],
+          styles: [],
+        }),
+      );
       mark("disabled");
       return;
     }
@@ -118,7 +125,12 @@ async function deliver(): Promise<void> {
     // registration is a timing dependency. The attribute is the primary
     // channel (proven readable cross-world in headless); the element is a
     // fallback for engines that limit attribute size.
-    const payload: DeliveryPayload = { frameKey: url, scripts: prepared, styles: stylePayload };
+    const payload: DeliveryPayload = {
+      frameKey: url,
+      bridgeNonce: BRIDGE_NONCE,
+      scripts: prepared,
+      styles: stylePayload,
+    };
     writeCarriers(encodeDeliveryPayload(payload));
     // Cross-world debug marker (in Firefox the page cannot see isolated-world window properties; dataset is shared ✓)
     document.documentElement.dataset.infinBridge = JSON.stringify({

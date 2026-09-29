@@ -6,6 +6,7 @@ dist/
 .e2e/
 .idea/
 .browsers.local.json
+.zcodeignore
 
 # Xcode: personal state and build products
 xcuserdata/

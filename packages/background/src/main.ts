@@ -19,15 +19,19 @@ import { hasNativeSupport, nativeSync, PULL_ALARM } from "./native.ts";
 import { findTabIdByUrl } from "./injection.ts";
 import { abortXhr, handleDownload, handleXhr, resolveConnectAuth } from "./network.ts";
 import {
+  clearValues,
   createEntry,
   deleteEntry,
+  deleteValue,
   exportAll,
   findEntry,
   getDB,
   getPendingInstall,
   importAll,
+  moveEntry,
   putPendingInstall,
   revokeConnectGrant,
+  setAllEnabled,
   setEnabled,
   setSource,
   setValue,
@@ -211,6 +215,14 @@ export function route(
       return updateCode(msg.id as string, msg.code as string).then((e) => ({ entry: e ?? null }));
     case "SetEnabled":
       return handleSetEnabled(msg.id as string, !!msg.enabled);
+    case "SetAllEnabled":
+      return setAllEnabled(msg.kind === "style" ? "style" : "script", !!msg.enabled).then(
+        (count) => ({ count }),
+      );
+    case "MoveEntry":
+      return moveEntry(msg.id as string, msg.dir === "down" ? "down" : "up").then((swapped) => ({
+        ok: !!swapped,
+      }));
     case "CreateEntry": {
       // Idempotency token: avoids duplicate creation when the page side retries the message
       const token = typeof msg.token === "string" ? msg.token : "";
@@ -241,6 +253,35 @@ export function route(
       }));
     case "RevokeConnectGrant":
       return revokeConnectGrant(msg.id as string, msg.domain as string).then(() => ({ ok: true }));
+    // GM values panel for the options editor. Store-level hardening applies:
+    // setValue refuses the "__proto__" key and unknown scripts by throwing,
+    // which propagates to the page as a rejected response. Every successful
+    // write also broadcasts gmValueChanged with senderKey "" (remote for every
+    // document), mirroring the gmCall path so running scripts observe panel
+    // edits through their listeners and value snapshots.
+    case "GetEntryValues":
+      return findEntry(msg.id as string).then((e) => ({
+        values: e?.kind === "script" ? e.values : {},
+      }));
+    case "SetEntryValue":
+      return setValue(msg.id as string, msg.key as string, msg.value).then((r) => {
+        broadcastValueChanged(msg.id as string, "", msg.key as string, r.oldValue, r.newValue);
+        return { ok: true };
+      });
+    case "DeleteEntryValue":
+      return deleteValue(msg.id as string, msg.key as string).then((r) => {
+        if (r.existed) {
+          broadcastValueChanged(msg.id as string, "", msg.key as string, r.oldValue, undefined);
+        }
+        return { ok: true };
+      });
+    case "ClearEntryValues":
+      return clearValues(msg.id as string).then((cleared) => {
+        for (const [key, oldValue] of Object.entries(cleared ?? {})) {
+          broadcastValueChanged(msg.id as string, "", key, oldValue, undefined);
+        }
+        return { ok: cleared !== null };
+      });
     case "PingDevServer":
       return pingDevServer(msg.origin as string | undefined);
     case "CheckUpdate":
@@ -413,13 +454,14 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
     }
     case "setValue": {
       const r = await setValue(scriptId, args.key as string, args.value);
-      broadcastValueChanged(ctx, args.key as string, r.oldValue, r.newValue);
+      broadcastValueChanged(scriptId, ctx.nonce, args.key as string, r.oldValue, r.newValue);
       return { ok: true };
     }
     case "deleteValue": {
-      const { deleteValue } = await import("./store.ts");
       const r = await deleteValue(scriptId, args.key as string);
-      if (r.existed) broadcastValueChanged(ctx, args.key as string, r.oldValue, undefined);
+      if (r.existed) {
+        broadcastValueChanged(scriptId, ctx.nonce, args.key as string, r.oldValue, undefined);
+      }
       return { ok: true };
     }
     case "listValues": {
@@ -536,19 +578,26 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
   }
 }
 
+/** Notifies every bridge (content scripts forward it to the MAIN-world
+ * runner) that a GM value changed, so GM_addValueChangeListener fires and the
+ * per-script snapshot stays fresh without a page reload. senderKey is the
+ * originating bridge nonce; documents whose nonce differs compute remote=true.
+ * Options-panel edits have no originating document and pass "", which no
+ * bridge nonce matches, so every document sees remote=true. */
 function broadcastValueChanged(
-  ctx: GmCtx,
+  scriptId: string,
+  senderKey: string,
   key: string,
   oldValue: unknown,
   newValue: unknown,
 ): void {
   browser.runtime.sendMessage({
     type: "gmValueChanged",
-    scriptId: ctx.scriptId,
+    scriptId,
     key,
     oldValue,
     newValue,
-    senderKey: ctx.nonce,
+    senderKey,
   }).catch(() => {});
 }
 

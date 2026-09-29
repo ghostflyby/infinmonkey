@@ -31,7 +31,10 @@
       <section id="view-list">
         <div class="list-head">
           <h2 id="list-title">脚本</h2>
+          <input id="search" type="search" placeholder="搜索名称 / 版本 / 来源 URL" />
           <div class="list-actions">
+            <button id="btn-enable-all">全部启用</button>
+            <button id="btn-disable-all">全部禁用</button>
             <button id="btn-import">导入</button>
             <button id="btn-export">导出</button>
           </div>
@@ -71,6 +74,17 @@
           <span id="ed-connect-grants"></span>
           <span class="grow"></span>
           <button id="ed-delete" class="danger">删除</button>
+        </div>
+        <div id="ed-values" class="ed-values" hidden>
+          <div class="ed-values-head">
+            <b>存储值 (GM)</b>
+            <span id="ed-values-count" class="count"></span>
+            <span class="grow"></span>
+            <button id="ed-values-clear" class="danger">清空全部</button>
+          </div>
+          <div id="ed-values-list" class="ed-values-list"></div>
+          <p
+            class="hint">脚本经 GM_getValue / GM_setValue 读写的数据，按脚本隔离；点击键名展开编辑，值为 JSON 格式。</p>
         </div>
       </section>
 

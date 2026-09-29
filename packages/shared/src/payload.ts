@@ -19,8 +19,12 @@ export const PAYLOAD_ELEMENT_ID = "infinmonkey-payload";
 export const PAYLOAD_ATTR = "data-infin-payload";
 
 export interface DeliveryPayload {
-  /** Page URL of the delivering frame; used to suppress value-change echoes. */
+  /** Page URL of the delivering frame (diagnostics). */
   frameKey: string;
+  /** Per-document nonce of the bridge that authored this payload: the runner
+   * compares it against gmValueChanged's senderKey to tell this document's own
+   * writes (local) apart from other documents' writes (remote). */
+  bridgeNonce: string;
   scripts: PreparedScript[];
   styles: { id: string; css: string }[];
 }
@@ -37,6 +41,7 @@ export function decodeDeliveryPayload(text: string): DeliveryPayload | null {
       typeof parsed !== "object" ||
       parsed === null ||
       typeof parsed.frameKey !== "string" ||
+      typeof parsed.bridgeNonce !== "string" ||
       !Array.isArray(parsed.scripts) ||
       !Array.isArray(parsed.styles)
     ) {
