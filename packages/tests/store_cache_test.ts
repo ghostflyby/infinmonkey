@@ -111,7 +111,8 @@ Deno.test("background store drops malformed entries but keeps valid ones", async
   assert(!scripts.some((s) => s.id === "broken"), "malformed entry is dropped");
 });
 
-Deno.test("cache invalidation keys: store keys yes, other keys and areas no", async () => { // Warm the cache and record its storage-read baseline.
+Deno.test("cache invalidation keys: store keys yes, other keys and areas no", async () => {
+  // Warm the cache and record its storage-read baseline.
   await storageLocal.set({ settings: { devOrigin: "http://127.0.0.1:9999" } });
   await getDB();
   const baseline = storageGets;

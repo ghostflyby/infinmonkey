@@ -19,6 +19,7 @@ type Listener = (msg: unknown, sender: Record<string, unknown>) => unknown;
 const storeData: Record<string, unknown> = {};
 const onChangedListeners: ((c: Record<string, unknown>, area: string) => void)[] = [];
 const onMessageListeners: Listener[] = [];
+const tabRemovedListeners: ((tabId: number) => void)[] = [];
 const removedTabIds: number[] = [];
 const createdTabProps: Record<string, unknown>[] = [];
 /** Tabs.get payload extras (e.g. openerTabId); null = plain {id}. */
@@ -71,7 +72,7 @@ const storageLocal = {
   },
   tabs: {
     onUpdated: { addListener: () => {} },
-    onRemoved: { addListener: () => {} },
+    onRemoved: { addListener: (fn: (tabId: number) => void) => void tabRemovedListeners.push(fn) },
     get: (id: number, cb?: (t: unknown) => void) => {
       const tab = { id, ...(tabGetExtras ?? {}) };
       if (cb) cb(tab);
@@ -233,6 +234,13 @@ Deno.test("FetchText: http(s)-only with a response size cap", async () => {
       await route({ type: "FetchText", url: "https://x.test/big" }, contentSender),
       { error: "response too large" },
     );
+
+    // Chunked response (no content-length header): caught after buffering.
+    fake({}, "x".repeat(5_000_001));
+    assertEquals(
+      await route({ type: "FetchText", url: "https://x.test/big2" }, contentSender),
+      { error: "response too large" },
+    );
   } finally {
     globalThis.fetch = realFetch;
   }
@@ -242,6 +250,8 @@ Deno.test("GM_getTab/getTabs: saved data is scoped per script and nonce", async 
   seedScripts();
   await route(gm("saveTab", { tab: { mine: 1 } }), contentSender);
   await route(gm("saveTab", { tab: { other: 2 } }, { scriptId: "s2", nonce: "nB" }), contentSender);
+  // Two scripts sharing one document (same nonce) must not clobber each other.
+  await route(gm("saveTab", { tab: { same: 3 } }, { scriptId: "s2", nonce: "nA" }), contentSender);
 
   // Same script, own nonce: visible.
   assertEquals(
@@ -250,15 +260,33 @@ Deno.test("GM_getTab/getTabs: saved data is scoped per script and nonce", async 
   );
   // Same script, another document's nonce: invisible.
   assertEquals(await route(gm("getTab", {}, { nonce: "nB" }), contentSender), { tab: {} });
-  // Another script, first document's nonce: invisible.
+  // Another script on this document: sees only its own entry.
   assertEquals(
     await route(gm("getTab", {}, { scriptId: "s2", nonce: "nA" }), contentSender),
-    { tab: {} },
+    { tab: { same: 3 } },
   );
-  // getTabs sees only the calling script's documents.
+  // getTabs sees only the calling script's entries (keys are opaque strings).
   assertEquals(
     await route(gm("getTabs", {}, { scriptId: "s1" }), contentSender),
-    { tabs: { nA: { mine: 1 } } },
+    { tabs: { "nA:s1": { mine: 1 } } },
+  );
+});
+
+Deno.test("tabs.onRemoved evicts GM tab data and script-opened tabs", async () => {
+  seedScripts();
+  await route(gm("saveTab", { tab: { mine: 1 } }), contentSender);
+  await route(gm("openInTab", { url: "https://x.test/t" }), contentSender);
+
+  // The owning tab goes away: its saved data must not linger.
+  for (const fn of tabRemovedListeners) fn(7);
+  assertEquals(await route(gm("getTab", {}), contentSender), { tab: {} });
+
+  // The opened tab goes away: closing it afterwards must be denied again.
+  for (const fn of tabRemovedListeners) fn(4242);
+  await assertRejects(
+    () => Promise.resolve(route(gm("closeTab", { tabId: 4242 }), contentSender)),
+    Error,
+    "not opened by this script",
   );
 });
 
@@ -274,6 +302,13 @@ Deno.test("GM_closeTab: own tab, script-opened tab, or browser-recorded opener o
     "not opened by this script",
   );
   assertEquals(removedTabIds, [7], "denied close must not reach tabs.remove");
+
+  // Tabless sender (Zen omits sender.tab): nothing resolves "own", deny.
+  await assertRejects(
+    () => Promise.resolve(route(gm("closeTab", { tabId: 999 }), { url: contentSender.url })),
+    Error,
+    "not opened by this script",
+  );
 
   // The browser-recorded opener (survives background suspension) authorizes.
   tabGetExtras = { openerTabId: 7 };

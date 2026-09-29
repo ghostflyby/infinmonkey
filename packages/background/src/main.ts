@@ -343,9 +343,10 @@ async function handleGmCall(
     throw new Error(`GM call denied: ${auth.reason}`);
   }
   // Call context keyed by the bridge nonce (unique per document)
-  const ctxKey = `${msg.nonce ?? "n"}:${msg.scriptId}:${msg.reqId}`;
+  const nonce = String(msg.nonce ?? "");
+  const ctxKey = `${nonce}:${msg.scriptId}:${msg.reqId}`;
   const ctx: GmCtx = {
-    nonce: String(msg.nonce ?? ""),
+    nonce,
     scriptId: msg.scriptId,
     ctxKey,
     tabId: sender.tab?.id ?? null,
@@ -472,13 +473,13 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
       return { ok: true };
     }
     case "getTab": {
-      // Same per-script rule as getTabs: a forged frame may name any script
-      // matching the page, so the nonce entry must belong to that script.
-      const e = nonceTabData.get(ctx.nonce);
-      return { tab: e && e.scriptId === ctx.scriptId ? e.data : {} };
+      const e = nonceTabData.get(`${ctx.nonce}:${ctx.scriptId}`);
+      return { tab: e?.data ?? {} };
     }
     case "saveTab": {
-      nonceTabData.set(ctx.nonce, {
+      // Keyed per (document, script): two scripts on one page must not
+      // clobber each other's saved data.
+      nonceTabData.set(`${ctx.nonce}:${ctx.scriptId}`, {
         scriptId: ctx.scriptId,
         tabId: await tabIdBestEffort(),
         data: (args.tab ?? {}) as Record<string, unknown>,
