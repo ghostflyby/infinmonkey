@@ -11,7 +11,7 @@ import type {
 } from "@infinmonkey/shared/types";
 import { compareVersions } from "@infinmonkey/shared/version";
 import { authorizeGmCall } from "@infinmonkey/shared/authorize";
-import { isDevOrigin } from "@infinmonkey/shared/settings";
+import { isDevOrigin, userAllows } from "@infinmonkey/shared/settings";
 import { isRecord } from "@infinmonkey/shared/util";
 import { devClient } from "./devclient.ts";
 import { hasNativeSupport, nativeSync, PULL_ALARM } from "./native.ts";
@@ -73,12 +73,22 @@ const notificationCallbacks = new Map<
 >();
 
 // Native app mirror: pulls on wake, flushes and merges on the periodic alarm.
+/** Daily silent update pass; exported for route_test.ts. */
+export const UPDATE_ALARM = "infin-auto-update";
+
 browser.alarms.onAlarm.addListener((alarm: { name: string }) => {
   if (alarm.name === PULL_ALARM) void nativeSync.onAlarm();
+  if (alarm.name === UPDATE_ALARM) void runAutoUpdate();
 });
 browser.runtime.onInstalled.addListener(() => nativeSync.start());
 browser.runtime.onStartup.addListener(() => nativeSync.start());
 nativeSync.start();
+// Create the update alarm only when absent: an unconditional create resets
+// the schedule on every event-page wake, so it could keep never firing.
+void (async () => {
+  const existing = await browser.alarms.get(UPDATE_ALARM);
+  if (!existing) void browser.alarms.create(UPDATE_ALARM, { periodInMinutes: 1440 });
+})();
 
 browser.tabs.onRemoved.addListener((tabId: number) => {
   for (const [id, c] of notificationCallbacks) {
@@ -249,7 +259,22 @@ export function route(
       return getDB().then((db) => db.settings);
     case "SetSettings":
       return getDB().then(async (db) => {
-        Object.assign(db.settings, msg.patch);
+        // Whitelist + coerce: the patch arrives from popup/options, and
+        // unknown or mistyped keys must not ride into storage.
+        const patch = isRecord(msg.patch) ? msg.patch : {};
+        if (typeof patch.devOrigin === "string") db.settings.devOrigin = patch.devOrigin;
+        if (patch.storageBackend === "native" || patch.storageBackend === "local") {
+          db.settings.storageBackend = patch.storageBackend;
+        }
+        if (typeof patch.masterEnabled === "boolean") {
+          db.settings.masterEnabled = patch.masterEnabled;
+        }
+        if (Array.isArray(patch.siteBlacklist)) {
+          db.settings.siteBlacklist = patch.siteBlacklist.filter((p): p is string =>
+            typeof p === "string"
+          );
+        }
+        if (typeof patch.autoUpdate === "boolean") db.settings.autoUpdate = patch.autoUpdate;
         await browser.storage.local.set({ settings: db.settings });
         if (db.settings.devOrigin) devClient.ensureConnected(db.settings.devOrigin);
         return db.settings;
@@ -331,6 +356,13 @@ async function handleGmCall(
   },
   sender: browser.Runtime.MessageSender,
 ) {
+  // Site gate first: a disabled manager denies GM calls regardless of script
+  // state, otherwise "off" would only be cosmetic against forged frames.
+  const url = typeof sender?.url === "string" ? sender.url : undefined;
+  const db = await getDB();
+  if (!userAllows(url, db.settings)) {
+    throw new Error("GM call denied: the manager is disabled on this page");
+  }
   // Permission gate: the calling page must be inside the script's own scope.
   // Only browser-provided sender fields participate - a forged relayed message
   // can claim any page URL, but it cannot claim the sender's.
@@ -338,7 +370,6 @@ async function handleGmCall(
   if (!entry || entry.kind !== "script") {
     throw new Error("GM call denied: unknown script");
   }
-  const url = typeof sender?.url === "string" ? sender.url : undefined;
   const auth = authorizeGmCall(entry, url);
   if (!auth.ok) {
     throw new Error(`GM call denied: ${auth.reason}`);
@@ -544,18 +575,21 @@ async function handlePopupData(tabId: number): Promise<PopupData> {
   } catch {
     // ignore
   }
+  const allowed = userAllows(url || undefined, db.settings);
   const scripts: PopupScriptInfo[] = [];
-  for (const e of [...db.scripts, ...db.styles].sort(byPosition)) {
-    if (!e.enabled || !urlMatchesMeta(url, e.meta)) continue;
-    scripts.push({
-      id: e.id,
-      kind: e.kind,
-      name: e.meta.name,
-      version: e.meta.version ?? "",
-      enabled: e.enabled,
-    });
+  if (allowed) {
+    for (const e of [...db.scripts, ...db.styles].sort(byPosition)) {
+      if (!e.enabled || !urlMatchesMeta(url, e.meta)) continue;
+      scripts.push({
+        id: e.id,
+        kind: e.kind,
+        name: e.meta.name,
+        version: e.meta.version ?? "",
+        enabled: e.enabled,
+      });
+    }
   }
-  const commands = [...menuCommands]
+  const commands = !allowed ? [] : [...menuCommands]
     .filter(([, c]) => c.tabId === tabId)
     .map(([commandId, c]) => ({ commandId, scriptId: c.scriptId, title: c.title }));
   return {
@@ -564,6 +598,8 @@ async function handlePopupData(tabId: number): Promise<PopupData> {
     commands,
     devConnected: devClient.connected,
     devOrigin: db.settings.devOrigin,
+    masterEnabled: db.settings.masterEnabled,
+    siteBlocked: !allowed,
   };
 }
 
@@ -634,15 +670,32 @@ async function confirmInstall(pendingId: string, decision: "install" | "cancel")
 
 // ---- Check for updates (manual) ----
 
+/** Where an entry updates from. Convention (Tampermonkey/Violentmonkey):
+ * @updateURL is checked for a newer @version, @downloadURL is where new code
+ * is fetched from; each falls back to the other, then to the dev mapping. */
+function updateTargets(entry: AnyEntry): { checkUrl: string; downloadUrl: string } | null {
+  const devUrl = entry.source.type === "dev" ? entry.source.url : "";
+  const checkUrl = entry.meta.updateURL || entry.meta.downloadURL || devUrl;
+  if (!checkUrl) return null;
+  return {
+    checkUrl,
+    downloadUrl: entry.meta.downloadURL || entry.meta.updateURL || devUrl,
+  };
+}
+
 async function checkUpdate(id: string) {
   const entry = await findEntry(id);
   if (!entry) return { status: "error", message: "条目不存在" };
-  const url = entry.meta.downloadURL || entry.meta.updateURL ||
-    (entry.source.type === "dev" ? entry.source.url : "");
-  if (!url) return { status: "error", message: "未配置 @updateURL/@downloadURL，且非 dev 映射" };
+  const targets = updateTargets(entry);
+  if (!targets) {
+    return { status: "error", message: "未配置 @updateURL/@downloadURL，且非 dev 映射" };
+  }
   let code: string;
   try {
-    const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
+    const r = await fetch(targets.checkUrl, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!r.ok) return { status: "error", message: `HTTP ${r.status}` };
     code = await r.text();
   } catch (e) {
@@ -655,9 +708,85 @@ async function checkUpdate(id: string) {
   const remoteMeta = parseMeta(code);
   const cmp = compareVersions(remoteMeta.version ?? "0", entry.meta.version ?? "0");
   if (cmp <= 0) return { status: "current", version: entry.meta.version ?? "" };
-  const pendingId = await putPendingInstall({ kind, code, url, replaceId: entry.id });
+  // Newer on the check URL. The installable body comes from the download
+  // source: @updateURL often serves a meta-only file, so installing the
+  // probe body verbatim would clobber working code.
+  if (targets.downloadUrl !== targets.checkUrl) {
+    try {
+      const r = await fetch(targets.downloadUrl, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!r.ok) return { status: "error", message: `HTTP ${r.status}` };
+      code = await r.text();
+    } catch (e) {
+      return { status: "error", message: String((e as Error).message ?? e) };
+    }
+    const dlKind = detectKind(code);
+    if (dlKind !== entry.kind) {
+      return { status: "error", message: `远端类型不匹配（${dlKind} ≠ ${entry.kind}）` };
+    }
+  }
+  const pendingId = await putPendingInstall({
+    kind,
+    code,
+    url: targets.downloadUrl,
+    replaceId: entry.id,
+  });
   await openInstallPage(pendingId);
   return { status: "available", version: remoteMeta.version ?? "" };
+}
+
+/** Fetches an entry's update source; returns the new code when the check URL
+ * carries a newer @version of the same kind, else null. The installable body
+ * comes from the download source (see checkUpdate); every failure mode
+ * collapses to null so one bad entry cannot abort the daily pass. */
+async function fetchNewerVersion(
+  entry: AnyEntry,
+  targets: { checkUrl: string; downloadUrl: string },
+): Promise<string | null> {
+  try {
+    const r = await fetch(targets.checkUrl, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) return null;
+    const probe = await r.text();
+    if (probe === entry.code || detectKind(probe) !== entry.kind) return null;
+    const meta = parseMeta(probe);
+    if (!meta.version || compareVersions(meta.version, entry.meta.version ?? "0") <= 0) {
+      return null;
+    }
+    if (targets.downloadUrl === targets.checkUrl) return probe;
+    const dl = await fetch(targets.downloadUrl, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!dl.ok) return null;
+    const body = await dl.text();
+    return detectKind(body) === entry.kind ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Daily silent pass: apply newer remote @version values in place (values
+ * survive; pages re-inject via entriesChanged; the write-behind mirror picks
+ * the mutation up). Manual CheckUpdate stays on the confirm-page flow, and a
+ * failing entry is skipped rather than aborting the pass. */
+async function runAutoUpdate(): Promise<void> {
+  const db = await getDB();
+  if (!db.settings.autoUpdate) return;
+  for (const entry of [...db.scripts, ...db.styles]) {
+    const targets = updateTargets(entry);
+    if (!targets) continue;
+    try {
+      const code = await fetchNewerVersion(entry, targets);
+      if (code !== null) await updateCode(entry.id, code);
+    } catch {
+      // One failing entry must not abort the pass.
+    }
+  }
 }
 
 // ---- Startup ----

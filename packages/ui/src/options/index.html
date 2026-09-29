@@ -92,6 +92,28 @@
         <p
           class="hint">与 InfinMonkey 原生应用（macOS/iOS）通过 native messaging 双向同步脚本库；原生应用不可用时扩展继续以本地存储独立运行。</p>
         <div class="setting-row">
+          <label>总开关</label>
+          <input id="set-master-enabled" type="checkbox" />
+        </div>
+        <p
+          class="hint">关闭后所有站点停止注入脚本与样式，GM 调用一并拒绝；弹出面板里有按站点的开关。</p>
+        <div class="setting-row">
+          <label>站点黑名单</label>
+          <textarea id="set-blacklist" rows="4"
+            placeholder="*://ads.example.com/*&#10;https://tracker.test/*"></textarea>
+          <button id="set-blacklist-save">保存</button>
+          <span id="set-blacklist-status"></span>
+        </div>
+        <p
+          class="hint">每行一条 Chrome match pattern（如 <code>*://*.example.com/*</code>）。命中的站点不注入、不响应 GM 调用；写错的单行会被忽略。</p>
+        <div class="setting-row">
+          <label>自动更新</label>
+          <input id="set-auto-update" type="checkbox" />
+          <span>每日检查，静默应用更高 @version</span>
+        </div>
+        <p
+          class="hint">更新源按 @updateURL（检查）/ @downloadURL（下载）的惯例回退，dev 映射条目用映射地址；手动"检查更新"仍走确认页。</p>
+        <div class="setting-row">
           <label>导入 / 导出</label>
           <button id="btn-import2">导入 JSON</button>
           <button id="btn-export2">导出 JSON</button>

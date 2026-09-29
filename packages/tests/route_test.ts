@@ -20,6 +20,12 @@ const storeData: Record<string, unknown> = {};
 const onChangedListeners: ((c: Record<string, unknown>, area: string) => void)[] = [];
 const onMessageListeners: Listener[] = [];
 const tabRemovedListeners: ((tabId: number) => void)[] = [];
+const alarmListeners: ((alarm: { name: string }) => void)[] = [];
+let alarmScheduled: { name: string; periodInMinutes?: number } | undefined;
+
+function fireAlarm(name: string): void {
+  for (const fn of alarmListeners) fn({ name });
+}
 const removedTabIds: number[] = [];
 const createdTabProps: Record<string, unknown>[] = [];
 /** Tabs.get payload extras (e.g. openerTabId); null = plain {id}. */
@@ -67,8 +73,17 @@ const storageLocal = {
     },
   },
   alarms: {
-    create: () => {},
-    onAlarm: { addListener: () => {} },
+    create: (name: string, info: { periodInMinutes?: number }) => {
+      alarmScheduled = { name, ...info };
+    },
+    get: (name: string, cb?: (a: unknown) => void) => {
+      const a = alarmScheduled && alarmScheduled.name === name ? alarmScheduled : null;
+      if (cb) cb(a);
+      else return Promise.resolve(a);
+    },
+    onAlarm: {
+      addListener: (fn: (alarm: { name: string }) => void) => void alarmListeners.push(fn),
+    },
   },
   tabs: {
     onUpdated: { addListener: () => {} },
@@ -105,7 +120,7 @@ const storageLocal = {
 
 // The polyfill's listener wrapper swallows return values (it returns true to
 // hold the message channel open), so tests drive the exported route directly.
-const { route } = await import("@infinmonkey/background/main");
+const { route, UPDATE_ALARM } = await import("@infinmonkey/background/main");
 assert(
   onMessageListeners.length === 1,
   "main.ts must register its runtime.onMessage listener",
@@ -356,4 +371,135 @@ Deno.test("ConfirmConnectAuth: no grant without an outstanding prompt", async ()
     entry: ScriptEntry | null;
   };
   assertEquals(got.entry?.connectGrants, [], "a stray resolve must not persist a grant");
+});
+
+Deno.test("site controls: master switch and blacklist gate GM calls", async () => {
+  seedScripts();
+  await storageLocal.set({ settings: { masterEnabled: false } });
+  await assertRejects(
+    () => Promise.resolve(route(gm("getValue", { key: "k" }), contentSender)),
+    Error,
+    "disabled on this page",
+  );
+
+  // Blacklisting the page's site denies even where the script itself matches.
+  await storageLocal.set({
+    settings: { masterEnabled: true, siteBlacklist: ["https://example.com/*"] },
+  });
+  await assertRejects(
+    () => Promise.resolve(route(gm("getValue", { key: "k" }), contentSender)),
+    Error,
+    "disabled on this page",
+  );
+  // A different site passes the site gate and reaches the scope gate instead.
+  await assertRejects(
+    () =>
+      Promise.resolve(
+        route(gm("getValue", { key: "k" }), { url: "https://other.net/p", tab: { id: 7 } }),
+      ),
+    Error,
+    "does not run on this page",
+  );
+  await storageLocal.set({ settings: {} });
+});
+
+function updEntry(): unknown {
+  const header = [
+    "// ==UserScript==",
+    "// @name     upd",
+    "// @match    https://example.com/*",
+    "// @version  1.0",
+    "// @updateURL https://upd.test/s.user.js",
+    "// @downloadURL https://dl.test/s.user.js",
+    "// @grant    none",
+    "// ==/UserScript==",
+    "void 0;",
+  ].join("\n");
+  return {
+    id: "upd1",
+    kind: "script",
+    enabled: true,
+    position: 1,
+    code: header,
+    meta: parseMeta(header, "upd"),
+    source: { type: "inline" },
+    installedAt: 0,
+    updatedAt: 0,
+    connectGrants: [] as string[],
+    values: {},
+  };
+}
+
+Deno.test("CheckUpdate: checks @updateURL, not @downloadURL (convention order)", async () => {
+  await storageLocal.set({ scripts: [updEntry()] });
+  const fetched: string[] = [];
+  const realFetch = globalThis.fetch;
+  (globalThis as Record<string, unknown>).fetch = (url: string | URL) => {
+    fetched.push(String(url));
+    return Promise.resolve({
+      ok: true,
+      text: () => Promise.resolve((updEntry() as { code: string }).code.replace("1.0", "2.0")),
+    });
+  };
+  try {
+    const r = await route({ type: "CheckUpdate", id: "upd1" }, pageSender) as {
+      status: string;
+      version?: string;
+    };
+    assertEquals(r.status, "available");
+    assertEquals(r.version, "2.0");
+    // Probe the check URL, then fetch the installable body from the download
+    // URL (a meta-only @updateURL must never be installed as code).
+    assertEquals(fetched, ["https://upd.test/s.user.js", "https://dl.test/s.user.js"]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+Deno.test("auto update: applies a newer version, and honors the switch", async () => {
+  // Created once at startup with the daily period (a get-guarded create so
+  // event-page wakes cannot reset the schedule).
+  assertEquals(alarmScheduled, { name: UPDATE_ALARM, periodInMinutes: 1440 });
+  const realFetch = globalThis.fetch;
+  const fetched: string[] = [];
+  const arm = () =>
+    (globalThis as Record<string, unknown>).fetch = (url: string | URL) => {
+      fetched.push(String(url));
+      // The download source serves a distinguishable body so the assertion
+      // proves the applied code came from there, not from the probe.
+      const code = (updEntry() as { code: string }).code.replace("1.0", "2.0");
+      return Promise.resolve({
+        ok: true,
+        text: () =>
+          Promise.resolve(
+            String(url).includes("dl.test")
+              ? code.replace("void 0;", "/*from-download*/ void 0;")
+              : code,
+          ),
+      });
+    };
+  try {
+    // Off: the alarm is a no-op, not even a fetch.
+    await storageLocal.set({ scripts: [updEntry()], settings: { autoUpdate: false } });
+    arm();
+    fireAlarm(UPDATE_ALARM);
+    await new Promise((r) => setTimeout(r, 20));
+    assertEquals(fetched, [], "switch off must not fetch");
+
+    // On: the newer remote version is applied in place.
+    await storageLocal.set({ scripts: [updEntry()], settings: { autoUpdate: true } });
+    fireAlarm(UPDATE_ALARM);
+    await new Promise((r) => setTimeout(r, 20));
+    assertEquals(fetched, ["https://upd.test/s.user.js", "https://dl.test/s.user.js"]);
+    const got = await route({ type: "GetEntry", id: "upd1" }, pageSender) as {
+      entry: ScriptEntry | null;
+    };
+    assert(got.entry?.code.includes("@version  2.0"), "newer version must be applied");
+    assert(
+      got.entry?.code.includes("/*from-download*/"),
+      "the applied body must come from the download source",
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });
