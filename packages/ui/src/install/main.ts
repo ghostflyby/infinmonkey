@@ -104,7 +104,14 @@ function isLocalDev(url: string): boolean {
 }
 
 async function done(pendingId: string, decision: "install" | "cancel"): Promise<void> {
-  await msg({ type: "ConfirmInstall", pendingId, decision });
+  try {
+    await msg({ type: "ConfirmInstall", pendingId, decision });
+  } catch (e) {
+    // The pending record is already consumed at this point: without this
+    // catch a retry would render "已安装" for an install that never happened.
+    document.body.textContent = `安装失败：${String((e as Error)?.message ?? e)}`;
+    return;
+  }
   if (decision === "install") window.opener?.postMessage({ __infinInstalled: true }, "*");
   document.body.textContent = decision === "install" ? "已安装，可以关闭此页面。" : "已取消。";
   window.close();

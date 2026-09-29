@@ -104,7 +104,11 @@ class DevClient {
 
       if (entry.kind === "style") {
         // updateCode broadcasts entriesChanged; the bridge re-fetches and syncs the page <style>
-        await updateCode(entry.id, code);
+        try {
+          await updateCode(entry.id, code);
+        } catch (e) {
+          console.warn("[InfinMonkey] dev update refused:", entry.id, e);
+        }
       } else {
         await setDevCode(entry.id, code);
         const src = entry.source;

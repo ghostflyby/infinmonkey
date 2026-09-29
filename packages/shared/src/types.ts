@@ -114,6 +114,20 @@ export interface PopupScriptInfo {
   name: string;
   version: string;
   enabled: boolean;
+  /** Most recent runtime error message, when the entry has one recorded. */
+  error?: string;
+}
+
+/**
+ * Most recent runtime error for one entry, kept in a separate `imErrors`
+ * storage record instead of the entry itself: entries mirror to the native
+ * app, whose strict wire model would silently drop unknown fields on the way
+ * back. Only feeds the management UI - page-forgeable by design.
+ */
+export interface ScriptErrorRecord {
+  message: string;
+  at: number;
+  url: string;
 }
 
 interface PopupCommand {

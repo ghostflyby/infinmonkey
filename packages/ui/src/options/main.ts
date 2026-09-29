@@ -7,6 +7,7 @@ import type {
   EntrySource,
   ExportBundle,
   ScriptEntry,
+  ScriptErrorRecord,
   StyleEntry,
 } from "@infinmonkey/shared/types";
 import { NEW_SCRIPT_TEMPLATE, NEW_STYLE_TEMPLATE } from "@infinmonkey/shared/templates";
@@ -46,8 +47,15 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("#nav button")) {
 
 // ---- List ----
 
+type ErrorTable = { imErrors?: Record<string, ScriptErrorRecord> };
+
+async function loadErrors(): Promise<ErrorTable["imErrors"]> {
+  return (await browser.storage.local.get("imErrors") as ErrorTable).imErrors;
+}
+
 async function loadList(): Promise<void> {
   const res = await msg<ListEntriesResult>({ type: "ListEntries" });
+  const errors = await loadErrors();
   const list = $("#entry-list");
   list.textContent = "";
   const items: AnyEntry[] = view === "scripts" ? res.scripts : res.styles;
@@ -65,10 +73,10 @@ async function loadList(): Promise<void> {
     );
     return;
   }
-  for (const entry of items) list.append(renderEntry(entry));
+  for (const entry of items) list.append(renderEntry(entry, errors?.[entry.id]));
 }
 
-function renderEntry(entry: AnyEntry): HTMLElement {
+function renderEntry(entry: AnyEntry, error?: ScriptErrorRecord): HTMLElement {
   const isScript = entry.kind === "script";
   const src = entry.source;
   const dev = src.type === "dev";
@@ -86,6 +94,12 @@ function renderEntry(entry: AnyEntry): HTMLElement {
         entry.meta.name,
         dev ? h("span", { class: "badge" }, "DEV") : null,
         disabled ? h("span", { class: "badge off" }, "已禁用") : null,
+        error
+          ? h("span", {
+            class: "badge err",
+            title: `${new Date(error.at).toLocaleString()} · ${error.message}`,
+          }, "错误")
+          : null,
       ),
       h(
         "div",
@@ -151,7 +165,23 @@ async function openEditor(id: string): Promise<void> {
   current = res.entry;
   editingId = id;
   fillEditor();
+  void showEditorError(id);
   show("editor");
+}
+
+/** Shows the entry's most recent runtime error above the editor; hidden once
+ * new code is saved (updateCode clears the record). */
+async function showEditorError(id: string): Promise<void> {
+  const bar = $("#ed-error");
+  const error = (await loadErrors())?.[id];
+  // A slower read for a previous entry must not win over the newer one.
+  if (id !== editingId) return;
+  if (!error) {
+    bar.hidden = true;
+    return;
+  }
+  bar.textContent = `最近运行错误（${new Date(error.at).toLocaleString()}）：${error.message}`;
+  bar.hidden = false;
 }
 
 function fillEditor(): void {
@@ -229,6 +259,7 @@ async function saveEditor(): Promise<void> {
     }
     current = res.entry;
     updateChips();
+    $("#ed-error").hidden = true;
     toast("已保存");
   } catch (e) {
     toast(`保存失败：${String(e)}`, true);
@@ -519,6 +550,13 @@ $("#set-dev-ping").addEventListener("click", async () => {
 });
 
 // ---- dev server status indicator ----
+
+browser.storage.onChanged.addListener((changes: Record<string, unknown>, area: string) => {
+  if (area !== "local" || !("imErrors" in changes)) return;
+  // The editor renders its own error bar; only the list needs a refresh.
+  if (!$("#view-editor").hidden) return;
+  debounce(() => void loadList(), 500)();
+});
 
 browser.runtime.onMessage.addListener((m: unknown) => {
   if (!isRecord(m)) return;

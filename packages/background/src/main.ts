@@ -8,6 +8,7 @@ import type {
   PendingInstall,
   PopupData,
   PopupScriptInfo,
+  ScriptErrorRecord,
 } from "@infinmonkey/shared/types";
 import { compareVersions } from "@infinmonkey/shared/version";
 import { authorizeGmCall } from "@infinmonkey/shared/authorize";
@@ -576,6 +577,11 @@ async function handlePopupData(tabId: number): Promise<PopupData> {
     // ignore
   }
   const allowed = userAllows(url || undefined, db.settings);
+  const scriptErrors = allowed
+    ? (await browser.storage.local.get("imErrors") as {
+      imErrors?: Record<string, ScriptErrorRecord>;
+    }).imErrors
+    : undefined;
   const scripts: PopupScriptInfo[] = [];
   if (allowed) {
     for (const e of [...db.scripts, ...db.styles].sort(byPosition)) {
@@ -586,6 +592,7 @@ async function handlePopupData(tabId: number): Promise<PopupData> {
         name: e.meta.name,
         version: e.meta.version ?? "",
         enabled: e.enabled,
+        error: scriptErrors?.[e.id]?.message,
       });
     }
   }
