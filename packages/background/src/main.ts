@@ -8,6 +8,7 @@ import type {
   PendingInstall,
   PopupData,
   PopupScriptInfo,
+  ScriptErrorRecord,
 } from "@infinmonkey/shared/types";
 import { compareVersions } from "@infinmonkey/shared/version";
 import { authorizeGmCall } from "@infinmonkey/shared/authorize";
@@ -578,7 +579,7 @@ async function handlePopupData(tabId: number): Promise<PopupData> {
   const allowed = userAllows(url || undefined, db.settings);
   const scriptErrors = allowed
     ? (await browser.storage.local.get("imErrors") as {
-      imErrors?: Record<string, { message: string }>;
+      imErrors?: Record<string, ScriptErrorRecord>;
     }).imErrors
     : undefined;
   const scripts: PopupScriptInfo[] = [];

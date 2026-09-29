@@ -239,7 +239,6 @@ async function recordScriptError(scriptId: string, rawMessage: string): Promise<
   if (!scriptId || !message) return;
   const prev = lastScriptError.get(scriptId);
   if (prev && prev.message === message && Date.now() - prev.at < SCRIPT_ERROR_REPEAT_MS) return;
-  lastScriptError.set(scriptId, { message, at: Date.now() });
   try {
     const st = (await browser.storage.local.get("imErrors")) as {
       imErrors?: Record<string, ScriptErrorRecord>;
@@ -253,6 +252,9 @@ async function recordScriptError(scriptId: string, rawMessage: string): Promise<
       for (const id of oldest) delete errors[id];
     }
     await browser.storage.local.set({ imErrors: errors });
+    // Throttle state is set only after the record persisted, so a failed
+    // write does not suppress retries for the next 30s.
+    lastScriptError.set(scriptId, { message, at: Date.now() });
   } catch (e) {
     console.warn("[InfinMonkey] failed to record script error:", e);
   }

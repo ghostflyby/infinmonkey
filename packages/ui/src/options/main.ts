@@ -7,6 +7,7 @@ import type {
   EntrySource,
   ExportBundle,
   ScriptEntry,
+  ScriptErrorRecord,
   StyleEntry,
 } from "@infinmonkey/shared/types";
 import { NEW_SCRIPT_TEMPLATE, NEW_STYLE_TEMPLATE } from "@infinmonkey/shared/templates";
@@ -46,9 +47,7 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("#nav button")) {
 
 // ---- List ----
 
-interface ErrorTable {
-  imErrors?: Record<string, { message: string; at: number; url: string }>;
-}
+type ErrorTable = { imErrors?: Record<string, ScriptErrorRecord> };
 
 async function loadErrors(): Promise<ErrorTable["imErrors"]> {
   return (await browser.storage.local.get("imErrors") as ErrorTable).imErrors;
@@ -77,7 +76,7 @@ async function loadList(): Promise<void> {
   for (const entry of items) list.append(renderEntry(entry, errors?.[entry.id]));
 }
 
-function renderEntry(entry: AnyEntry, error?: { message: string; at: number }): HTMLElement {
+function renderEntry(entry: AnyEntry, error?: ScriptErrorRecord): HTMLElement {
   const isScript = entry.kind === "script";
   const src = entry.source;
   const dev = src.type === "dev";
@@ -175,6 +174,8 @@ async function openEditor(id: string): Promise<void> {
 async function showEditorError(id: string): Promise<void> {
   const bar = $("#ed-error");
   const error = (await loadErrors())?.[id];
+  // A slower read for a previous entry must not win over the newer one.
+  if (id !== editingId) return;
   if (!error) {
     bar.hidden = true;
     return;
@@ -549,6 +550,13 @@ $("#set-dev-ping").addEventListener("click", async () => {
 });
 
 // ---- dev server status indicator ----
+
+browser.storage.onChanged.addListener((changes: Record<string, unknown>, area: string) => {
+  if (area !== "local" || !("imErrors" in changes)) return;
+  // The editor renders its own error bar; only the list needs a refresh.
+  if (!$("#view-editor").hidden) return;
+  debounce(() => void loadList(), 500)();
+});
 
 browser.runtime.onMessage.addListener((m: unknown) => {
   if (!isRecord(m)) return;

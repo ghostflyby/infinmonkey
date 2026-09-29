@@ -15,16 +15,19 @@ void (async () => {
 
 async function refresh(): Promise<void> {
   if (activeTabId == null) return;
+  let data: PopupData;
   try {
-    const data = await msg<PopupData>({ type: "GetPopupData", tabId: activeTabId });
-    render(data);
+    // Only the fetch is guarded: a render bug must surface as itself.
+    data = await msg<PopupData>({ type: "GetPopupData", tabId: activeTabId });
   } catch (e) {
     const list = $("#scripts");
     list.textContent = "";
     list.append(
       h("div", { class: "empty" }, `加载失败：${String((e as Error)?.message ?? e)}`),
     );
+    return;
   }
+  render(data);
 }
 
 function render(data: PopupData): void {

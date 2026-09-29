@@ -416,7 +416,14 @@ Deno.test("SaveCode: kind-mismatched code is refused, not silently kept", async 
   await assertRejects(
     () => Promise.resolve(route({ type: "SaveCode", id: "s1", code: styleCode }, pageSender)),
     Error,
-    "类型不匹配",
+  );
+  // The old bug: the entry came back unmodified while the editor said saved.
+  const got = await route({ type: "GetEntry", id: "s1" }, pageSender) as {
+    entry: ScriptEntry | null;
+  };
+  assert(
+    got.entry !== null && !got.entry.code.includes("UserStyle"),
+    "original script code must be untouched",
   );
 });
 
