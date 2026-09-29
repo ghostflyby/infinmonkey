@@ -30,6 +30,7 @@ struct ContentView: View {
             Image(systemName: "xmark")
           }
           .buttonStyle(.borderless)
+          .accessibilityLabel("关闭")
         }
         .padding(10)
         .foregroundStyle(.white)
@@ -70,8 +71,11 @@ struct ContentView: View {
       }
       Button {
         Task {
-          exportData = await model.exportData()
-          model.exportPresented = true
+          // A failed export stays closed: the error banner carries the reason.
+          if let data = await model.exportData() {
+            exportData = data
+            model.exportPresented = true
+          }
         }
       } label: {
         Label("导出", systemImage: "square.and.arrow.up")

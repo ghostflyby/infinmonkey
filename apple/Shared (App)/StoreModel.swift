@@ -105,13 +105,15 @@ final class StoreModel {
     await perform { try await self.library.importFile(at: url) }
   }
 
-  func exportData() async -> Data {
+  /// `nil` on failure — the error banner carries the reason, and the caller
+  /// must not present an exporter for empty data.
+  func exportData() async -> Data? {
     do {
       return try await library.exportData()
     } catch {
       Self.log.error("export failed: \(String(describing: error), privacy: .public)")
       lastError = Self.describe(error)
-      return Data()
+      return nil
     }
   }
 
