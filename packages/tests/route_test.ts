@@ -208,10 +208,11 @@ Deno.test("gate: extension pages keep full access, content scripts keep the allo
 Deno.test("FetchText: http(s)-only with a response size cap", async () => {
   seedScripts();
   const fake = (headers: Record<string, string>, text: string) =>
-    (globalThis as Record<string, unknown>).fetch = () => ({
-      headers: { get: (n: string) => headers[n] ?? null },
-      text: () => text,
-    });
+    (globalThis as Record<string, unknown>).fetch = () =>
+      Promise.resolve({
+        headers: { get: (n: string) => headers[n] ?? null },
+        text: () => text,
+      });
   try {
     fake({}, "hello");
     assertEquals(
