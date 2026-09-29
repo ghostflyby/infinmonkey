@@ -1,5 +1,6 @@
 import browser from "webextension-polyfill";
 import { DEFAULT_DEV_ORIGIN, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
+import { isDevOrigin } from "@infinmonkey/shared/settings";
 import { extractHeader, parseMeta } from "@infinmonkey/shared/meta";
 import { isEntryCore, isScriptMeta, isStoredEntry } from "@infinmonkey/shared/guards";
 import type {
@@ -108,11 +109,6 @@ export function fetchDevCode(url: string, timeoutMs = 2500): Promise<string> {
       return r.text();
     })
     .finally(() => clearTimeout(t));
-}
-
-export function isDevOrigin(url: string, settings?: Settings): boolean {
-  const origin = settings?.devOrigin ?? DEFAULT_DEV_ORIGIN;
-  return url.startsWith(origin + "/");
 }
 
 function nextPosition(entries: { position: number }[]): number {

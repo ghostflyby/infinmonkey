@@ -17,6 +17,25 @@ struct ContentView: View {
         .foregroundStyle(.secondary)
     }
     .toolbar { toolbarContent }
+    .safeAreaInset(edge: .bottom) {
+      if let error = model.lastError {
+        HStack(alignment: .firstTextBaseline) {
+          Image(systemName: "exclamationmark.triangle.fill")
+          Text(error)
+            .font(.callout)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          Button {
+            model.clearLastError()
+          } label: {
+            Image(systemName: "xmark")
+          }
+          .buttonStyle(.borderless)
+        }
+        .padding(10)
+        .foregroundStyle(.white)
+        .background(.red.opacity(0.92), in: .rect)
+      }
+    }
     .fileImporter(
       isPresented: $model.importPresented,
       allowedContentTypes: StoreModel.importTypes

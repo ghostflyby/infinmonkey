@@ -5,6 +5,7 @@
 import browser from "webextension-polyfill";
 import { isStoredEntry } from "@infinmonkey/shared/guards";
 import { detectKind, parseMeta } from "@infinmonkey/shared/meta";
+import { isDevOrigin } from "@infinmonkey/shared/settings";
 import type { AnyEntry, Settings } from "@infinmonkey/shared/types";
 
 interface Found {
@@ -105,8 +106,7 @@ function showBanner(found: Found): void {
       const rawStyles = Array.isArray(st.styles) ? st.styles : [];
       const all: AnyEntry[] = [...rawScripts, ...rawStyles].filter(isStoredEntry);
       const kind = detectKind(found.text);
-      const dev = location.href.startsWith("http://127.0.0.1:17321") ||
-        location.href.startsWith("http://localhost:17321");
+      const dev = isDevOrigin(location.href, st.settings);
       const dup = all.find((e) =>
         e.kind === kind &&
         ((e.source.type === "dev" && e.source.url === location.href) || e.code === found.text)

@@ -2,7 +2,7 @@
   "nodeModulesDir": "none",
   "fmt": {
     "lineWidth": 100,
-    "exclude": ["apple"]
+    "exclude": ["apple", ".zcode"]
   },
   "lint": {
     "exclude": ["apple"],

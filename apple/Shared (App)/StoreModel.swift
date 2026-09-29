@@ -110,8 +110,14 @@ final class StoreModel {
       return try await library.exportData()
     } catch {
       Self.log.error("export failed: \(String(describing: error), privacy: .public)")
+      lastError = Self.describe(error)
       return Data()
     }
+  }
+
+  /// Dismisses the error banner once the user has seen it.
+  func clearLastError() {
+    lastError = nil
   }
 
   // MARK: - Helpers

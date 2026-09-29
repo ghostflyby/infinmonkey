@@ -16,6 +16,7 @@
     "./confirm": "./src/confirm.ts",
     "./connect": "./src/connect.ts",
     "./authorize": "./src/authorize.ts",
+    "./settings": "./src/settings.ts",
     "./payload": "./src/payload.ts"
   },
   "compilerOptions": {
