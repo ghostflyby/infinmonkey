@@ -8,7 +8,8 @@
     ]
   },
   "exports": {
-    "./store": "./src/store.ts"
+    "./store": "./src/store.ts",
+    "./main": "./src/main.ts"
   },
   "imports": {
     "@infinmonkey/shared": "workspace:*",

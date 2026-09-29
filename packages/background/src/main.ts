@@ -49,6 +49,23 @@ let menuSeq = 1;
 /** CreateEntry idempotency token → created entry. */
 const createTokens = new Map<string, AnyEntry>();
 
+/** GM_getTab/GM_saveTab data, keyed by the bridge nonce and tagged with the
+ * owning script and tab so getTabs can filter per script and onRemoved can
+ * evict per tab. */
+interface NonceTabData {
+  scriptId: string;
+  /** Best-effort owning tab; null when the engine could not resolve it. */
+  tabId: number | null;
+  data: Record<string, unknown>;
+}
+
+const nonceTabData = new Map<string, NonceTabData>();
+
+/** Tabs each script opened via openInTab; the closeTab allowlist. In-memory
+ * only - closeTab falls back to the browser-recorded openerTabId after the
+ * background has been suspended and this map reset. */
+const scriptTabs = new Map<string, Set<number>>();
+
 const notificationCallbacks = new Map<
   string,
   { nonce: string; tabId: number | null; scriptId: string; callbackId: string }
@@ -69,32 +86,69 @@ browser.tabs.onRemoved.addListener((tabId: number) => {
   for (const [id, c] of menuCommands) {
     if (c.tabId === tabId) menuCommands.delete(id);
   }
+  for (const [id, e] of nonceTabData) {
+    if (e.tabId === tabId) nonceTabData.delete(id);
+  }
+  for (const set of scriptTabs.values()) set.delete(tabId);
 });
 
 // ---- Message routing ----
+
+/**
+ * Message types a content script may invoke. Everything else is limited to
+ * the extension's own pages (options / popup / install / prompt). Pages reach
+ * this router only through our own content scripts today, but gating here
+ * keeps a single content-script injection bug from turning into full library
+ * read/write - entries carry script code and GM values. sender.url is
+ * browser-authoritative: content scripts report the page URL, extension
+ * pages report the extension origin, so the two are distinguishable.
+ */
+const CONTENT_SCRIPT_MESSAGES = new Set(["FetchText", "gmCall"]);
+
+/** Response size cap for FetchText, mirroring startInstallFromUrl. */
+const FETCH_TEXT_LIMIT = 5_000_000;
+
+function fromExtensionPage(sender: browser.Runtime.MessageSender): boolean {
+  return typeof sender.url === "string" &&
+    sender.url.startsWith(browser.runtime.getURL("/"));
+}
 
 browser.runtime.onMessage.addListener((msg: unknown, sender: browser.Runtime.MessageSender) => {
   return route(msg, sender) as unknown;
 });
 
-function route(
+/** Exported for route_test.ts; the polyfill's listener wrapper swallows
+ * return values, so tests drive this function directly. */
+export function route(
   msg: unknown,
   sender: browser.Runtime.MessageSender,
 ): Promise<unknown> | unknown {
   if (!isRecord(msg) || typeof msg.type !== "string") return undefined;
+  // Denied senders get the same silent `undefined` as unknown message types.
+  if (!CONTENT_SCRIPT_MESSAGES.has(msg.type) && !fromExtensionPage(sender)) return undefined;
   switch (msg.type) {
-    // ----- Heartbeat (content script keeps the event page alive) -----
-    case "ping":
-      return { ok: true };
     case "FetchText": {
-      const url = String(msg.url ?? "");
+      // @require/@resource fetches are http(s) by definition; rejecting other
+      // schemes here keeps a relayed message from probing file: and friends.
+      let url: URL;
+      try {
+        url = new URL(String(msg.url ?? ""));
+      } catch {
+        return { error: "invalid URL" };
+      }
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        return { error: "only http(s) URLs are supported" };
+      }
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(new Error("bg fetch timeout")), 10000);
-      const out = fetch(url, { cache: "no-store", signal: ctrl.signal })
-        .then(async (r) => ({
-          text: await r.text(),
-          mime: r.headers.get("content-type") ?? "text/plain",
-        }))
+      const out = fetch(url.href, { cache: "no-store", signal: ctrl.signal })
+        .then(async (r) => {
+          const declared = Number(r.headers.get("content-length") ?? 0);
+          if (declared > FETCH_TEXT_LIMIT) throw new Error("response too large");
+          const text = await r.text();
+          if (text.length > FETCH_TEXT_LIMIT) throw new Error("response too large");
+          return { text, mime: r.headers.get("content-type") ?? "text/plain" };
+        })
         .catch((e: unknown) => ({ error: String((e as Error).message ?? e) }));
       return out.finally(() => clearTimeout(timer));
     }
@@ -288,13 +342,14 @@ async function handleGmCall(
   if (!auth.ok) {
     throw new Error(`GM call denied: ${auth.reason}`);
   }
-  // Call context keyed by the bridge nonce (some engines omit tab info in sender)
-  const ctxKey = `${msg.nonce ?? "n"}:${msg.scriptId}:${msg.reqId}`;
+  // Call context keyed by the bridge nonce (unique per document)
+  const nonce = String(msg.nonce ?? "");
+  const ctxKey = `${nonce}:${msg.scriptId}:${msg.reqId}`;
   const ctx: GmCtx = {
-    nonce: String(msg.nonce ?? ""),
+    nonce,
     scriptId: msg.scriptId,
     ctxKey,
-    tabId: null,
+    tabId: sender.tab?.id ?? null,
     url,
   };
   return await gmDispatch(msg.op, msg.args, ctx);
@@ -314,7 +369,7 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
   const { scriptId } = ctx;
   async function tabIdBestEffort(): Promise<number | null> {
     if (ctx.tabId != null) return ctx.tabId;
-    if (senderTabOf(ctx) != null) return senderTabOf(ctx);
+    // Zen omits sender.tab for content-script messages; fall back to a URL log.
     ctx.tabId = ctx.url ? await findTabIdByUrl(ctx.url) : null;
     return ctx.tabId;
   }
@@ -374,24 +429,71 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
       return { id: created };
     }
     case "openInTab": {
+      const target = String(args.url ?? "");
+      // Engine handling of non-web schemes in tabs.create varies; GM_openInTab
+      // is for web pages, so pin it to http(s) explicitly.
+      if (!/^https?:\/\//i.test(target)) {
+        throw new Error("GM_openInTab: only http(s) URLs are supported");
+      }
+      const own = await tabIdBestEffort();
       const t = await browser.tabs.create({
-        url: String(args.url),
+        url: target,
         active: !!args.active,
         pinned: !!args.pinned,
+        // Browser-authoritative ownership record: unlike scriptTabs it
+        // survives background suspension, giving closeTab a durable check.
+        ...(own != null ? { openerTabId: own } : {}),
       });
+      if (t.id != null) {
+        const opened = scriptTabs.get(ctx.scriptId) ?? new Set<number>();
+        opened.add(t.id);
+        scriptTabs.set(ctx.scriptId, opened);
+      }
       return { tabId: t.id };
     }
-    case "closeTab":
-      await browser.tabs.remove(Number(args.tabId));
+    case "closeTab": {
+      // A page can forge gmCall frames for any script matching its URL, so an
+      // unvalidated tabId would let it close arbitrary tabs. Allow only the
+      // calling page's own tab and tabs this script opened via openInTab.
+      const target = Number(args.tabId);
+      if (!Number.isInteger(target)) {
+        throw new Error("GM_closeTab: integer tabId required");
+      }
+      const own = await tabIdBestEffort();
+      let allowed = target === own || !!scriptTabs.get(ctx.scriptId)?.has(target);
+      if (!allowed && own != null) {
+        // scriptTabs dies with the background on suspension; the opener
+        // recorded at tabs.create time survives, so consult it before denying.
+        const tab = await browser.tabs.get(target).catch(() => null);
+        allowed = tab?.openerTabId != null && tab.openerTabId === own;
+      }
+      if (!allowed) throw new Error("GM_closeTab: tab not opened by this script");
+      scriptTabs.get(ctx.scriptId)?.delete(target);
+      await browser.tabs.remove(target);
       return { ok: true };
-    case "getTab":
-      return { tab: nonceTabData.get(ctx.nonce) ?? {} };
-    case "saveTab":
-      nonceTabData.set(ctx.nonce, (args.tab ?? {}) as Record<string, unknown>);
+    }
+    case "getTab": {
+      const e = nonceTabData.get(`${ctx.nonce}:${ctx.scriptId}`);
+      return { tab: e?.data ?? {} };
+    }
+    case "saveTab": {
+      // Keyed per (document, script): two scripts on one page must not
+      // clobber each other's saved data.
+      nonceTabData.set(`${ctx.nonce}:${ctx.scriptId}`, {
+        scriptId: ctx.scriptId,
+        tabId: await tabIdBestEffort(),
+        data: (args.tab ?? {}) as Record<string, unknown>,
+      });
       return { ok: true };
+    }
     case "getTabs": {
+      // Per-script view: the GM gate is scoped by page URL, so without this
+      // filter one script's saved tab data would be readable by any other
+      // script running on the same page.
       const out: Record<string, unknown> = {};
-      for (const [nonce, v] of nonceTabData) out[nonce] = v;
+      for (const [nonce, e] of nonceTabData) {
+        if (e.scriptId === ctx.scriptId) out[nonce] = e.data;
+      }
       return { tabs: out };
     }
     case "download":
@@ -400,12 +502,6 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
       throw new Error(`Unknown GM op: ${op}`);
   }
 }
-
-function senderTabOf(ctx: GmCtx): number | null {
-  return ctx.tabId;
-}
-
-const nonceTabData = new Map<string, Record<string, unknown>>();
 
 function broadcastValueChanged(
   ctx: GmCtx,

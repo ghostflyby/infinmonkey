@@ -246,6 +246,9 @@ export async function getValue(
   scriptId: string,
   key: string,
 ): Promise<{ found: boolean; value?: unknown }> {
+  // "__proto__" is filtered out like a missing key: `in` would always answer
+  // true via Object.prototype, and reading it would hand back the prototype.
+  if (key === "__proto__") return { found: false };
   const entry = await findEntry(scriptId);
   if (!entry || entry.kind !== "script" || !(key in entry.values)) return { found: false };
   return { found: true, value: entry.values[key] };
@@ -256,6 +259,10 @@ export async function setValue(
   key: string,
   value: unknown,
 ): Promise<{ oldValue: unknown; newValue: unknown }> {
+  // Assignment semantics: values["__proto__"] = v hits the prototype setter
+  // instead of creating an own property, so the value would silently vanish
+  // on the next persist and `key in values` would always be true.
+  if (key === "__proto__") throw new Error(`GM_setValue: "${key}" is a reserved key`);
   const db = await getDB();
   const entry = findIn(db, scriptId);
   if (!entry || entry.kind !== "script") throw new Error("script not found");
@@ -270,6 +277,7 @@ export async function deleteValue(
   scriptId: string,
   key: string,
 ): Promise<{ existed: boolean; oldValue: unknown }> {
+  if (key === "__proto__") return { existed: false, oldValue: undefined };
   const db = await getDB();
   const entry = findIn(db, scriptId);
   if (!entry || entry.kind !== "script") return { existed: false, oldValue: undefined };

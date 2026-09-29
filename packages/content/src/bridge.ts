@@ -24,6 +24,18 @@ import {
 const STORAGE_READ_TIMEOUT_MS = 5_000;
 const STORAGE_READ_RETRY_DELAY_MS = 500;
 
+/**
+ * Per-document identity attached to every GM call: the background keys call
+ * context and GM_getTab data by it. The page observes the postMessage traffic
+ * but cannot substitute another document's value - the bridge attaches its
+ * own nonce and never forwards one from the frame. crypto.randomUUID is
+ * secure-context-only and content scripts follow the page's context, hence
+ * the fallback for plain-http pages.
+ */
+const BRIDGE_NONCE = typeof crypto.randomUUID === "function"
+  ? crypto.randomUUID()
+  : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
 function readStoreGuarded(): Promise<{
   scripts: ScriptEntry[];
   styles: StyleEntry[];
@@ -178,6 +190,7 @@ window.addEventListener("message", (ev: MessageEvent) => {
   browser.runtime
     .sendMessage({
       type: "gmCall",
+      nonce: BRIDGE_NONCE,
       scriptId: d.scriptId,
       reqId: d.id,
       op: d.op,
