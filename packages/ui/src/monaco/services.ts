@@ -136,7 +136,7 @@ async function runCheck(timeoutMs: number, notes: string[]): Promise<string> {
   // driving the raw editor API (which the check needs for actions/selection).
   configureLanguageServices();
   const SAMPLE =
-    'let selfCheckVar = 1;\nlet consumer = selfCheckVar;\nconst v = GM_getValue("k");\nlet selfCheckVar = 2;';
+    'let selfCheckVar = 1;\nlet consumer = selfCheckVar;\nconst v = GM_getValue("k");\nlet selfCheckVar = 2;\ndocument.title = "t";';
   const ed = editor.create(host, {
     value: SAMPLE,
     language: "javascript",
@@ -171,30 +171,44 @@ async function runCheck(timeoutMs: number, notes: string[]): Promise<string> {
     await sleep(300);
   }
 
-  // 3) hover over GM_getValue on line 3 — quick info resolved through the
-  //    GM ambient extraLib, not just same-file symbols.
-  results.hover = "pending";
-  ed.setPosition({ lineNumber: 3, column: 11 });
-  ed.focus();
-  ed.trigger("api", "editor.action.showHover", null);
-  const hoverDeadline = Date.now() + 15000;
-  while (Date.now() < hoverDeadline && results.hover === "pending") {
-    const widget = document.querySelector(".monaco-hover-content, .hover-contents");
-    if (widget && (widget.textContent ?? "").length > 0) {
-      results.hover = "ok(" + (widget.textContent ?? "").slice(0, 24) + ")";
-      break;
+  // 3+4) hover: GM quick info via the ambient extraLib, and `document`
+  //    quick info whose type resolves inside the fetched lib.dom
+  //    declarations (fails if the worker cannot serve libs). Each hover is
+  //    driven from a clean state and polls for the expected substring.
+  const hoverOnce = async (
+    key: string,
+    line: number,
+    col: number,
+    expect: string,
+  ) => {
+    ed.setPosition({ lineNumber: line, column: col });
+    ed.focus();
+    ed.trigger("api", "editor.action.hideHover", null);
+    await sleep(150);
+    const t0 = Date.now();
+    ed.trigger("api", "editor.action.showHover", null);
+    let seen = "";
+    while (Date.now() - t0 < 30000) {
+      const widget = document.querySelector(".monaco-hover-content, .hover-contents");
+      seen = (widget?.textContent ?? "").slice(0, 40);
+      if (seen.includes(expect)) {
+        results[key] = "ok(" + seen.slice(0, 24) + "," + (Date.now() - t0) + "ms)";
+        return;
+      }
+      await sleep(300);
     }
-    await sleep(300);
-  }
-  if (results.hover === "pending") results.hover = "fail";
+    results[key] = "fail(saw=" + JSON.stringify(seen) + ")";
+  };
+  await hoverOnce("hover", 3, 11, "GM_getValue");
+  await hoverOnce("lib", 5, 5, "Document");
 
-  // 4) go-to-definition from the usage on line 2 to the declaration on line 1:
+  // 5) go-to-definition from the usage on line 2 to the declaration on line 1:
   //    a same-file reveal moves the selection to line 1.
   results.goto = "pending";
   ed.setPosition({ lineNumber: 2, column: 16 });
   ed.focus();
   ed.trigger("api", "editor.action.revealDefinition", null);
-  const gotoDeadline = Date.now() + 15000;
+  const gotoDeadline = Date.now() + 20000;
   while (Date.now() < gotoDeadline && results.goto === "pending") {
     const sel = ed.getSelection();
     if (sel && sel.startLineNumber === 1) {

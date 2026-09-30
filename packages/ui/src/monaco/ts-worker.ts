@@ -196,9 +196,12 @@ class InfinTSWorker implements ts.LanguageServiceHost {
   private getScriptText(fileName: string): string | undefined {
     const model = this.getModel(fileName);
     if (model) return model.getValue();
+    // libs is a Map: membership must go through .has() — the `in` operator
+    // inspects the Map instance's own properties and always misses entries,
+    // which silently starved the checker of every fetched lib declaration.
     const libized = `lib.${fileName}.d.ts`;
-    if (fileName in this.libs) return this.libs.get(fileName);
-    if (libized in this.libs) return this.libs.get(libized);
+    if (this.libs.has(fileName)) return this.libs.get(fileName);
+    if (this.libs.has(libized)) return this.libs.get(libized);
     if (fileName in this.extraLibs) return this.extraLibs[fileName].content;
     return undefined;
   }
