@@ -224,10 +224,25 @@ async function runCheck(timeoutMs: number, notes: string[]): Promise<string> {
     results.goto = "fail(sel=" + JSON.stringify(ed.getSelection()) + ")";
   }
 
+  // Color sample: computed colors of the rendered token classes, for
+  // tokenizer/theme debugging through the hash channel.
+  const colors: string[] = [];
+  for (const span of host.querySelectorAll('.view-lines span[class*="mtk"]')) {
+    const cls = span.className.split(/\s+/).filter((c) => c.startsWith("mtk")).join(".");
+    const color = getComputedStyle(span).color;
+    const entry = cls + " " + color + " " + span.textContent?.slice(0, 8);
+    if (!colors.includes(entry)) colors.push(entry);
+    if (colors.length >= 10) break;
+  }
+  results.colors = colors.join(" | ").slice(0, 300);
   ed.dispose();
   host.remove();
   const flat = Object.entries(results).map(([k, v]) => k + "=" + v).join(" ");
-  if (Object.values(results).every((v) => v.startsWith("ok"))) return "pass " + flat;
+  if (
+    Object.entries(results).filter(([k]) => k !== "colors").every(([, v]) => v.startsWith("ok"))
+  ) {
+    return "pass " + flat;
+  }
   return "fail " + flat + (notes.length ? " notes=" + notes.slice(0, 3).join("|") : "");
 }
 
