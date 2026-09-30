@@ -290,6 +290,7 @@ function fillEditor(): void {
   });
   codeEditor.setLanguage(current.kind === "style" ? "css" : "javascript");
   codeEditor.setValue(current.code);
+  updateChips();
 
   const src = current.source;
   const dev = src.type === "dev";
@@ -356,6 +357,7 @@ async function saveEditor(): Promise<void> {
 $("#ed-save").addEventListener("click", () => void saveEditor());
 document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === "s" && !$("#view-editor").hidden) {
+    if (e.defaultPrevented) return; // the editor's own keymap already saved
     e.preventDefault();
     void saveEditor();
   }

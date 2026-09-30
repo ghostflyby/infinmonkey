@@ -407,31 +407,6 @@ button.danger {
   border-radius: 8px;
   overflow: hidden;
 }
-#ed-gutter {
-  margin: 0;
-  padding: 10px 8px 10px 12px;
-  text-align: right;
-  color: #55555f;
-  background: var(--panel);
-  user-select: none;
-  font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
-  overflow: hidden;
-  flex: none;
-  min-width: 44px;
-  border-right: 1px solid var(--border);
-}
-#ed-code {
-  flex: 1;
-  resize: none;
-  border: none;
-  outline: none;
-  padding: 10px 14px;
-  background: transparent;
-  color: var(--text);
-  white-space: pre;
-  tab-size: 2;
-  font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
-}
 
 .ed-foot {
   display: flex;

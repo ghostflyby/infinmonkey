@@ -108,6 +108,8 @@ async function patchMonacoCss(out: string, fontSrc: string): Promise<void> {
     try {
       await Deno.stat(cssPath);
     } catch {
+      // A renamed bundle output would silently lose the editor icons.
+      console.warn(`[build] monaco css not found at ${rel}; codicon font skipped`);
       continue;
     }
     await Deno.copyFile(fontSrc, join(dirname(cssPath), "codicon.ttf"));
@@ -165,8 +167,7 @@ for (const browser of targets) {
   // bundle overwrites an earlier one's helpers (observed as sporadic
   // "X is not a function" delivery failures after minification).
   // Monaco's dependency tree produces tens of megabytes of inline sourcemap
-  // text; those bundles ship the map as a linked file instead, and the worker
-  // target ships none.
+  // text; the bundles carrying it ship the map as a linked file instead.
   const LINKED_SOURCEMAP = new Set([
     "monaco/editor.worker.js",
     "options/main.js",
@@ -214,7 +215,7 @@ for (const browser of targets) {
     await Deno.remove(zip).catch(() => {});
     // Source maps stay in dist for local debugging but not in the artifact.
     const cmd = new Deno.Command("zip", {
-      args: ["-rq", zip, ".", "-x", "*.js.map"],
+      args: ["-rq", zip, ".", "-x", "*.map"],
       cwd: out,
     });
     const st = await cmd.output();

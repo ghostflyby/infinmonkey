@@ -25,7 +25,6 @@
     "webextension-polyfill": "npm:webextension-polyfill@0.12.0",
     "monaco-editor": "npm:monaco-editor@0.57.0",
     "monaco-editor/editor/editor.api": "npm:monaco-editor@0.57.0/editor/editor.api",
-    "monaco-editor/editor/editor.all": "npm:monaco-editor@0.57.0/editor/editor.all",
     "monaco-editor/editor/editor.worker": "npm:monaco-editor@0.57.0/editor/editor.worker",
     "monaco-editor/basic-languages/monaco.contribution": "npm:monaco-editor@0.57.0/basic-languages/monaco.contribution"
   },
