@@ -8,7 +8,10 @@
 // CSP (script-src 'self') without blob:.
 import browser from "webextension-polyfill";
 import type * as monaco from "monaco-editor";
-import { editor, KeyCode, KeyMod } from "monaco-editor/editor/editor.api";
+import * as editorApi from "../../../../.monaco-esm/vs/editor/editor.api.js";
+// The relative .js import carries no aggregate types; the package entry
+// (type-only mapping) provides them.
+const { editor, KeyCode, KeyMod } = editorApi as unknown as typeof import("monaco-editor");
 // The standalone editor entry (typed API, all editor features). The two
 // definitions registers pull in the JS/TS and CSS/SCSS/LESS Monarch
 // tokenizers (a few hundred KB); the aggregated basic-languages contribution
@@ -17,8 +20,8 @@ import { editor, KeyCode, KeyMod } from "monaco-editor/editor/editor.api";
 // cannot emit. Language services (completion/diagnostics/go-to-definition)
 // are layered on top by monaco/services.ts; this light variant ships
 // without them.
-import "monaco-editor/definitions/javascript/register";
-import "monaco-editor/definitions/css/register";
+import "../../../../.monaco-esm/vs/languages/definitions/javascript/register.js";
+import "../../../../.monaco-esm/vs/languages/definitions/css/register.js";
 
 // Workers live next to the page bundles in dist; same-origin, so no
 // web_accessible_resources are needed (only our own pages load them). The

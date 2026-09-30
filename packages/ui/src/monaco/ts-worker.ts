@@ -2,4 +2,4 @@
 // (dist/<browser>/monaco/ts.worker.js) — completion, hover, diagnostics and
 // go-to-definition for the options editor. Dispatched by label from
 // packages/ui/src/monaco/editor.ts.
-import "monaco-editor/language/typescript/ts.worker";
+import "../../../../.monaco-esm/vs/languages/features/typescript/ts.worker.js";
