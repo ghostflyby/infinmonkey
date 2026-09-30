@@ -3,7 +3,10 @@
 // CSS language services (completion, hover, diagnostics, go-to-definition)
 // served by the worker bundles in monaco/*-worker.ts. The options editor uses
 // this variant; the install preview ships the light editor instead.
-import { KeyCode, KeyMod, languages } from "monaco-editor/editor/editor.api";
+import { KeyCode, KeyMod } from "monaco-editor/editor/editor.api";
+// javascriptDefaults is exported by the contribution itself — monaco 0.57 has
+// no languages.typescript namespace at runtime (verified in the esm tree).
+import { javascriptDefaults } from "monaco-editor/language/typescript/monaco.contribution";
 import "monaco-editor/features/register.all";
 import "monaco-editor/language/typescript/monaco.contribution";
 import "monaco-editor/language/css/monaco.contribution";
@@ -55,24 +58,12 @@ function configureLanguageServices(): void {
   servicesConfigured = true;
   // languages.typescript is added at runtime by the contribution above and is
   // absent from the static typings.
-  const ts = (languages as unknown as {
-    typescript?: {
-      javascriptDefaults: {
-        addExtraLib(lib: string, fileName?: string): void;
-        setDiagnosticsOptions(o: {
-          noSemanticValidation: boolean;
-          noSyntaxValidation: boolean;
-        }): void;
-        setEagerModelSync(on: boolean): void;
-      };
-    };
-  }).typescript;
-  ts?.javascriptDefaults.addExtraLib(GM_DECLARATIONS, "infinmonkey/gm.d.ts");
-  ts?.javascriptDefaults.setDiagnosticsOptions({
+  javascriptDefaults.addExtraLib(GM_DECLARATIONS, "infinmonkey/gm.d.ts");
+  javascriptDefaults.setDiagnosticsOptions({
     noSemanticValidation: false,
     noSyntaxValidation: false,
   });
-  ts?.javascriptDefaults.setEagerModelSync(true);
+  javascriptDefaults.setEagerModelSync(true);
 }
 
 export function createCodeEditorWithServices(
