@@ -153,6 +153,26 @@ async function runVite(
   }
 }
 
+// Size discipline for shipped files: web-ext/AMO refuse to parse (and AMO
+// upload lints) any extension file larger than 5 MiB — the FILE_TOO_LARGE
+// error ts.worker.js used to trip. Fail the build naming the offender
+// instead of discovering it at lint time. Source maps are dev-only and never
+// zipped, so they are exempt.
+const FILE_SIZE_LIMIT = 5 * 1024 * 1024;
+
+async function assertFileSizeLimit(out: string) {
+  const offenders: string[] = [];
+  for await (const p of walk(out)) {
+    if (p.endsWith(".map")) continue;
+    const { size } = await Deno.stat(p);
+    if (size > FILE_SIZE_LIMIT) offenders.push(`${relative(out, p)} (${size} bytes)`);
+  }
+  if (offenders.length > 0) {
+    console.error(`[build] files over ${FILE_SIZE_LIMIT} bytes:\n  ${offenders.join("\n  ")}`);
+    Deno.exit(1);
+  }
+}
+
 for (const browser of targets) {
   const out = join(DIST, browser);
   await Deno.remove(out, { recursive: true }).catch(() => {});
@@ -172,6 +192,7 @@ for (const browser of targets) {
     join(out, "manifest.json"),
     JSON.stringify(manifest(browser), null, "\t") + "\n",
   );
+  await assertFileSizeLimit(out);
 
   if (doZip) {
     const zip = join(DIST, `infinmonkey-${browser}-${VERSION}.zip`);
