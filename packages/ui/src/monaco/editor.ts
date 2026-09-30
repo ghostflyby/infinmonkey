@@ -1,21 +1,24 @@
 // Monaco editor integration.
 //
-// The monaco code never goes through `deno bundle` as an npm asset tree —
-// the JS is inlined into the page bundles from the pinned npm: imports below,
-// the worker ships as its own IIFE target (monaco/editor.worker.js), and the
-// companion CSS file emitted next to each page bundle is linked from the page
-// HTML. Workers are created from a same-origin extension URL via
-// runtime.getURL, which the default MV3 CSP (script-src 'self') allows
-// without blob:.
+// The monaco JS is inlined into the page bundles from the pinned imports
+// below (resolved through the css-stripped .monaco-esm shadow), the editor
+// styles load as the aggregated monaco/editor.main.css static asset, and
+// workers ship as standalone IIFE targets (monaco/*.worker.js) created from
+// same-origin extension URLs via runtime.getURL — allowed by the default MV3
+// CSP (script-src 'self') without blob:.
 import browser from "webextension-polyfill";
 import type * as monaco from "monaco-editor";
 import { editor, KeyCode, KeyMod } from "monaco-editor/editor/editor.api";
-// Values come from the standalone editor entry (all editor features, typed);
-// basic-languages contributes the JS/CSS Monarch tokenizers (main thread).
-// The main package entry is type-only here: it pulls the language-service
-// worker chain whose font/asset imports the bundler cannot emit.
-// Language services (completion/diagnostics/go-to-definition) are layered on
-// top by monaco/services.ts; this light variant ships without them.
+// The standalone editor entry (typed API, all editor features). The two
+// definitions registers pull in the JS/TS and CSS/SCSS/LESS Monarch
+// tokenizers (a few hundred KB); the aggregated basic-languages contribution
+// would bundle all ~90 languages (~3.2MB). The main package entry stays
+// type-only: its language-service chain imports font assets the bundler
+// cannot emit. Language services (completion/diagnostics/go-to-definition)
+// are layered on top by monaco/services.ts; this light variant ships
+// without them.
+import "monaco-editor/definitions/javascript/register";
+import "monaco-editor/definitions/css/register";
 
 // Workers live next to the page bundles in dist; same-origin, so no
 // web_accessible_resources are needed (only our own pages load them). The

@@ -133,7 +133,12 @@ for (const browser of targets) {
     const entry = join(PACKAGES, entryRel);
     const outFile = join(out, outRel);
     await Deno.mkdir(dirname(outFile), { recursive: true });
-    const sourcemapArgs = LINKED_SOURCEMAP.has(outRel)
+    // Safari skips maps entirely: its dist folder is copied whole into the
+    // app extension by Xcode (Resources (dist/safari)), and the appex must
+    // not carry tens of megabytes of them.
+    const sourcemapArgs = browser === "safari"
+      ? []
+      : LINKED_SOURCEMAP.has(outRel)
       ? ["--sourcemap=linked"]
       : ["--sourcemap=inline"];
     const cmd = new Deno.Command(Deno.execPath(), {
