@@ -121,7 +121,7 @@ browser.tabs.onRemoved.addListener((tabId: number) => {
  * browser-authoritative: content scripts report the page URL, extension
  * pages report the extension origin, so the two are distinguishable.
  */
-const CONTENT_SCRIPT_MESSAGES = new Set(["FetchText", "gmCall"]);
+const CONTENT_SCRIPT_MESSAGES = new Set(["FetchText", "gmCall", "OpenOptions"]);
 
 /** Response size cap for FetchText, mirroring startInstallFromUrl. */
 const FETCH_TEXT_LIMIT = 5_000_000;
@@ -333,8 +333,19 @@ export function route(
       );
     case "StartInstallFromUrl":
       return startInstallFromUrl(msg.url as string, sender.tab?.id);
-    case "OpenOptions":
-      return browser.runtime.openOptionsPage().then(() => ({ ok: true }));
+    case "OpenOptions": {
+      // tabs.create instead of openOptionsPage(): that API resolves as
+      // success but opens nothing for temporary add-ons in headless Firefox
+      // (observed with geckodriver probes), and a plain tab is what
+      // open_in_tab already declares. The optional fragment allows a
+      // deep-link target (restricted to a plain #fragment).
+      const fragment = typeof msg.fragment === "string" && /^#[\w:-]*$/.test(msg.fragment)
+        ? msg.fragment
+        : "";
+      return browser.tabs
+        .create({ url: browser.runtime.getURL("options/index.html") + fragment })
+        .then(() => ({ ok: true }));
+    }
     case "GetPendingInstall":
       return getPendingInstall(msg.pendingId as string).then(async (p) => {
         if (!p) return { pending: null };

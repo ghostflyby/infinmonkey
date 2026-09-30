@@ -1,6 +1,10 @@
 /** Options page: list / editor / settings. */
 import browser from "webextension-polyfill";
-import { type CodeEditorHandle, createCodeEditorWithServices } from "../monaco/services.ts";
+import {
+  type CodeEditorHandle,
+  createCodeEditorWithServices,
+  runTsWorkerSelfCheck,
+} from "../monaco/services.ts";
 import { RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
 import type { ListEntriesResult } from "@infinmonkey/shared/protocol";
 import type {
@@ -801,6 +805,14 @@ void msg<{ ok: boolean }>({ type: "PingDevServer" }).then((r) => setDevIndicator
 );
 show("list");
 void loadList();
+
+// Automation self-check (#e2e): verify the TS language worker chain and
+// report through the hash — see runTsWorkerSelfCheck for what it covers.
+if (location.hash === "#e2e") {
+  void runTsWorkerSelfCheck()
+    .then((v) => history.replaceState(null, "", `#e2e:${v}`))
+    .catch((e) => history.replaceState(null, "", `#e2e:err:${String(e).slice(0, 60)}`));
+}
 
 // Debug/automation handles
 (window as unknown as { __imDebug: () => unknown }).__imDebug = () => ({

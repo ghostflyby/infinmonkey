@@ -45,15 +45,18 @@ for (const t of targets) {
   }
 }
 
-// Single-file IIFE targets: [in-package source file, dist-relative output].
+// Single-entry targets: [in-package source file, dist-relative output,
+// format]. Classic iife for content scripts and the editor/css workers; the
+// TS language worker is a self-assembled entry (npm:typescript + monaco RPC
+// bootstrap) built as ESM — editor.ts creates it as a module worker.
 // (The ESM pass inputs live in vite.pages.config.ts.)
-const SINGLE_ENTRIES: [string, string][] = [
-  ["content/src/bridge.ts", "content/bridge.js"],
-  ["content/src/installer.ts", "content/installer.js"],
-  ["inject/src/runner.ts", "inject/runner.js"],
-  ["ui/src/monaco/worker.ts", "monaco/editor.worker.js"],
-  ["ui/src/monaco/ts-worker.ts", "monaco/ts.worker.js"],
-  ["ui/src/monaco/css-worker.ts", "monaco/css.worker.js"],
+const SINGLE_ENTRIES: [string, string, "iife" | "es"][] = [
+  ["content/src/bridge.ts", "content/bridge.js", "iife"],
+  ["content/src/installer.ts", "content/installer.js", "iife"],
+  ["inject/src/runner.ts", "inject/runner.js", "iife"],
+  ["ui/src/monaco/worker.ts", "monaco/editor.worker.js", "iife"],
+  ["ui/src/monaco/css-worker.ts", "monaco/css.worker.js", "iife"],
+  ["ui/src/monaco/ts-worker.ts", "monaco/ts.worker.js", "es"],
 ];
 
 async function copyStatic(to: string) {
@@ -65,6 +68,16 @@ async function copyStatic(to: string) {
     const dest = join(to, rel);
     await Deno.mkdir(dirname(dest), { recursive: true });
     await Deno.copyFile(p, dest);
+  }
+  // TS default-lib d.ts files, fetched on demand by the self-assembled TS
+  // worker (packages/ui/src/monaco/ts-worker.ts) instead of being bundled
+  // into it as string data.
+  const tsLibDir = join(ROOT, "node_modules/typescript/lib");
+  const libsOut = join(to, "monaco/libs");
+  await Deno.mkdir(libsOut, { recursive: true });
+  for await (const p of Deno.readDir(tsLibDir)) {
+    if (!/^lib\..*\.d\.ts$/.test(p.name)) continue;
+    await Deno.copyFile(join(tsLibDir, p.name), join(libsOut, p.name));
   }
   // License ships with the package
   await Deno.copyFile(join(ROOT, "LICENSE"), join(to, "LICENSE"));
@@ -146,10 +159,11 @@ for (const browser of targets) {
   await Deno.mkdir(out, { recursive: true });
 
   await runVite("vite.pages.config.ts", out, browser);
-  for (const [entryRel, outRel] of SINGLE_ENTRIES) {
+  for (const [entryRel, outRel, format] of SINGLE_ENTRIES) {
     await runVite("vite.single.config.ts", out, browser, {
       VITE_ENTRY: join(PACKAGES, entryRel),
       VITE_OUT: outRel,
+      VITE_FORMAT: format,
     });
   }
 

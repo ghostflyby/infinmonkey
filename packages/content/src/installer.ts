@@ -72,6 +72,7 @@ function showBanner(found: Found): void {
     }
     .install { background: #e91e63; color: #fff; font-weight: 600; flex: 1; }
     .install:hover { background: #f04580; }
+    .manage { background: #33333c; color: #b9b9c3; }
     .dismiss { background: #33333c; color: #b9b9c3; width: 34px; }
     .dismiss:hover { background: #3d3d47; }
     .done { color: #7bd88f; }
@@ -81,7 +82,7 @@ function showBanner(found: Found): void {
   card.innerHTML = `
     <div class="title">检测到${label}</div>
     <div class="sub"><span class="name"></span> <span class="ver"></span></div>
-    <div class="btns"><button class="install">安装到 InfinMonkey</button><button class="dismiss">✕</button></div>
+    <div class="btns"><button class="install">安装到 InfinMonkey</button><button class="manage">管理</button><button class="dismiss">✕</button></div>
   `;
   (card.querySelector(".name") as HTMLElement).textContent = meta.name;
   (card.querySelector(".ver") as HTMLElement).textContent = meta.version ? `v${meta.version}` : "";
@@ -162,5 +163,19 @@ function showBanner(found: Found): void {
   (shadow.querySelector(".dismiss") as HTMLButtonElement).addEventListener(
     "click",
     () => host.remove(),
+  );
+  // Jump to the manager from the install context: real feature (users install
+  // to then manage), and the tab it opens is the only extension-page entry
+  // point the E2E harness can reach (geckodriver refuses direct
+  // moz-extension navigation; only extension-initiated tabs are switchable).
+  (shadow.querySelector(".manage") as HTMLButtonElement).addEventListener(
+    "click",
+    () => {
+      // Automation hook (same convention as data-infin-done): a test harness
+      // on the page can set data-infin-open-fragment on the host element to
+      // open the manager at a deep link, e.g. the #e2e worker self-check.
+      const fragment = host.dataset.infinOpenFragment ?? "";
+      void browser.runtime.sendMessage({ type: "OpenOptions", fragment });
+    },
   );
 }

@@ -3,7 +3,7 @@
 // CSS language services (completion, hover, diagnostics, go-to-definition)
 // served by the worker bundles in monaco/*-worker.ts. The options editor uses
 // this variant; the install preview ships the light editor instead.
-import { KeyCode, KeyMod } from "monaco-editor/editor/editor.api";
+import { editor, KeyCode, KeyMod } from "monaco-editor/editor/editor.api";
 // javascriptDefaults is exported by the contribution itself — monaco 0.57 has
 // no runtime languages.typescript namespace (verified in the esm tree).
 import * as tsRegister from "monaco-editor/languages/features/typescript/register";
@@ -12,6 +12,8 @@ const { javascriptDefaults } = tsRegister as unknown as {
     addExtraLib(lib: string, fileName?: string): void;
     setDiagnosticsOptions(o: { noSemanticValidation: boolean; noSyntaxValidation: boolean }): void;
     setEagerModelSync(on: boolean): void;
+    getCompilerOptions(): Record<string, unknown>;
+    setCompilerOptions(o: Record<string, unknown>): void;
   };
 };
 import "monaco-editor/features/register.all";
@@ -78,6 +80,79 @@ export function createCodeEditorWithServices(
 ): CodeEditorHandle {
   configureLanguageServices();
   return createCodeEditor(mount, opts);
+}
+
+/**
+ * Automation self-check for the #e2e hash (options page): mounts an
+ * offscreen editor with a semantically invalid statement and resolves once
+ * the TS language worker reports the semantic error marker — proving the
+ * whole chain end to end (module worker boot, RPC handshake, mirror-model
+ * sync, default-lib fetch, getSemanticDiagnostics). The caller reports the
+ * verdict through the location hash: the only channel WebDriver can read on
+ * privileged extension pages.
+ */
+export async function runTsWorkerSelfCheck(
+  timeoutMs = 30_000,
+): Promise<string> {
+  // Diagnostics collected for the timeout verdict (reported through the
+  // hash): page errors, unhandled rejections, worker lifecycle notes.
+  const notes: string[] = [];
+  window.addEventListener("error", (e) => notes.push("err:" + e.message.slice(0, 60)));
+  window.addEventListener("unhandledrejection", (e) => {
+    notes.push("rej:" + String(e.reason).slice(0, 60));
+  });
+  const env = (self as unknown as {
+    MonacoEnvironment?: { getWorker: (id: string, label: string) => Worker };
+  }).MonacoEnvironment;
+  const origGetWorker = env?.getWorker?.bind(env);
+  if (env && origGetWorker) {
+    env.getWorker = (id: string, label: string) => {
+      const w = origGetWorker(id, label);
+      notes.push("worker:" + label);
+      w.onerror = (ev) => notes.push("workerErr:" + String(ev.message).slice(0, 80));
+      return w;
+    };
+  }
+  // JS models only get semantic diagnostics with checkJs; the product
+  // default leaves it off (syntax + GM symbols only), so enable it for the
+  // check and restore afterwards.
+  const savedOptions = javascriptDefaults.getCompilerOptions();
+  javascriptDefaults.setCompilerOptions({ ...savedOptions, checkJs: true });
+  try {
+    return await runCheck(timeoutMs, notes);
+  } finally {
+    javascriptDefaults.setCompilerOptions(savedOptions);
+  }
+}
+
+async function runCheck(timeoutMs: number, notes: string[]): Promise<string> {
+  const host = document.createElement("div");
+  // Offscreen but rendered (not display:none) so the editor measures.
+  host.style.cssText = "position:fixed;left:-2000px;top:0;width:600px;height:200px";
+  document.body.append(host);
+  createCodeEditorWithServices(host, {
+    // Duplicate let declarations: TS2451 is a checker diagnostic that IS
+    // reported for .js files (many candidates like not-callable are
+    // suppressed in JS), so reaching it proves the full chain including the
+    // default-lib program. Type annotations would only yield TS8010, the
+    // grammar-level "no annotations in .js" rejection.
+    value: "let selfCheckVar = 1; let selfCheckVar = 2;",
+    language: "javascript",
+  });
+  const deadline = Date.now() + timeoutMs;
+  // MarkerSeverity.Error === 8; TS2451 is the expected semantic diagnostic.
+  while (Date.now() < deadline) {
+    if (editor.getModelMarkers({}).some((m) => m.severity === 8 && String(m.code) === "2451")) {
+      host.remove();
+      return "pass";
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  const markers = editor.getModelMarkers({});
+  const verdict = "timeout notes=" + notes.slice(0, 5).join(" | ") + " markers=" +
+    markers.map((m) => m.severity + ":" + m.code).slice(0, 5).join(",");
+  host.remove();
+  return verdict;
 }
 
 export { KeyCode, KeyMod };

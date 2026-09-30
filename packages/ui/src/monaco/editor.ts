@@ -21,15 +21,22 @@ import "monaco-editor/languages/definitions/css/register";
 // Workers live next to the page bundles in dist; same-origin, so no
 // web_accessible_resources are needed (only our own pages load them). The
 // label picks the language service: TS/JS and CSS have dedicated workers,
-// everything else falls back to the base editor worker.
+// everything else falls back to the base editor worker. The TS worker is a
+// self-assembled module-worker entry of the pages build (packages/ui/src/
+// monaco/ts-worker.ts), so it must be created with { type: "module" }; the
+// others are classic single-file IIFE targets.
 (self as unknown as { MonacoEnvironment: unknown }).MonacoEnvironment = {
   getWorker: (_workerId: string, label: string): Worker => {
-    const module = label === "typescript" || label === "javascript"
+    const isTs = label === "typescript" || label === "javascript";
+    const module = isTs
       ? "monaco/ts.worker.js"
       : label === "css" || label === "scss" || label === "less"
       ? "monaco/css.worker.js"
       : "monaco/editor.worker.js";
-    return new Worker(browser.runtime.getURL(module));
+    return new Worker(
+      browser.runtime.getURL(module),
+      isTs ? { type: "module" } : {},
+    );
   },
 };
 
