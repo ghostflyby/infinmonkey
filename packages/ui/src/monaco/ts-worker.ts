@@ -164,7 +164,10 @@ class InfinTSWorker implements ts.LanguageServiceHost {
     if (options.target == null || options.target >= ts.ScriptTarget.ESNext) {
       return "lib.esnext.full.d.ts";
     }
-    if (options.target <= ts.ScriptTarget.ES5) return "lib.d.ts";
+    // Not "lib.d.ts": the shipped asset set starts at lib.es5.d.ts (the
+    // finalize copy regex matches lib.<name>.d.ts), and es5 carries the same
+    // ES5 declarations.
+    if (options.target <= ts.ScriptTarget.ES5) return "lib.es5.d.ts";
     const name = `lib.es${2013 + options.target}.full.d.ts`;
     return FULL_LIB_FILES.has(name) ? name : "lib.es6.d.ts";
   }

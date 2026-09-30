@@ -30,7 +30,7 @@ jobs:
       - run: deno test -A
       - run: deno task unused
       - run: deno task build
-      # Keep the safari bundle from rotting (pure deno bundling, no Xcode needed)
+      # Keep the safari bundle from rotting (pure vite build, no Xcode needed)
       - run: deno task build:safari
       - uses: actions/upload-artifact@v7
         with:
