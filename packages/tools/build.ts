@@ -119,7 +119,8 @@ for (const browser of targets) {
   // bundle overwrites an earlier one's helpers (observed as sporadic
   // "X is not a function" delivery failures after minification).
   // Monaco's dependency tree produces tens of megabytes of inline sourcemap
-  // text; the bundles carrying it ship the map as a linked file instead.
+  // text; every bundle carrying it (editor or language workers) ships the map
+  // as a linked file instead of inlining it.
   const LINKED_SOURCEMAP = new Set([
     "monaco/editor.worker.js",
     "monaco/ts.worker.js",
@@ -158,18 +159,14 @@ for (const browser of targets) {
   }
 
   await copyStatic(out);
-  // Monaco styles + icon font: the .monaco-esm shadow strips css imports from
-  // the JS, so the aggregated stylesheet loads as a static asset instead.
+  // Monaco styles: the .monaco-esm shadow strips css imports from the JS, so
+  // the aggregated stylesheet (codicon font embedded as base64) loads as a
+  // static asset instead.
   const monacoOut = join(out, "monaco");
   await Deno.mkdir(monacoOut, { recursive: true });
-  const minDir = join(monacoLocalDir(), "min/vs");
   await Deno.copyFile(
-    join(minDir, "editor/editor.main.css"),
+    join(monacoLocalDir(), "min/vs/editor/editor.main.css"),
     join(monacoOut, "editor.main.css"),
-  );
-  await Deno.copyFile(
-    join(monacoLocalDir(), "esm/vs/base/browser/ui/codicons/codicon/codicon.ttf"),
-    join(monacoOut, "codicon.ttf"),
   );
   await Deno.writeTextFile(
     join(out, "manifest.json"),

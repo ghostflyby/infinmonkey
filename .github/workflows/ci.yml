@@ -25,6 +25,9 @@ jobs:
           cache: true
       - run: deno fmt --check
       - run: deno lint
+      # Generates .monaco-esm (css-stripped monaco esm shadow) — the ui
+      # packages import through it, so check needs it on a fresh checkout.
+      - run: deno task monaco-esm
       - run: deno check packages
       - run: deno test -A
       - run: deno task unused

@@ -65,8 +65,8 @@ export async function ensureMonacoEsm(force = false): Promise<string> {
   for await (const path of walk(src)) {
     const rel = path.slice(src.length + 1);
     const dest = join(OUT_DIR, rel);
-    await Deno.mkdir(dirname(dest), { recursive: true });
     if (path.endsWith(".css")) continue;
+    await Deno.mkdir(dirname(dest), { recursive: true });
     if (path.endsWith(".js")) {
       // Strip the css imports: the styles ship via the aggregated
       // editor.main.css instead.
