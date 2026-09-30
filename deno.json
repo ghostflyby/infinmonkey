@@ -25,14 +25,20 @@
     "webextension-polyfill": "npm:webextension-polyfill@0.12.0",
     "monaco-editor": "npm:monaco-editor@0.57.0",
     "monaco-editor/editor/editor.api": "npm:monaco-editor@0.57.0/editor/editor.api",
-    "monaco-editor/editor/editor.worker": "npm:monaco-editor@0.57.0/editor/editor.worker",
-    "monaco-editor/basic-languages/monaco.contribution": "npm:monaco-editor@0.57.0/basic-languages/monaco.contribution"
+    "monaco-editor/editor/editor.worker": "./.monaco-esm/vs/editor/editor.worker.js",
+    "monaco-editor/basic-languages/monaco.contribution": "./.monaco-esm/vs/basic-languages/monaco.contribution.js",
+    "monaco-editor/features/register.all": "./.monaco-esm/vs/features/register.all.js",
+    "monaco-editor/language/typescript/monaco.contribution": "./.monaco-esm/vs/language/typescript/monaco.contribution.js",
+    "monaco-editor/language/css/monaco.contribution": "./.monaco-esm/vs/language/css/monaco.contribution.js",
+    "monaco-editor/language/typescript/ts.worker": "./.monaco-esm/vs/language/typescript/ts.worker.js",
+    "monaco-editor/language/css/css.worker": "./.monaco-esm/vs/language/css/css.worker.js"
   },
   "tasks": {
     "check": "deno check packages",
     "test": "deno test -A",
     "lint": "deno lint",
     "fmt": "deno fmt",
+    "monaco-esm": "deno run -A packages/tools/monaco-esm.ts",
     "build": "deno run -A packages/tools/build.ts",
     "build:firefox": "deno run -A packages/tools/build.ts --browser firefox",
     "build:chrome": "deno run -A packages/tools/build.ts --browser chrome",

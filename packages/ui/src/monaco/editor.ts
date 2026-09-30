@@ -9,17 +9,27 @@
 // without blob:.
 import browser from "webextension-polyfill";
 import type * as monaco from "monaco-editor";
-// Values come from the standalone editor entry (all editor features, typed);
-// basic-languages contributes the JS/CSS Monarch grammars. The main package
-// entry is type-only here: it pulls the language-service worker chain whose
-// font/asset imports the bundler cannot emit.
 import { editor, KeyCode, KeyMod } from "monaco-editor/editor/editor.api";
-import "monaco-editor/basic-languages/monaco.contribution";
+// Values come from the standalone editor entry (all editor features, typed);
+// basic-languages contributes the JS/CSS Monarch tokenizers (main thread).
+// The main package entry is type-only here: it pulls the language-service
+// worker chain whose font/asset imports the bundler cannot emit.
+// Language services (completion/diagnostics/go-to-definition) are layered on
+// top by monaco/services.ts; this light variant ships without them.
 
-// The editor worker lives next to the page bundles in dist; same-origin,
-// so no web_accessible_resources are needed (only our own pages load it).
+// Workers live next to the page bundles in dist; same-origin, so no
+// web_accessible_resources are needed (only our own pages load them). The
+// label picks the language service: TS/JS and CSS have dedicated workers,
+// everything else falls back to the base editor worker.
 (self as unknown as { MonacoEnvironment: unknown }).MonacoEnvironment = {
-  getWorker: () => new Worker(browser.runtime.getURL("monaco/editor.worker.js")),
+  getWorker: (_workerId: string, label: string): Worker => {
+    const module = label === "typescript" || label === "javascript"
+      ? "monaco/ts.worker.js"
+      : label === "css" || label === "scss" || label === "less"
+      ? "monaco/css.worker.js"
+      : "monaco/editor.worker.js";
+    return new Worker(browser.runtime.getURL(module));
+  },
 };
 
 export type EditorLanguage = "javascript" | "css";

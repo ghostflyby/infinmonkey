@@ -6,6 +6,7 @@ dist/
 .e2e/
 .idea/
 .browsers.local.json
+.monaco-esm/
 .zcodeignore
 
 # Xcode: personal state and build products

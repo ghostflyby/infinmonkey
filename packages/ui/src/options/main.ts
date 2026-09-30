@@ -1,6 +1,6 @@
 /** Options page: list / editor / settings. */
 import browser from "webextension-polyfill";
-import { type CodeEditorHandle, createCodeEditor } from "../monaco/editor.ts";
+import { type CodeEditorHandle, createCodeEditorWithServices } from "../monaco/services.ts";
 import { RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
 import type { ListEntriesResult } from "@infinmonkey/shared/protocol";
 import type {
@@ -283,7 +283,7 @@ async function showEditorError(id: string): Promise<void> {
 function fillEditor(): void {
   if (!current) return;
   $("#ed-name").textContent = current.meta.name;
-  codeEditor = codeEditor ?? createCodeEditor($("#ed-editor"), {
+  codeEditor = codeEditor ?? createCodeEditorWithServices($("#ed-editor"), {
     value: current.code,
     language: current.kind === "style" ? "css" : "javascript",
     onSave: () => void saveEditor(),
