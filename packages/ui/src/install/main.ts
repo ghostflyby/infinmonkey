@@ -35,7 +35,11 @@ function render(
   const grid = h("dl", { class: "grid" });
   const row = (k: string, v: Node | string) => grid.append(h("dt", {}, k), h("dd", {}, v));
   row("类型", isScript ? "用户脚本" : "用户样式");
-  if (meta.version) row("版本", meta.version);
+  if (replacing) {
+    row("版本", `${replacing.meta.version || "无版本"} → ${meta.version || "无版本"}`);
+  } else if (meta.version) {
+    row("版本", meta.version);
+  }
   if (meta.author) row("作者", meta.author);
   if (meta.description) row("描述", meta.description);
   if (isScript) {
@@ -51,11 +55,9 @@ function render(
   if (dev) row("本地映射", "✓ 将自动从 dev server 实时加载");
   if (replacing) row("更新", `将替换已安装的「${replacing.meta.name}」（保留数据）`);
 
-  const preview = h(
-    "pre",
-    {},
-    p.code.split("\n").slice(0, 120).join("\n") + (p.code.split("\n").length > 120 ? "\n…" : ""),
-  );
+  // Full code, never truncated: the <pre> itself is the scroll container
+  // (max-height + overflow:auto, see `pre` in style.css).
+  const preview = h("pre", {}, p.code);
 
   const warn = isScript && meta.grants.length > 0
     ? h(
@@ -86,7 +88,7 @@ function render(
       ),
       warn,
       grid,
-      h("details", { open: true }, h("summary", {}, "代码预览（前 120 行）"), preview),
+      h("details", { open: true }, h("summary", {}, "代码预览（完整，可滚动）"), preview),
       h(
         "div",
         { class: "btns" },

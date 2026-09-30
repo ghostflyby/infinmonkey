@@ -17,6 +17,8 @@ import { debounce, h, msg, toast } from "../dom.ts";
 let current: AnyEntry | null = null;
 let view: "scripts" | "styles" | "settings" = "scripts";
 let editingId: string | null = null;
+/** GM values panel: the key whose inline editor is expanded. */
+let expandedValueKey: string | null = null;
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T => document.querySelector(sel) as T;
 
@@ -49,19 +51,40 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>("#nav button")) {
 
 type ErrorTable = { imErrors?: Record<string, ScriptErrorRecord> };
 
+/** Last fetched list for the current view + its error table; the search box
+ * re-filters these client-side without another round trip. */
+let lastItems: AnyEntry[] = [];
+let lastErrors: ErrorTable["imErrors"];
+
 async function loadErrors(): Promise<ErrorTable["imErrors"]> {
   return (await browser.storage.local.get("imErrors") as ErrorTable).imErrors;
 }
 
 async function loadList(): Promise<void> {
   const res = await msg<ListEntriesResult>({ type: "ListEntries" });
-  const errors = await loadErrors();
-  const list = $("#entry-list");
-  list.textContent = "";
-  const items: AnyEntry[] = view === "scripts" ? res.scripts : res.styles;
+  lastErrors = await loadErrors();
+  lastItems = view === "scripts" ? res.scripts : res.styles;
   $("#count-scripts").textContent = String(res.scripts.length);
   $("#count-styles").textContent = String(res.styles.length);
-  if (items.length === 0) {
+  renderList();
+}
+
+/** Instant client-side filter: name / version / dev source URL of the current view. */
+function matchesSearch(entry: AnyEntry): boolean {
+  const q = ($("#search") as HTMLInputElement).value.trim().toLowerCase();
+  if (!q) return true;
+  const src = entry.source;
+  return [
+    entry.meta.name,
+    entry.meta.version ?? "",
+    src.type === "dev" ? src.url : "",
+  ].some((field) => field.toLowerCase().includes(q));
+}
+
+function renderList(): void {
+  const list = $("#entry-list");
+  list.textContent = "";
+  if (lastItems.length === 0) {
     list.append(
       h(
         "div",
@@ -73,10 +96,27 @@ async function loadList(): Promise<void> {
     );
     return;
   }
-  for (const entry of items) list.append(renderEntry(entry, errors?.[entry.id]));
+  const items = lastItems.filter(matchesSearch);
+  if (items.length === 0) {
+    list.append(h("div", { class: "empty" }, "没有匹配的条目"));
+    return;
+  }
+  items.forEach((entry, i) =>
+    list.append(renderEntry(entry, i, items.length, lastErrors?.[entry.id]))
+  );
 }
 
-function renderEntry(entry: AnyEntry, error?: ScriptErrorRecord): HTMLElement {
+$("#search").addEventListener("input", () => renderList());
+
+/** Renders one row. `index`/`total` are the entry's position in the filtered
+ * view; the move buttons disable at the filtered-list edges, which matches
+ * moveEntryBy moving within the filtered set. */
+function renderEntry(
+  entry: AnyEntry,
+  index: number,
+  total: number,
+  error?: ScriptErrorRecord,
+): HTMLElement {
   const isScript = entry.kind === "script";
   const src = entry.source;
   const dev = src.type === "dev";
@@ -108,6 +148,7 @@ function renderEntry(entry: AnyEntry, error?: ScriptErrorRecord): HTMLElement {
           entry.meta.version ? `v${entry.meta.version}` : null,
           dev ? src.url.replace(/^https?:\/\//, "") : "内置代码",
           isScript ? `授权 ${entry.meta.grants.filter((g) => g !== "none").length} 项` : "样式",
+          `更新于 ${new Date(entry.updatedAt).toLocaleDateString("zh-CN")}`,
         ].filter(Boolean).join(" · "),
       ),
     ),
@@ -118,6 +159,18 @@ function renderEntry(entry: AnyEntry, error?: ScriptErrorRecord): HTMLElement {
     h(
       "div",
       { class: "acts" },
+      h("button", {
+        class: "mv",
+        title: "上移",
+        disabled: index === 0,
+        onclick: () => void moveEntryBy(entry.id, "up"),
+      }, "↑"),
+      h("button", {
+        class: "mv",
+        title: "下移",
+        disabled: index === total - 1,
+        onclick: () => void moveEntryBy(entry.id, "down"),
+      }, "↓"),
       h("button", { onclick: () => openEditor(entry.id) }, "编辑"),
       h("button", { onclick: () => void checkUpdate(entry.id) }, "更新"),
       h("button", { onclick: () => void removeEntry(entry) }, "删除"),
@@ -125,6 +178,46 @@ function renderEntry(entry: AnyEntry, error?: ScriptErrorRecord): HTMLElement {
   );
   return row;
 }
+
+/** Moves an entry one step within the visible (filtered) list. MoveEntry
+ * swaps with the adjacent entry of the full position-sorted list, so under an
+ * active search the visible neighbor can sit several positions away: repeat
+ * the swap until the entry passes it, keeping the rendered order in sync with
+ * the click. Without a filter the distance is always one swap. */
+async function moveEntryBy(id: string, dir: "up" | "down"): Promise<void> {
+  const filtered = lastItems.filter(matchesSearch);
+  const vi = filtered.findIndex((e) => e.id === id);
+  let steps = 1;
+  if (vi >= 0) {
+    const neighbor = dir === "up" ? vi - 1 : vi + 1;
+    if (neighbor < 0 || neighbor >= filtered.length) {
+      toast("已在列表边缘", true);
+      return;
+    }
+    const fi = lastItems.findIndex((e) => e.id === id);
+    const fn = lastItems.findIndex((e) => e.id === filtered[neighbor].id);
+    if (fi >= 0 && fn >= 0) steps = Math.max(1, Math.abs(fn - fi));
+  }
+  let moved = true;
+  for (let i = 0; i < steps && moved; i++) {
+    const res = await msg<{ ok: boolean }>({ type: "MoveEntry", id, dir });
+    moved = !!res.ok;
+  }
+  if (!moved) toast("已在列表边缘", true);
+  await loadList();
+}
+
+function setAllEnabledFromHead(enabled: boolean): void {
+  const kind = view === "styles" ? "style" : "script";
+  void msg<{ count: number }>({ type: "SetAllEnabled", kind, enabled })
+    .then(async (r) => {
+      toast(`已${enabled ? "启用" : "禁用"} ${r.count} 项`);
+      await loadList();
+    })
+    .catch((e) => toast(`操作失败：${String(e)}`, true));
+}
+$("#btn-enable-all").addEventListener("click", () => setAllEnabledFromHead(true));
+$("#btn-disable-all").addEventListener("click", () => setAllEnabledFromHead(false));
 
 function toggle(on: boolean, change: (v: boolean) => void | Promise<void>): HTMLElement {
   const input = h("input", { type: "checkbox" }) as HTMLInputElement;
@@ -164,6 +257,7 @@ async function openEditor(id: string): Promise<void> {
   if (!res.entry) return;
   current = res.entry;
   editingId = id;
+  expandedValueKey = null;
   fillEditor();
   void showEditorError(id);
   show("editor");
@@ -200,6 +294,9 @@ function fillEditor(): void {
   ($("#ed-auto-reload") as HTMLInputElement).checked = dev ? src.autoReload : true;
   $("#ed-ping-status").textContent = "";
   void refreshConnectGrants();
+  // GM_*Value is a script-only API, so the values panel never shows for styles.
+  $("#ed-values").hidden = current.kind !== "script";
+  if (current.kind === "script") void refreshEntryValues();
 }
 
 function updateChips(): void {
@@ -378,6 +475,137 @@ async function refreshConnectGrants(): Promise<void> {
     );
   }
 }
+
+// ---- GM values panel (script entries only) ----
+
+async function refreshEntryValues(): Promise<void> {
+  if (!editingId || current?.kind !== "script") return;
+  const id = editingId;
+  const res = await msg<{ values: Record<string, unknown> }>({ type: "GetEntryValues", id });
+  // A slower read for a previous entry must not win over the newer one.
+  if (id !== editingId) return;
+  const box = $("#ed-values-list");
+  box.textContent = "";
+  const keys = Object.keys(res.values);
+  $("#ed-values-count").textContent = keys.length > 0 ? `${keys.length} 项` : "";
+  if (keys.length === 0) {
+    box.append(
+      h("div", { class: "gmkey-empty" }, "暂无存储值（脚本内用 GM_setValue 写入后显示在这里）"),
+    );
+    return;
+  }
+  for (const key of keys) box.append(renderValueRow(id, key, res.values[key]));
+}
+
+/** JSON text for the values panel. GM values arrive as structured clones, so
+ * exotic members (bigint) make stringify throw and undefined makes it return
+ * undefined; both fall back to a best-effort string instead of breaking the
+ * render. */
+function jsonText(v: unknown, indent = 0): string {
+  try {
+    const s = JSON.stringify(v, null, indent);
+    if (s !== undefined) return s;
+  } catch {
+    // fall through to String()
+  }
+  return String(v);
+}
+
+function renderValueRow(id: string, key: string, value: unknown): HTMLElement {
+  const preview = jsonText(value);
+  const row = h(
+    "div",
+    { class: "gmkey" },
+    h(
+      "button",
+      { class: "gmkey-name", title: "点击展开编辑", onclick: () => toggleValueKey(key) },
+      key,
+    ),
+    h("span", { class: "gmkey-preview", title: preview }, preview),
+    h(
+      "button",
+      { class: "gmkey-act danger", onclick: () => void deleteEntryValueKey(id, key) },
+      "删除",
+    ),
+  );
+  if (key !== expandedValueKey) return row;
+  const ta = h("textarea", {
+    class: "gmkey-edit",
+    rows: "4",
+    spellcheck: "false",
+  }) as HTMLTextAreaElement;
+  ta.value = jsonText(value, 2);
+  const err = h("span", { class: "gmkey-err" });
+  row.append(
+    h(
+      "div",
+      { class: "gmkey-editor" },
+      ta,
+      h(
+        "div",
+        { class: "gmkey-editor-acts" },
+        h("button", {
+          class: "gmkey-act primary",
+          onclick: () => void saveEntryValue(id, key, ta, err),
+        }, "保存"),
+        err,
+      ),
+    ),
+  );
+  return row;
+}
+
+function toggleValueKey(key: string): void {
+  expandedValueKey = expandedValueKey === key ? null : key;
+  void refreshEntryValues();
+}
+
+async function saveEntryValue(
+  id: string,
+  key: string,
+  ta: HTMLTextAreaElement,
+  err: HTMLElement,
+): Promise<void> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(ta.value);
+  } catch (e) {
+    // Inline red hint, not a toast: the editor must stay open for correcting.
+    err.textContent = `JSON 解析失败：${String((e as Error).message ?? e)}`;
+    return;
+  }
+  try {
+    await msg({ type: "SetEntryValue", id, key, value: parsed });
+    expandedValueKey = null;
+    toast("已保存");
+    await refreshEntryValues();
+  } catch (e) {
+    toast(`保存失败：${String(e)}`, true);
+  }
+}
+
+async function deleteEntryValueKey(id: string, key: string): Promise<void> {
+  try {
+    await msg({ type: "DeleteEntryValue", id, key });
+    if (expandedValueKey === key) expandedValueKey = null;
+    await refreshEntryValues();
+  } catch (e) {
+    toast(`删除失败：${String(e)}`, true);
+  }
+}
+
+$("#ed-values-clear").addEventListener("click", async () => {
+  if (!editingId || current?.kind !== "script") return;
+  if (!confirm(`确定清空「${current.meta.name}」的全部存储值？`)) return;
+  try {
+    await msg({ type: "ClearEntryValues", id: editingId });
+    expandedValueKey = null;
+    toast("已清空");
+    await refreshEntryValues();
+  } catch (e) {
+    toast(`清空失败：${String(e)}`, true);
+  }
+});
 
 // ---- Create / import / export ----
 

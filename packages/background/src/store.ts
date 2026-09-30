@@ -227,6 +227,57 @@ export async function setEnabled(id: string, enabled: boolean): Promise<AnyEntry
   return entry;
 }
 
+/** Swaps the entry's position with its adjacent neighbor (by position order)
+ * within the same kind list. Positions number the scripts and styles tables
+ * independently, so a swap never crosses kinds. Returns the swapped pair, or
+ * undefined when the id is unknown or already at the list boundary. */
+export async function moveEntry(
+  id: string,
+  dir: "up" | "down",
+): Promise<[AnyEntry, AnyEntry] | undefined> {
+  const db = await getDB();
+  let list: ScriptEntry[] | StyleEntry[] = db.scripts;
+  if (!list.some((e) => e.id === id)) list = db.styles;
+  // Neighbor by position, not array order: array order is a push-order
+  // artifact that imports and mirror upserts are free to disturb.
+  const order = [...list].sort((a, b) => a.position - b.position);
+  const idx = order.findIndex((e) => e.id === id);
+  const neighbor = dir === "up" ? idx - 1 : idx + 1;
+  if (idx < 0 || neighbor < 0 || neighbor >= order.length) return undefined;
+  const a = order[idx];
+  const b = order[neighbor];
+  const pos = a.position;
+  a.position = b.position;
+  b.position = pos;
+  await persist(db);
+  await broadcastEntriesChanged();
+  emitStoreMutation({ type: "upsert", entry: a });
+  emitStoreMutation({ type: "upsert", entry: b });
+  return [a, b];
+}
+
+/** Bulk enable/disable for one kind: every entry is mutated in one pass, then
+ * persisted and broadcast once; each changed entry still emits its own store
+ * mutation so the native mirror records it individually. Returns how many
+ * entries actually changed state. */
+export async function setAllEnabled(
+  kind: "script" | "style",
+  enabled: boolean,
+): Promise<number> {
+  const db = await getDB();
+  const changed: AnyEntry[] = [];
+  for (const entry of kind === "script" ? db.scripts : db.styles) {
+    if (entry.enabled === enabled) continue;
+    entry.enabled = enabled;
+    changed.push(entry);
+  }
+  if (changed.length === 0) return 0;
+  await persist(db);
+  await broadcastEntriesChanged();
+  for (const entry of changed) emitStoreMutation({ type: "upsert", entry });
+  return changed.length;
+}
+
 export async function setSource(id: string, source: EntrySource): Promise<AnyEntry | undefined> {
   const db = await getDB();
   const entry = findIn(db, id);
@@ -305,6 +356,25 @@ export async function deleteValue(
     emitStoreMutation({ type: "upsert", entry });
   }
   return { existed, oldValue };
+}
+
+/** Clears a script's whole values table (options editor "clear all"). Unlike
+ * setValue/deleteValue this also broadcasts entriesChanged: the table going
+ * from N keys to zero is a visible change for management pages. Returns the
+ * cleared table so the route can emit one gmValueChanged per key, or null for
+ * unknown/non-script ids. */
+export async function clearValues(
+  scriptId: string,
+): Promise<Record<string, unknown> | null> {
+  const db = await getDB();
+  const entry = findIn(db, scriptId);
+  if (!entry || entry.kind !== "script") return null;
+  const cleared = entry.values;
+  entry.values = {};
+  await persist(db);
+  await broadcastEntriesChanged();
+  emitStoreMutation({ type: "upsert", entry });
+  return cleared;
 }
 
 export async function listValues(scriptId: string): Promise<string[]> {

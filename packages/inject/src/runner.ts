@@ -41,7 +41,9 @@ function main(): void {
   const scriptOfListener = new Map<number, string>();
   let seq = 0;
   let listenerSeq = 0;
-  let frameKey = "";
+  /** Bridge nonce from the latest consumed payload: value-change events whose
+   * senderKey differs from it came from another document (remote). */
+  let bridgeNonce = "";
   const executed = new Set<string>();
 
   function req(scriptId: string, op: string, args?: Record<string, unknown>): Promise<unknown> {
@@ -66,7 +68,7 @@ function main(): void {
     const payload = decodeDeliveryPayload(text);
     if (!payload) return;
     consumedPayloads.add(text);
-    frameKey = payload.frameKey;
+    bridgeNonce = payload.bridgeNonce;
     loadScripts(payload.scripts);
     syncStyles(payload.styles);
     stage("consumed:" + payload.scripts.length);
@@ -128,7 +130,7 @@ function main(): void {
           if (l.key !== null && l.key !== d.key) continue;
           if (scriptOfListener.get(lid) !== String(d.scriptId)) continue;
           try {
-            l.fn(String(d.key), d.oldValue, d.newValue, String(d.senderKey) !== frameKey);
+            l.fn(String(d.key), d.oldValue, d.newValue, String(d.senderKey) !== bridgeNonce);
           } catch (e) {
             console.error("[InfinMonkey] valueChangeListener threw:", e);
           }

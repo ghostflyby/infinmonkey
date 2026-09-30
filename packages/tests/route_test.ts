@@ -57,6 +57,13 @@ const storageLocal = {
   },
 };
 
+/** runtime.sendMessage calls captured for broadcast assertions. */
+const sentMessages: Record<string, unknown>[] = [];
+/** The gmValueChanged broadcasts among them, in order. */
+function gmValueEvents(): Record<string, unknown>[] {
+  return sentMessages.filter((m) => m.type === "gmValueChanged");
+}
+
 (globalThis as Record<string, unknown>).chrome = {
   runtime: {
     id: "infin-test",
@@ -64,7 +71,10 @@ const storageLocal = {
     onInstalled: { addListener: () => {} },
     onStartup: { addListener: () => {} },
     onMessage: { addListener: (fn: Listener) => void onMessageListeners.push(fn) },
-    sendMessage: () => new Promise(() => {}),
+    sendMessage: (m: Record<string, unknown>) => {
+      sentMessages.push(m);
+      return new Promise(() => {});
+    },
   },
   storage: {
     local: storageLocal,
@@ -128,7 +138,7 @@ assert(
 
 const realFetch = globalThis.fetch;
 
-function scriptEntry(id: string): unknown {
+function scriptEntry(id: string, position = 1): unknown {
   const header = [
     "// ==UserScript==",
     `// @name     ${id}`,
@@ -141,7 +151,7 @@ function scriptEntry(id: string): unknown {
     id,
     kind: "script",
     enabled: true,
-    position: 1,
+    position,
     code: header,
     meta: parseMeta(header, id),
     source: { type: "inline" },
@@ -152,13 +162,34 @@ function scriptEntry(id: string): unknown {
   };
 }
 
+function styleEntry(id: string, position = 1): unknown {
+  const code = [
+    "/* ==UserStyle==",
+    `@name       ${id}`,
+    "==/UserStyle== */",
+    "body { color: red; }",
+  ].join("\n");
+  return {
+    id,
+    kind: "style",
+    enabled: true,
+    position,
+    code,
+    meta: parseMeta(code, id),
+    source: { type: "inline" },
+    installedAt: 0,
+    updatedAt: 0,
+  };
+}
+
 /** A content-script sender: page URL, tab resolves (unlike on Zen). */
 const contentSender = { url: "https://example.com/page", tab: { id: 7 } };
 /** An extension-page sender: extension origin, no tab. */
 const pageSender = { url: "moz-extension://infin-test/options/index.html" };
 
 function seedScripts(): void {
-  storageLocal.set({ scripts: [scriptEntry("s1"), scriptEntry("s2")] });
+  // Distinct positions: ListEntries sorts by them, and the move test swaps them.
+  storageLocal.set({ scripts: [scriptEntry("s1", 1), scriptEntry("s2", 2)] });
 }
 
 function gm(
@@ -182,6 +213,9 @@ Deno.test("gate: management ops are unreachable from content scripts", async () 
     "ListEntries",
     "GetEntry",
     "SaveCode",
+    "SetEnabled",
+    "SetAllEnabled",
+    "MoveEntry",
     "DeleteEntry",
     "ImportAll",
     "ExportAll",
@@ -189,6 +223,10 @@ Deno.test("gate: management ops are unreachable from content scripts", async () 
     "ConfirmInstall",
     "ConfirmConnectAuth",
     "GetNativeStatus",
+    "GetEntryValues",
+    "SetEntryValue",
+    "DeleteEntryValue",
+    "ClearEntryValues",
   ];
   for (const type of ops) {
     assertEquals(
@@ -373,6 +411,104 @@ Deno.test("ConfirmConnectAuth: no grant without an outstanding prompt", async ()
   assertEquals(got.entry?.connectGrants, [], "a stray resolve must not persist a grant");
 });
 
+Deno.test("entry values: extension pages manage the GM values table", async () => {
+  seedScripts();
+  // The gate: a content script cannot reach the values surface at all.
+  assertEquals(
+    route({ type: "GetEntryValues", id: "s1" }, contentSender),
+    undefined,
+    "GetEntryValues must be denied to a content script",
+  );
+
+  // Empty table to start.
+  assertEquals(await route({ type: "GetEntryValues", id: "s1" }, pageSender), { values: {} });
+
+  // Set from an extension page, read the whole table back.
+  sentMessages.length = 0;
+  await route({ type: "SetEntryValue", id: "s1", key: "cfg", value: { n: 1 } }, pageSender);
+  await route({ type: "SetEntryValue", id: "s1", key: "flag", value: true }, pageSender);
+  const got = await route({ type: "GetEntryValues", id: "s1" }, pageSender) as {
+    values: Record<string, unknown>;
+  };
+  assertEquals(got.values, { cfg: { n: 1 }, flag: true });
+  // Panel edits broadcast gmValueChanged so running scripts see them without
+  // a reload; the empty senderKey matches no bridge nonce, so every document
+  // computes remote=true for its listeners.
+  assertEquals(gmValueEvents(), [
+    {
+      type: "gmValueChanged",
+      scriptId: "s1",
+      key: "cfg",
+      oldValue: undefined,
+      newValue: { n: 1 },
+      senderKey: "",
+    },
+    {
+      type: "gmValueChanged",
+      scriptId: "s1",
+      key: "flag",
+      oldValue: undefined,
+      newValue: true,
+      senderKey: "",
+    },
+  ]);
+
+  // The reserved key is refused even for a trusted sender (setValue throws).
+  sentMessages.length = 0;
+  await assertRejects(
+    () =>
+      Promise.resolve(
+        route({ type: "SetEntryValue", id: "s1", key: "__proto__", value: 1 }, pageSender),
+      ),
+    Error,
+    "reserved key",
+  );
+  assertEquals(gmValueEvents(), [], "a refused write must not broadcast");
+
+  // Single-key delete removes only that key.
+  sentMessages.length = 0;
+  await route({ type: "DeleteEntryValue", id: "s1", key: "flag" }, pageSender);
+  const afterDelete = await route({ type: "GetEntryValues", id: "s1" }, pageSender) as {
+    values: Record<string, unknown>;
+  };
+  assertEquals(afterDelete.values, { cfg: { n: 1 } });
+  assertEquals(gmValueEvents(), [
+    {
+      type: "gmValueChanged",
+      scriptId: "s1",
+      key: "flag",
+      oldValue: true,
+      newValue: undefined,
+      senderKey: "",
+    },
+  ]);
+
+  // Deleting a missing key is a no-op without a broadcast (gmDispatch parity).
+  sentMessages.length = 0;
+  await route({ type: "DeleteEntryValue", id: "s1", key: "missing" }, pageSender);
+  assertEquals(gmValueEvents(), []);
+
+  // Clear empties the table and emits one remote event per cleared key.
+  sentMessages.length = 0;
+  assertEquals(await route({ type: "ClearEntryValues", id: "s1" }, pageSender), { ok: true });
+  assertEquals(await route({ type: "GetEntryValues", id: "s1" }, pageSender), { values: {} });
+  assertEquals(gmValueEvents(), [
+    {
+      type: "gmValueChanged",
+      scriptId: "s1",
+      key: "cfg",
+      oldValue: { n: 1 },
+      newValue: undefined,
+      senderKey: "",
+    },
+  ]);
+
+  // An unknown id stays ok:false and broadcasts nothing.
+  sentMessages.length = 0;
+  assertEquals(await route({ type: "ClearEntryValues", id: "nope" }, pageSender), { ok: false });
+  assertEquals(gmValueEvents(), []);
+});
+
 Deno.test("site controls: master switch and blacklist gate GM calls", async () => {
   seedScripts();
   await storageLocal.set({ settings: { masterEnabled: false } });
@@ -526,4 +662,82 @@ Deno.test("auto update: applies a newer version, and honors the switch", async (
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+Deno.test("MoveEntry: swaps order with the adjacent entry within the same kind", async () => {
+  await storageLocal.set({
+    scripts: [scriptEntry("s1", 1), scriptEntry("s2", 2), scriptEntry("s3", 3)],
+    styles: [styleEntry("y1", 1), styleEntry("y2", 2)],
+  });
+  const list = () =>
+    route({ type: "ListEntries" }, pageSender) as Promise<{
+      scripts: ScriptEntry[];
+      styles: { id: string; enabled: boolean }[];
+    }>;
+
+  // Moving s2 up trades places with s1: order flips, positions are swapped
+  // (not shifted), and the styles table is untouched.
+  assertEquals(await route({ type: "MoveEntry", id: "s2", dir: "up" }, pageSender), { ok: true });
+  let listed = await list();
+  assertEquals(listed.scripts.map((s) => s.id), ["s2", "s1", "s3"]);
+  assertEquals(listed.scripts.map((s) => s.position), [1, 2, 3]);
+  assertEquals(listed.styles.map((s) => s.id), ["y1", "y2"]);
+
+  // Moving down mirrors it.
+  assertEquals(await route({ type: "MoveEntry", id: "s1", dir: "down" }, pageSender), { ok: true });
+  listed = await list();
+  assertEquals(listed.scripts.map((s) => s.id), ["s2", "s3", "s1"]);
+
+  // List boundaries are no-ops, not errors.
+  assertEquals(await route({ type: "MoveEntry", id: "s2", dir: "up" }, pageSender), { ok: false });
+  assertEquals(await route({ type: "MoveEntry", id: "s1", dir: "down" }, pageSender), {
+    ok: false,
+  });
+  listed = await list();
+  assertEquals(listed.scripts.map((s) => s.id), ["s2", "s3", "s1"]);
+
+  // A style moves within its own table only (positions never cross kinds).
+  assertEquals(await route({ type: "MoveEntry", id: "y2", dir: "up" }, pageSender), { ok: true });
+  listed = await list();
+  assertEquals(listed.styles.map((s) => s.id), ["y2", "y1"]);
+  assertEquals(listed.scripts.map((s) => s.id), ["s2", "s3", "s1"]);
+
+  // Unknown ids report failure instead of throwing.
+  assertEquals(await route({ type: "MoveEntry", id: "nope", dir: "up" }, pageSender), {
+    ok: false,
+  });
+});
+
+Deno.test("SetAllEnabled: flips every entry of that kind, leaving the other kind alone", async () => {
+  await storageLocal.set({
+    scripts: [scriptEntry("s1", 1), scriptEntry("s2", 2)],
+    styles: [styleEntry("y1", 1)],
+  });
+  const list = () =>
+    route({ type: "ListEntries" }, pageSender) as Promise<{
+      scripts: ScriptEntry[];
+      styles: { id: string; enabled: boolean }[];
+    }>;
+
+  const r = await route({ type: "SetAllEnabled", kind: "script", enabled: false }, pageSender) as {
+    count: number;
+  };
+  assertEquals(r.count, 2, "both scripts changed state");
+  let listed = await list();
+  assertEquals(listed.scripts.map((s) => s.enabled), [false, false]);
+  assertEquals(listed.styles.map((s) => s.enabled), [true], "the other kind is untouched");
+
+  // Flipping back restores every entry; a repeat is a zero-change no-op.
+  await route({ type: "SetAllEnabled", kind: "script", enabled: true }, pageSender);
+  const again = await route(
+    { type: "SetAllEnabled", kind: "script", enabled: true },
+    pageSender,
+  ) as { count: number };
+  assertEquals(again.count, 0, "already-enabled entries count as unchanged");
+
+  // Styles bulk-flip independently of scripts.
+  await route({ type: "SetAllEnabled", kind: "style", enabled: false }, pageSender);
+  listed = await list();
+  assertEquals(listed.styles.map((s) => s.enabled), [false]);
+  assertEquals(listed.scripts.map((s) => s.enabled), [true, true]);
 });

@@ -14,11 +14,18 @@ export type BgRequest =
   | { type: "GetEntry"; id: string }
   | { type: "SaveCode"; id: string; code: string }
   | { type: "SetEnabled"; id: string; enabled: boolean }
+  | { type: "SetAllEnabled"; kind: "script" | "style"; enabled: boolean }
+  | { type: "MoveEntry"; id: string; dir: "up" | "down" }
   | { type: "CreateEntry"; kind: "script" | "style"; code?: string; token?: string }
   | { type: "DeleteEntry"; id: string }
   | { type: "SetSource"; id: string; source: EntrySource }
   | { type: "GetConnectGrants"; id: string }
   | { type: "RevokeConnectGrant"; id: string; domain: string }
+  // GM values panel (options editor; extension pages only, see route() gating)
+  | { type: "GetEntryValues"; id: string }
+  | { type: "SetEntryValue"; id: string; key: string; value: unknown }
+  | { type: "DeleteEntryValue"; id: string; key: string }
+  | { type: "ClearEntryValues"; id: string }
   | { type: "PingDevServer"; origin?: string }
   | { type: "CheckUpdate"; id: string }
   | { type: "ExportAll" }
