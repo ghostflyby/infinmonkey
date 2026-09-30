@@ -121,6 +121,10 @@ browser.tabs.onRemoved.addListener((tabId: number) => {
  * browser-authoritative: content scripts report the page URL, extension
  * pages report the extension origin, so the two are distinguishable.
  */
+// OpenOptions residual, accepted: under the single-injection-flaw threat
+// model below, a hostile page can open extension tabs (tab spam) and
+// re-trigger the read-only #e2e self-check. Rule going forward: behaviors
+// reachable through the #e2e hash channel must stay inert/read-only.
 const CONTENT_SCRIPT_MESSAGES = new Set(["FetchText", "gmCall", "OpenOptions"]);
 
 /** Response size cap for FetchText, mirroring startInstallFromUrl. */

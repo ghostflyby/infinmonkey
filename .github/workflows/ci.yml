@@ -25,7 +25,8 @@ jobs:
           cache: true
       - run: deno fmt --check
       - run: deno lint
-      - run: deno check packages
+      # The task also type-checks the root vite.config.ts.
+      - run: deno task check
       - run: deno test -A
       - run: deno task unused
       - run: deno task build

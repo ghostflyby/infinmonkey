@@ -15,7 +15,8 @@
 // - Compiler options arriving in createData: monaco's register.js defaults
 //   (javascriptDefaults ships target 99 / ESNext).
 //
-// The default-lib d.ts closure is NOT bundled: build.ts copies the
+// The default-lib d.ts closure is NOT bundled: the vite finalize plugin (root
+// vite.config.ts) copies the
 // typescript package's lib.*.d.ts files to dist/<browser>/monaco/libs/ and
 // this worker fetches the transitive closure (following
 // /// <reference lib="..."> directives) at init, before the language
@@ -37,6 +38,21 @@ interface CreateData {
 }
 
 const LIB_REF_RE = /\/\/\/\s*<reference\s+lib="([^"]+)"\s*\/>/g;
+
+/** The .full default-lib variants shipped by the typescript package (the
+ * shipped-file names the guarded target mapping may return). */
+const FULL_LIB_FILES = new Set([
+  "lib.es2016.full.d.ts",
+  "lib.es2017.full.d.ts",
+  "lib.es2018.full.d.ts",
+  "lib.es2019.full.d.ts",
+  "lib.es2020.full.d.ts",
+  "lib.es2021.full.d.ts",
+  "lib.es2022.full.d.ts",
+  "lib.es2023.full.d.ts",
+  "lib.es2024.full.d.ts",
+  "lib.esnext.full.d.ts",
+]);
 
 /** Fetches the default-lib closure (root + transitive reference-lib
  * directives) from the copied assets next to this worker. */
@@ -139,23 +155,18 @@ class InfinTSWorker implements ts.LanguageServiceHost {
   }
 
   getDefaultLibFileName(options: ts.CompilerOptions): string {
-    // Monaco's javascriptDefaults ship target 99 (ESNext/Latest); the .full
-    // variants pull the DOM + host environment libs, which is what
-    // userscript editing needs.
-    switch (options.target) {
-      case ts.ScriptTarget.ESNext:
-        return "lib.esnext.full.d.ts";
-      case ts.ScriptTarget.ES5:
-      case ts.ScriptTarget.ES2015:
-      case ts.ScriptTarget.ES2016:
-      case ts.ScriptTarget.ES2017:
-      case ts.ScriptTarget.ES2018:
-      case ts.ScriptTarget.ES2019:
-      case ts.ScriptTarget.ES2020:
-        return `lib.es${2013 + (options.target ?? 99)}.full.d.ts`;
-      default:
-        return "lib.esnext.full.d.ts";
+    // The .full variants pull the DOM + host environment libs, which is what
+    // userscript editing needs; target 99 (ESNext/Latest) is monaco's
+    // javascriptDefaults. Every name must exist in the copied lib set or the
+    // closure fetch rejects and the worker dies — the typescript package
+    // ships no lib.es2015.full.d.ts (the ES2015 default lib is the
+    // lib.es6.d.ts alias), so guard like monaco's original does.
+    if (options.target == null || options.target >= ts.ScriptTarget.ESNext) {
+      return "lib.esnext.full.d.ts";
     }
+    if (options.target <= ts.ScriptTarget.ES5) return "lib.d.ts";
+    const name = `lib.es${2013 + options.target}.full.d.ts`;
+    return FULL_LIB_FILES.has(name) ? name : "lib.es6.d.ts";
   }
 
   isDefaultLibFileName(fileName: string): boolean {
@@ -448,6 +459,14 @@ class InfinTSWorker implements ts.LanguageServiceHost {
     } catch {
       return [];
     }
+  }
+
+  /** The full lib map — monaco's diagnostics adapter fetches this before
+   * setting markers whose relatedInformation reaches into lib declarations,
+   * and the definition/references providers use it to map lib files. */
+  async getLibFiles(): Promise<Record<string, string>> {
+    await this.sync();
+    return Object.fromEntries(this.libs);
   }
 
   // Async to match the RPC surface (the proxy marshals return values as

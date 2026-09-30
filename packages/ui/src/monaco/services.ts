@@ -122,6 +122,9 @@ export async function runTsWorkerSelfCheck(
     return await runCheck(timeoutMs, notes);
   } finally {
     javascriptDefaults.setCompilerOptions(savedOptions);
+    // Undo the getWorker instrumentation: it would otherwise follow every
+    // worker created by the real editors on this page load.
+    if (env && origGetWorker) env.getWorker = origGetWorker;
   }
 }
 

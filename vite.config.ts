@@ -113,7 +113,11 @@ async function* walk(dir: string): AsyncGenerator<string> {
 function finalize(browser: Browser, outDir: string, totalEnvironments: number): Plugin {
   // closeBundle fires per environment even with sharedDuringBuild (observed
   // in vite 8.3.1: the shared instance fires after the FIRST environment),
-  // so finalize only when every environment has closed.
+  // so finalize only once every environment has closed. The counter is
+  // deliberately monotonic — buildStart also fires per environment and
+  // resetting there would zero it mid-accumulation (finalize never ran,
+  // observed). Monotonicity is what watch mode needs anyway: each rebuilt
+  // environment closes once more and re-finalizes immediately.
   let closed = 0;
   return {
     name: "infinmonkey-finalize",
@@ -200,14 +204,12 @@ function cleanFirst(outDir: string): Plugin {
   return {
     name: "infinmonkey-clean",
     sharedDuringBuild: true,
-    buildStart() {
+    async buildStart() {
       if (cleaned) return;
       cleaned = true;
-      // Fire-and-forget: rm completes before rolldown writes (the hook
-      // awaits nothing), and the first write happens later in the same
-      // environment's pipeline. If a race ever appears, make this hook
-      // async and await the rm.
-      void rm(outDir, { recursive: true, force: true });
+      // Awaited: nothing orders a fire-and-forget rm against the first
+      // environment's writes.
+      await rm(outDir, { recursive: true, force: true });
     },
   };
 }
@@ -244,6 +246,38 @@ export default ({ mode }: { mode: string }): UserConfig => {
   }
   const browser = mode as Browser;
   const outDir = path.join(ROOT, "dist", browser);
+  // Declared before the return so the finalize total derives from the map
+  // itself — a directly added environment must not silently never finalize.
+  const environments: UserConfig["environments"] = {
+    client: {
+      build: {
+        rolldownOptions: {
+          input: {
+            options: "packages/ui/src/options/main.ts",
+            install: "packages/ui/src/install/main.ts",
+            popup: "packages/ui/src/popup/main.ts",
+            prompt: "packages/ui/src/prompt/main.ts",
+            background: "packages/background/src/main.ts",
+          },
+          output: {
+            format: "es",
+            entryFileNames: "[name]/main.js",
+            chunkFileNames: "chunks/[name]-[hash].js",
+            assetFileNames: "assets/[name][extname]",
+            manualChunks(id: string) {
+              if (id.includes("/esm/vs/")) return "monaco-core";
+            },
+          },
+        },
+      },
+    },
+    ...Object.fromEntries(
+      SINGLE_ENTRIES.map(([entry, out, format]) => [
+        path.basename(out, ".js").replace(/[^a-z]/g, "") + "env",
+        singleEnvironment(entry, out, format),
+      ]),
+    ),
+  };
   return {
     root: ROOT,
     base: "./",
@@ -252,7 +286,7 @@ export default ({ mode }: { mode: string }): UserConfig => {
       deno(),
       neutralizeMonacoWorkerFallbacks(),
       cleanFirst(outDir),
-      finalize(browser, outDir, SINGLE_ENTRIES.length + 1),
+      finalize(browser, outDir, Object.keys(environments).length),
     ],
     builder: {},
     build: {
@@ -264,35 +298,6 @@ export default ({ mode }: { mode: string }): UserConfig => {
       // appex must not carry tens of megabytes of source maps.
       sourcemap: browser === "safari" ? false : "hidden",
     },
-    environments: {
-      client: {
-        build: {
-          rolldownOptions: {
-            input: {
-              options: "packages/ui/src/options/main.ts",
-              install: "packages/ui/src/install/main.ts",
-              popup: "packages/ui/src/popup/main.ts",
-              prompt: "packages/ui/src/prompt/main.ts",
-              background: "packages/background/src/main.ts",
-            },
-            output: {
-              format: "es",
-              entryFileNames: "[name]/main.js",
-              chunkFileNames: "chunks/[name]-[hash].js",
-              assetFileNames: "assets/[name][extname]",
-              manualChunks(id: string) {
-                if (id.includes("/esm/vs/")) return "monaco-core";
-              },
-            },
-          },
-        },
-      },
-      ...Object.fromEntries(
-        SINGLE_ENTRIES.map(([entry, out, format]) => [
-          path.basename(out, ".js").replace(/[^a-z]/g, "") + "env",
-          singleEnvironment(entry, out, format),
-        ]),
-      ),
-    },
+    environments,
   };
 };
