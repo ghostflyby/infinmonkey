@@ -118,3 +118,10 @@ button:hover {
   text-align: center;
   padding: 60px 0;
 }
+
+.code-preview {
+  height: 320px;
+  border: 1px solid var(--border, #333);
+  border-radius: 6px;
+  overflow: hidden;
+}

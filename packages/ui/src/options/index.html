@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <title>InfinMonkey 管理面板</title>
     <link rel="stylesheet" href="style.css" />
+    <!-- Companion stylesheet emitted by deno bundle for the Monaco editor CSS -->
+    <link rel="stylesheet" href="main.css" />
   </head>
   <body>
     <aside id="sidebar">
@@ -66,10 +68,7 @@
         </div>
         <div class="ed-meta" id="ed-meta"></div>
         <div id="ed-error" class="ed-error" hidden></div>
-        <div class="editor-wrap">
-          <pre id="ed-gutter" aria-hidden="true"></pre>
-          <textarea id="ed-code" spellcheck="false" wrap="off"></textarea>
-        </div>
+        <div id="ed-editor" class="editor-wrap"></div>
         <div class="ed-foot">
           <span id="ed-connect-grants"></span>
           <span class="grow"></span>

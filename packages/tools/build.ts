@@ -44,6 +44,7 @@ const ENTRIES: [string, string][] = [
   ["content/src/bridge.ts", "content/bridge.js"],
   ["content/src/installer.ts", "content/installer.js"],
   ["inject/src/runner.ts", "inject/runner.js"],
+  ["ui/src/monaco/worker.ts", "monaco/editor.worker.js"],
   ["ui/src/options/main.ts", "options/main.js"],
   ["ui/src/popup/main.ts", "popup/main.js"],
   ["ui/src/install/main.ts", "install/main.js"],
@@ -71,6 +72,53 @@ async function copyStatic(to: string) {
   }
 }
 
+/** Absolute path of the codicon icon font inside the deno npm cache. */
+function monacoCodiconFont(): string {
+  const info = new Deno.Command(Deno.execPath(), {
+    args: ["info", "--json", `npm:monaco-editor@${MONACO_VERSION}`],
+    stdout: "piped",
+    stderr: "piped",
+  }).outputSync();
+  if (!info.success) throw new Error(`deno info failed for monaco-editor`);
+  const parsed = JSON.parse(new TextDecoder().decode(info.stdout)) as {
+    npmPackages?: Record<string, { name?: string; version?: string; localPath?: string }>;
+  };
+  const entry = Object.entries(parsed.npmPackages ?? {}).find(
+    ([key, v]) =>
+      v.name === "monaco-editor" && v.version === MONACO_VERSION &&
+      key === `monaco-editor@${MONACO_VERSION}`,
+  ) ?? Object.entries(parsed.npmPackages ?? {}).find(([key]) =>
+    key.startsWith(`monaco-editor@${MONACO_VERSION}`)
+  );
+  if (!entry) throw new Error(`monaco-editor@${MONACO_VERSION} not in deno info npmPackages`);
+  const localPath = entry[1].localPath;
+  if (!localPath) throw new Error(`monaco-editor cache entry has no localPath`);
+  return join(
+    localPath,
+    "esm/vs/base/browser/ui/codicons/codicon/codicon.ttf",
+  );
+}
+
+/** The bundler emits the editor CSS without the codicon @font-face (it has no
+ * .ttf asset loader). Copy the font next to each emitted stylesheet and
+ * restore the face, or editor widget icons render blank. */
+async function patchMonacoCss(out: string, fontSrc: string): Promise<void> {
+  for (const rel of ["options/main.css", "install/main.css"]) {
+    const cssPath = join(out, rel);
+    try {
+      await Deno.stat(cssPath);
+    } catch {
+      continue;
+    }
+    await Deno.copyFile(fontSrc, join(dirname(cssPath), "codicon.ttf"));
+    await Deno.writeTextFile(
+      cssPath,
+      '\n@font-face {\n  font-family: "codicon";\n  src: url("codicon.ttf") format("truetype");\n}\n',
+      { append: true },
+    );
+  }
+}
+
 async function* walk(dir: string): AsyncGenerator<string> {
   for await (const e of Deno.readDir(dir)) {
     const p = join(dir, e.name);
@@ -80,6 +128,9 @@ async function* walk(dir: string): AsyncGenerator<string> {
 }
 
 const GECKO_ID = "{3f7d2a91-6b5e-4c8a-9d20-51e8f0b7c642}";
+
+// Must match the monaco-editor pin in the root deno.json imports map.
+const MONACO_VERSION = "0.57.0";
 
 // Safari: service_worker background and MAIN-world content scripts both require Safari 16.4+.
 // Safari has no manifest-level minimum-version key (minimum_chrome_version is Chromium-only),
@@ -113,16 +164,28 @@ for (const browser of targets) {
   // so unwrapped top-level bindings would leak between bundles and a later-loaded
   // bundle overwrites an earlier one's helpers (observed as sporadic
   // "X is not a function" delivery failures after minification).
+  // Monaco's dependency tree produces tens of megabytes of inline sourcemap
+  // text; those bundles ship the map as a linked file instead, and the worker
+  // target ships none.
+  const LINKED_SOURCEMAP = new Set([
+    "monaco/editor.worker.js",
+    "options/main.js",
+    "install/main.js",
+  ]);
+
   for (const [entryRel, outRel] of ENTRIES) {
     const entry = join(PACKAGES, entryRel);
     const outFile = join(out, outRel);
     await Deno.mkdir(dirname(outFile), { recursive: true });
+    const sourcemapArgs = LINKED_SOURCEMAP.has(outRel)
+      ? ["--sourcemap=linked"]
+      : ["--sourcemap=inline"];
     const cmd = new Deno.Command(Deno.execPath(), {
       args: [
         "bundle",
         "--platform=browser",
         "--format=iife",
-        "--sourcemap=inline",
+        ...sourcemapArgs,
         "--no-check",
         "--minify",
         "-o",
@@ -140,6 +203,7 @@ for (const browser of targets) {
   }
 
   await copyStatic(out);
+  await patchMonacoCss(out, monacoCodiconFont());
   await Deno.writeTextFile(
     join(out, "manifest.json"),
     JSON.stringify(manifest(browser), null, "\t") + "\n",
@@ -148,7 +212,11 @@ for (const browser of targets) {
   if (doZip) {
     const zip = join(DIST, `infinmonkey-${browser}-${VERSION}.zip`);
     await Deno.remove(zip).catch(() => {});
-    const cmd = new Deno.Command("zip", { args: ["-rq", zip, "."], cwd: out });
+    // Source maps stay in dist for local debugging but not in the artifact.
+    const cmd = new Deno.Command("zip", {
+      args: ["-rq", zip, ".", "-x", "*.js.map"],
+      cwd: out,
+    });
     const st = await cmd.output();
     if (!st.success) console.error("[build] zip failed");
   }

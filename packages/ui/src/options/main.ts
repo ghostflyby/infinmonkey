@@ -1,5 +1,6 @@
 /** Options page: list / editor / settings. */
 import browser from "webextension-polyfill";
+import { type CodeEditorHandle, createCodeEditor } from "../monaco/editor.ts";
 import { RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
 import type { ListEntriesResult } from "@infinmonkey/shared/protocol";
 import type {
@@ -17,6 +18,7 @@ import { debounce, h, msg, toast } from "../dom.ts";
 let current: AnyEntry | null = null;
 let view: "scripts" | "styles" | "settings" = "scripts";
 let editingId: string | null = null;
+let codeEditor: CodeEditorHandle | null = null;
 /** GM values panel: the key whose inline editor is expanded. */
 let expandedValueKey: string | null = null;
 
@@ -281,9 +283,13 @@ async function showEditorError(id: string): Promise<void> {
 function fillEditor(): void {
   if (!current) return;
   $("#ed-name").textContent = current.meta.name;
-  ($("#ed-code") as HTMLTextAreaElement).value = current.code;
-  updateChips();
-  updateGutter();
+  codeEditor = codeEditor ?? createCodeEditor($("#ed-editor"), {
+    value: current.code,
+    language: current.kind === "style" ? "css" : "javascript",
+    onSave: () => void saveEditor(),
+  });
+  codeEditor.setLanguage(current.kind === "style" ? "css" : "javascript");
+  codeEditor.setValue(current.code);
 
   const src = current.source;
   const dev = src.type === "dev";
@@ -324,21 +330,6 @@ function updateChips(): void {
   if (m.description) meta.append(h("span", { class: "chip" }, m.description));
 }
 
-function updateGutter(): void {
-  const ta = $("#ed-code") as HTMLTextAreaElement;
-  const lines = ta.value.split("\n").length;
-  const gutter = $("#ed-gutter");
-  let text = "";
-  for (let i = 1; i <= lines; i++) text += i + "\n";
-  gutter.textContent = text;
-  gutter.scrollTop = ta.scrollTop;
-}
-
-$("#ed-code").addEventListener("input", updateGutter);
-$("#ed-code").addEventListener("scroll", () => {
-  $("#ed-gutter").scrollTop = ($("#ed-code") as HTMLTextAreaElement).scrollTop;
-});
-
 $("#ed-back").addEventListener("click", () => {
   editingId = null;
   show("list");
@@ -348,7 +339,7 @@ $("#ed-back").addEventListener("click", () => {
 async function saveEditor(): Promise<void> {
   try {
     if (!editingId || !current) return;
-    const code = ($("#ed-code") as HTMLTextAreaElement).value;
+    const code = codeEditor?.getValue() ?? "";
     const res = await msg<{ entry: AnyEntry | null }>({ type: "SaveCode", id: editingId, code });
     if (!res.entry) {
       toast("保存失败：条目不存在", true);
@@ -814,6 +805,6 @@ void loadList();
   editingId,
   view,
   editorHidden: $("#view-editor").hidden,
-  taLen: ($("#ed-code") as HTMLTextAreaElement).value.length,
+  taLen: (codeEditor?.getValue() ?? "").length,
   toast: document.getElementById("im-toast")?.textContent ?? "",
 });
