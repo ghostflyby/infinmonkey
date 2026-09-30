@@ -3,13 +3,10 @@
 // CSS language services (completion, hover, diagnostics, go-to-definition)
 // served by the worker bundles in monaco/*-worker.ts. The options editor uses
 // this variant; the install preview ships the light editor instead.
-import * as editorApi from "../../../../.monaco-esm/vs/editor/editor.api.js";
-const { KeyCode, KeyMod } = editorApi as unknown as typeof import("monaco-editor");
-// javascriptDefaults is exported by the contribution itself — monaco 0.57 has
-// no languages.typescript namespace at runtime (verified in the esm tree).
-import * as tsRegister from "../../../../.monaco-esm/vs/languages/features/typescript/register.js";
+import { KeyCode, KeyMod } from "monaco-editor/editor/editor.api";
 // javascriptDefaults is exported by the contribution itself — monaco 0.57 has
 // no runtime languages.typescript namespace (verified in the esm tree).
+import * as tsRegister from "monaco-editor/languages/features/typescript/register";
 const { javascriptDefaults } = tsRegister as unknown as {
   javascriptDefaults: {
     addExtraLib(lib: string, fileName?: string): void;
@@ -17,9 +14,8 @@ const { javascriptDefaults } = tsRegister as unknown as {
     setEagerModelSync(on: boolean): void;
   };
 };
-import "../../../../.monaco-esm/vs/features/register.all.js";
-import "../../../../.monaco-esm/vs/languages/features/typescript/register.js";
-import "../../../../.monaco-esm/vs/languages/features/css/register.js";
+import "monaco-editor/features/register.all";
+import "monaco-editor/languages/features/css/register";
 import { type CodeEditorHandle, type CodeEditorOptions, createCodeEditor } from "./editor.ts";
 
 export type { CodeEditorHandle, CodeEditorOptions };

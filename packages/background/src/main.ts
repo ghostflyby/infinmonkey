@@ -27,7 +27,9 @@ import {
   findEntry,
   getDB,
   getPendingInstall,
+  getValue,
   importAll,
+  listValues,
   moveEntry,
   putPendingInstall,
   revokeConnectGrant,
@@ -449,7 +451,6 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
   }
   switch (op) {
     case "getValue": {
-      const { getValue } = await import("./store.ts");
       return await getValue(scriptId, args.key as string);
     }
     case "setValue": {
@@ -465,7 +466,6 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
       return { ok: true };
     }
     case "listValues": {
-      const { listValues } = await import("./store.ts");
       return { keys: await listValues(scriptId) };
     }
     case "xmlHttpRequest":

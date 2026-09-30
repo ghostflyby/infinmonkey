@@ -1,27 +1,22 @@
 // Monaco editor integration.
 //
-// The monaco JS is inlined into the page bundles from the pinned imports
-// below (resolved through the css-stripped .monaco-esm shadow), the editor
-// styles load as the aggregated monaco/editor.main.css static asset, and
-// workers ship as standalone IIFE targets (monaco/*.worker.js) created from
-// same-origin extension URLs via runtime.getURL — allowed by the default MV3
-// CSP (script-src 'self') without blob:.
+// The JS is bundled by vite from the pinned package imports below, the
+// styles are emitted by the bundler from monaco's own css imports and
+// linked from the pages, and workers ship as standalone IIFE targets
+// (monaco/*.worker.js) created from same-origin extension URLs via
+// runtime.getURL — allowed by the default MV3 CSP (script-src 'self')
+// without blob:.
 import browser from "webextension-polyfill";
 import type * as monaco from "monaco-editor";
-import * as editorApi from "../../../../.monaco-esm/vs/editor/editor.api.js";
-// The relative .js import carries no aggregate types; the package entry
-// (type-only mapping) provides them.
-const { editor, KeyCode, KeyMod } = editorApi as unknown as typeof import("monaco-editor");
+import { editor, KeyCode, KeyMod } from "monaco-editor/editor/editor.api";
 // The standalone editor entry (typed API, all editor features). The two
 // definitions registers pull in the JS/TS and CSS/SCSS/LESS Monarch
 // tokenizers (a few hundred KB); the aggregated basic-languages contribution
-// would bundle all ~90 languages (~3.2MB). The main package entry stays
-// type-only: its language-service chain imports font assets the bundler
-// cannot emit. Language services (completion/diagnostics/go-to-definition)
-// are layered on top by monaco/services.ts; this light variant ships
-// without them.
-import "../../../../.monaco-esm/vs/languages/definitions/javascript/register.js";
-import "../../../../.monaco-esm/vs/languages/definitions/css/register.js";
+// would bundle all ~90 languages (~3.2MB). Language services
+// (completion/diagnostics/go-to-definition) are layered on top by
+// monaco/services.ts; this light variant ships without them.
+import "monaco-editor/languages/definitions/javascript/register";
+import "monaco-editor/languages/definitions/css/register";
 
 // Workers live next to the page bundles in dist; same-origin, so no
 // web_accessible_resources are needed (only our own pages load them). The
