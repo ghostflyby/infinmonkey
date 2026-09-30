@@ -11,27 +11,34 @@ import deno from "unplugin-deno/vite";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
 
-// monaco's language services each embed a
-// `new Worker(new URL("<lang>.worker.js", import.meta.url))` fallback factory.
+// monaco's language worker managers each embed a fallback factory:
+//   createWorker: () => new Worker(new URL("<lang>.worker.js", import.meta.url), { type: "module" })
 // In our wiring MonacoEnvironment.getWorker (packages/ui/src/monaco/editor.ts)
-// creates the workers from the standalone monaco/*.worker.js targets built by
-// the single-file pass instead — those fallbacks never execute, but rolldown
-// still emits them as worker chunks (~8 MB of dead weight; their `new URL`
-// references bypass the resolveId hook, so they cannot be stubbed out).
-// Drop the dead chunks at emit time; the dangling `new URL` strings inside
-// monaco-core sit on the never-taken branch and reference the extension's
-// own worker files at runtime anyway.
-const DEAD_WORKER_CHUNK_PREFIXES = ["assets/css.worker-", "assets/ts.worker-"];
+// intercepts worker creation for every label and dispatches to the standalone
+// monaco/*.worker.js targets built by the single-file pass, so the factories
+// never execute — but the `new URL` reference makes rolldown emit the module
+// as a worker chunk (~8 MB of dead weight). The reference bypasses the
+// resolveId hook, so the only source-level fix is rewriting the module
+// before it enters the graph: neutralize the factory expression.
+const WORKER_FALLBACK_RE =
+  /new Worker\(new URL\('[^']*', import\.meta\.url\), \{ type: "module" \}\)/g;
 
-function dropDeadWorkerFallbacks() {
+function neutralizeMonacoWorkerFallbacks() {
   return {
-    name: "drop-dead-worker-fallbacks",
-    generateBundle(_options: unknown, bundle: Record<string, unknown>) {
-      for (const fileName of Object.keys(bundle)) {
-        if (DEAD_WORKER_CHUNK_PREFIXES.some((p) => fileName.startsWith(p))) {
-          delete bundle[fileName];
-        }
+    name: "neutralize-monaco-worker-fallbacks",
+    transform(code: string, id: string) {
+      if (!id.includes("/esm/vs/languages/features/")) return null;
+      const rewritten = code.replace(WORKER_FALLBACK_RE, "undefined");
+      if (rewritten !== code) return { code: rewritten, map: null };
+      // The factory lives in <lang>/workerManager.js. If that module stops
+      // matching the pattern above (monaco upgrade), fail the build instead
+      // of silently shipping the dead chunks again.
+      if (id.endsWith("/workerManager.js") && code.includes("createWorker")) {
+        throw new Error(
+          `worker fallback factory not found in ${id} — monaco changed shape; update WORKER_FALLBACK_RE`,
+        );
       }
+      return null;
     },
   };
 }
@@ -39,7 +46,7 @@ function dropDeadWorkerFallbacks() {
 export default ({ mode }: { mode: string }) => ({
   root: ROOT,
   base: "./",
-  plugins: [deno(), dropDeadWorkerFallbacks()],
+  plugins: [deno(), neutralizeMonacoWorkerFallbacks()],
   build: {
     // The dist directory is passed via --outDir from build.ts.
     emptyOutDir: false,
