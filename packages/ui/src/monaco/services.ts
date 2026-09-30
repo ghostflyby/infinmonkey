@@ -126,33 +126,92 @@ export async function runTsWorkerSelfCheck(
 }
 
 async function runCheck(timeoutMs: number, notes: string[]): Promise<string> {
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
   const host = document.createElement("div");
   // Offscreen but rendered (not display:none) so the editor measures.
   host.style.cssText = "position:fixed;left:-2000px;top:0;width:600px;height:200px";
   document.body.append(host);
-  createCodeEditorWithServices(host, {
-    // Duplicate let declarations: TS2451 is a checker diagnostic that IS
-    // reported for .js files (many candidates like not-callable are
-    // suppressed in JS), so reaching it proves the full chain including the
-    // default-lib program. Type annotations would only yield TS8010, the
-    // grammar-level "no annotations in .js" rejection.
-    value: "let selfCheckVar = 1; let selfCheckVar = 2;",
+  // Mirror the real options-editor path: GM ambient lib + eager model sync
+  // are configured by createCodeEditorWithServices; do the same here before
+  // driving the raw editor API (which the check needs for actions/selection).
+  configureLanguageServices();
+  const SAMPLE =
+    'let selfCheckVar = 1;\nlet consumer = selfCheckVar;\nconst v = GM_getValue("k");\nlet selfCheckVar = 2;';
+  const ed = editor.create(host, {
+    value: SAMPLE,
     language: "javascript",
+    theme: "vs-dark",
+    automaticLayout: true,
+    minimap: { enabled: false },
   });
+
+  const results: Record<string, string> = {};
   const deadline = Date.now() + timeoutMs;
-  // MarkerSeverity.Error === 8; TS2451 is the expected semantic diagnostic.
-  while (Date.now() < deadline) {
-    if (editor.getModelMarkers({}).some((m) => m.severity === 8 && String(m.code) === "2451")) {
-      host.remove();
-      return "pass";
+
+  // 1) diagnostics: TS2451 for the duplicate-style sample; here any Error
+  //    marker proves the semantic RPC path.
+  results.diag = "pending";
+  // 2) colorization: distinct monaco token classes in the rendered lines.
+  results.color = "pending";
+  while (Date.now() < deadline && (results.diag === "pending" || results.color === "pending")) {
+    if (results.diag === "pending") {
+      const errs = editor.getModelMarkers({}).filter((m) => m.severity === 8);
+      if (errs.length > 0) {
+        results.diag = "ok(" + errs.map((m) => m.code).join(",").slice(0, 20) + ")";
+      } else if (Date.now() > deadline - 1000) {
+        results.diag = "fail(no-error-markers)";
+      }
     }
-    await new Promise((r) => setTimeout(r, 300));
+    if (results.color === "pending") {
+      const classes = new Set(
+        [...host.querySelectorAll('[class*="mtk"]')].map((el) => el.className),
+      );
+      if (classes.size >= 2) results.color = "ok(" + classes.size + ")";
+    }
+    await sleep(300);
   }
-  const markers = editor.getModelMarkers({});
-  const verdict = "timeout notes=" + notes.slice(0, 5).join(" | ") + " markers=" +
-    markers.map((m) => m.severity + ":" + m.code).slice(0, 5).join(",");
+
+  // 3) hover over GM_getValue on line 3 — quick info resolved through the
+  //    GM ambient extraLib, not just same-file symbols.
+  results.hover = "pending";
+  ed.setPosition({ lineNumber: 3, column: 11 });
+  ed.focus();
+  ed.trigger("api", "editor.action.showHover", null);
+  const hoverDeadline = Date.now() + 15000;
+  while (Date.now() < hoverDeadline && results.hover === "pending") {
+    const widget = document.querySelector(".monaco-hover-content, .hover-contents");
+    if (widget && (widget.textContent ?? "").length > 0) {
+      results.hover = "ok(" + (widget.textContent ?? "").slice(0, 24) + ")";
+      break;
+    }
+    await sleep(300);
+  }
+  if (results.hover === "pending") results.hover = "fail";
+
+  // 4) go-to-definition from the usage on line 2 to the declaration on line 1:
+  //    a same-file reveal moves the selection to line 1.
+  results.goto = "pending";
+  ed.setPosition({ lineNumber: 2, column: 16 });
+  ed.focus();
+  ed.trigger("api", "editor.action.revealDefinition", null);
+  const gotoDeadline = Date.now() + 15000;
+  while (Date.now() < gotoDeadline && results.goto === "pending") {
+    const sel = ed.getSelection();
+    if (sel && sel.startLineNumber === 1) {
+      results.goto = "ok";
+      break;
+    }
+    await sleep(300);
+  }
+  if (results.goto === "pending") {
+    results.goto = "fail(sel=" + JSON.stringify(ed.getSelection()) + ")";
+  }
+
+  ed.dispose();
   host.remove();
-  return verdict;
+  const flat = Object.entries(results).map(([k, v]) => k + "=" + v).join(" ");
+  if (Object.values(results).every((v) => v.startsWith("ok"))) return "pass " + flat;
+  return "fail " + flat + (notes.length ? " notes=" + notes.slice(0, 3).join("|") : "");
 }
 
 export { KeyCode, KeyMod };
