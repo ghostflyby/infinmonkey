@@ -25,11 +25,12 @@ jobs:
           cache: true
       - run: deno fmt --check
       - run: deno lint
-      - run: deno check packages
+      # The task also type-checks the root vite.config.ts.
+      - run: deno task check
       - run: deno test -A
       - run: deno task unused
       - run: deno task build
-      # Keep the safari bundle from rotting (pure deno bundling, no Xcode needed)
+      # Keep the safari bundle from rotting (pure vite build, no Xcode needed)
       - run: deno task build:safari
       - uses: actions/upload-artifact@v7
         with:
@@ -98,7 +99,7 @@ jobs:
           { "browsers": { "firefox": { "binary": "/usr/bin/firefox" } } }
           JSON
       - name: Build
-        run: deno run -A packages/tools/build.ts --browser firefox
+        run: deno task build:firefox
       - name: Start dev server
         run: |
           deno task devserver &
@@ -149,7 +150,7 @@ jobs:
           CFT_CHROME: ${{ steps.cft.outputs.chrome-path }}
           CFT_DRIVER: ${{ steps.cft.outputs.chromedriver-path }}
       - name: Build
-        run: deno run -A packages/tools/build.ts --browser chrome
+        run: deno task build:chrome
       - name: Start dev server
         run: |
           deno task devserver &

@@ -1,5 +1,10 @@
 /** Options page: list / editor / settings. */
 import browser from "webextension-polyfill";
+import {
+  type CodeEditorHandle,
+  createCodeEditorWithServices,
+  runTsWorkerSelfCheck,
+} from "../monaco/services.ts";
 import { RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
 import type { ListEntriesResult } from "@infinmonkey/shared/protocol";
 import type {
@@ -17,6 +22,7 @@ import { debounce, h, msg, toast } from "../dom.ts";
 let current: AnyEntry | null = null;
 let view: "scripts" | "styles" | "settings" = "scripts";
 let editingId: string | null = null;
+let codeEditor: CodeEditorHandle | null = null;
 /** GM values panel: the key whose inline editor is expanded. */
 let expandedValueKey: string | null = null;
 
@@ -281,9 +287,14 @@ async function showEditorError(id: string): Promise<void> {
 function fillEditor(): void {
   if (!current) return;
   $("#ed-name").textContent = current.meta.name;
-  ($("#ed-code") as HTMLTextAreaElement).value = current.code;
+  codeEditor = codeEditor ?? createCodeEditorWithServices($("#ed-editor"), {
+    value: current.code,
+    language: current.kind === "style" ? "css" : "javascript",
+    onSave: () => void saveEditor(),
+  });
+  codeEditor.setLanguage(current.kind === "style" ? "css" : "javascript");
+  codeEditor.setValue(current.code);
   updateChips();
-  updateGutter();
 
   const src = current.source;
   const dev = src.type === "dev";
@@ -324,21 +335,6 @@ function updateChips(): void {
   if (m.description) meta.append(h("span", { class: "chip" }, m.description));
 }
 
-function updateGutter(): void {
-  const ta = $("#ed-code") as HTMLTextAreaElement;
-  const lines = ta.value.split("\n").length;
-  const gutter = $("#ed-gutter");
-  let text = "";
-  for (let i = 1; i <= lines; i++) text += i + "\n";
-  gutter.textContent = text;
-  gutter.scrollTop = ta.scrollTop;
-}
-
-$("#ed-code").addEventListener("input", updateGutter);
-$("#ed-code").addEventListener("scroll", () => {
-  $("#ed-gutter").scrollTop = ($("#ed-code") as HTMLTextAreaElement).scrollTop;
-});
-
 $("#ed-back").addEventListener("click", () => {
   editingId = null;
   show("list");
@@ -348,7 +344,7 @@ $("#ed-back").addEventListener("click", () => {
 async function saveEditor(): Promise<void> {
   try {
     if (!editingId || !current) return;
-    const code = ($("#ed-code") as HTMLTextAreaElement).value;
+    const code = codeEditor?.getValue() ?? "";
     const res = await msg<{ entry: AnyEntry | null }>({ type: "SaveCode", id: editingId, code });
     if (!res.entry) {
       toast("保存失败：条目不存在", true);
@@ -365,6 +361,7 @@ async function saveEditor(): Promise<void> {
 $("#ed-save").addEventListener("click", () => void saveEditor());
 document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === "s" && !$("#view-editor").hidden) {
+    if (e.defaultPrevented) return; // the editor's own keymap already saved
     e.preventDefault();
     void saveEditor();
   }
@@ -809,11 +806,19 @@ void msg<{ ok: boolean }>({ type: "PingDevServer" }).then((r) => setDevIndicator
 show("list");
 void loadList();
 
+// Automation self-check (#e2e): verify the TS language worker chain and
+// report through the hash — see runTsWorkerSelfCheck for what it covers.
+if (location.hash === "#e2e") {
+  void runTsWorkerSelfCheck()
+    .then((v) => history.replaceState(null, "", `#e2e:${v}`))
+    .catch((e) => history.replaceState(null, "", `#e2e:err:${String(e).slice(0, 60)}`));
+}
+
 // Debug/automation handles
 (window as unknown as { __imDebug: () => unknown }).__imDebug = () => ({
   editingId,
   view,
   editorHidden: $("#view-editor").hidden,
-  taLen: ($("#ed-code") as HTMLTextAreaElement).value.length,
+  taLen: (codeEditor?.getValue() ?? "").length,
   toast: document.getElementById("im-toast")?.textContent ?? "",
 });

@@ -1,5 +1,6 @@
 /** Install confirm page: shows metadata + code preview, then writes on confirm. */
 import { RUNTIME_NAME } from "@infinmonkey/shared/constants";
+import { createCodeEditor } from "../monaco/editor.ts";
 import type { AnyEntry, PendingInstall } from "@infinmonkey/shared/types";
 import { h, msg } from "../dom.ts";
 
@@ -55,9 +56,15 @@ function render(
   if (dev) row("本地映射", "✓ 将自动从 dev server 实时加载");
   if (replacing) row("更新", `将替换已安装的「${replacing.meta.name}」（保留数据）`);
 
-  // Full code, never truncated: the <pre> itself is the scroll container
-  // (max-height + overflow:auto, see `pre` in style.css).
-  const preview = h("pre", {}, p.code);
+  // Full code in a read-only Monaco editor; the container height is the
+  // scroll boundary (see .code-preview in style.css). automaticLayout keeps
+  // it sized when the <details> expands.
+  const previewMount = h("div", { class: "code-preview" });
+  createCodeEditor(previewMount, {
+    value: p.code,
+    language: p.kind === "style" ? "css" : "javascript",
+    readOnly: true,
+  });
 
   const warn = isScript && meta.grants.length > 0
     ? h(
@@ -88,7 +95,7 @@ function render(
       ),
       warn,
       grid,
-      h("details", { open: true }, h("summary", {}, "代码预览（完整，可滚动）"), preview),
+      h("details", { open: true }, h("summary", {}, "代码预览（完整，可滚动）"), previewMount),
       h(
         "div",
         { class: "btns" },

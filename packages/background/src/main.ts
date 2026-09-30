@@ -27,7 +27,9 @@ import {
   findEntry,
   getDB,
   getPendingInstall,
+  getValue,
   importAll,
+  listValues,
   moveEntry,
   putPendingInstall,
   revokeConnectGrant,
@@ -119,7 +121,11 @@ browser.tabs.onRemoved.addListener((tabId: number) => {
  * browser-authoritative: content scripts report the page URL, extension
  * pages report the extension origin, so the two are distinguishable.
  */
-const CONTENT_SCRIPT_MESSAGES = new Set(["FetchText", "gmCall"]);
+// OpenOptions residual, accepted: under the single-injection-flaw threat
+// model below, a hostile page can open extension tabs (tab spam) and
+// re-trigger the read-only #e2e self-check. Rule going forward: behaviors
+// reachable through the #e2e hash channel must stay inert/read-only.
+const CONTENT_SCRIPT_MESSAGES = new Set(["FetchText", "gmCall", "OpenOptions"]);
 
 /** Response size cap for FetchText, mirroring startInstallFromUrl. */
 const FETCH_TEXT_LIMIT = 5_000_000;
@@ -331,8 +337,19 @@ export function route(
       );
     case "StartInstallFromUrl":
       return startInstallFromUrl(msg.url as string, sender.tab?.id);
-    case "OpenOptions":
-      return browser.runtime.openOptionsPage().then(() => ({ ok: true }));
+    case "OpenOptions": {
+      // tabs.create instead of openOptionsPage(): that API resolves as
+      // success but opens nothing for temporary add-ons in headless Firefox
+      // (observed with geckodriver probes), and a plain tab is what
+      // open_in_tab already declares. The optional fragment allows a
+      // deep-link target (restricted to a plain #fragment).
+      const fragment = typeof msg.fragment === "string" && /^#[\w:-]*$/.test(msg.fragment)
+        ? msg.fragment
+        : "";
+      return browser.tabs
+        .create({ url: browser.runtime.getURL("options/index.html") + fragment })
+        .then(() => ({ ok: true }));
+    }
     case "GetPendingInstall":
       return getPendingInstall(msg.pendingId as string).then(async (p) => {
         if (!p) return { pending: null };
@@ -449,7 +466,6 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
   }
   switch (op) {
     case "getValue": {
-      const { getValue } = await import("./store.ts");
       return await getValue(scriptId, args.key as string);
     }
     case "setValue": {
@@ -465,7 +481,6 @@ async function gmDispatch(op: string, args: Record<string, unknown>, ctx: GmCtx)
       return { ok: true };
     }
     case "listValues": {
-      const { listValues } = await import("./store.ts");
       return { keys: await listValues(scriptId) };
     }
     case "xmlHttpRequest":

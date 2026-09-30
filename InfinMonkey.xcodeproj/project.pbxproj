@@ -525,7 +525,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nif command -v deno >/dev/null 2>&1; then\n    DENO=\"deno\"\nelif [ -x \"$HOME/.deno/bin/deno\" ]; then\n    DENO=\"$HOME/.deno/bin/deno\"\nelif [ -x /opt/homebrew/bin/deno ]; then\n    DENO=\"/opt/homebrew/bin/deno\"\nelse\n    echo \"error: deno not found (checked PATH, ~/.deno/bin, /opt/homebrew/bin)\" >&2\n    exit 1\nfi\ncd \"$SRCROOT\"\n\"$DENO\" run -A packages/tools/build.ts --browser safari\n";
+			shellScript = "set -e\nif command -v deno >/dev/null 2>&1; then\n    DENO=\"deno\"\nelif [ -x \"$HOME/.deno/bin/deno\" ]; then\n    DENO=\"$HOME/.deno/bin/deno\"\nelif [ -x /opt/homebrew/bin/deno ]; then\n    DENO=\"/opt/homebrew/bin/deno\"\nelse\n    echo \"error: deno not found (checked PATH, ~/.deno/bin, /opt/homebrew/bin)\" >&2\n    exit 1\nfi\ncd \"$SRCROOT\"\n\"$DENO\" run -A npm:vite build --mode safari\n";
 		};
 		ECBE70F13055A77C00072D70 /* Build Extension Resources (deno) */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -550,7 +550,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nif command -v deno >/dev/null 2>&1; then\n    DENO=\"deno\"\nelif [ -x \"$HOME/.deno/bin/deno\" ]; then\n    DENO=\"$HOME/.deno/bin/deno\"\nelif [ -x /opt/homebrew/bin/deno ]; then\n    DENO=\"/opt/homebrew/bin/deno\"\nelse\n    echo \"error: deno not found (checked PATH, ~/.deno/bin, /opt/homebrew/bin)\" >&2\n    exit 1\nfi\ncd \"$SRCROOT\"\n\"$DENO\" run -A packages/tools/build.ts --browser safari\n";
+			shellScript = "set -e\nif command -v deno >/dev/null 2>&1; then\n    DENO=\"deno\"\nelif [ -x \"$HOME/.deno/bin/deno\" ]; then\n    DENO=\"$HOME/.deno/bin/deno\"\nelif [ -x /opt/homebrew/bin/deno ]; then\n    DENO=\"/opt/homebrew/bin/deno\"\nelse\n    echo \"error: deno not found (checked PATH, ~/.deno/bin, /opt/homebrew/bin)\" >&2\n    exit 1\nfi\ncd \"$SRCROOT\"\n\"$DENO\" run -A npm:vite build --mode safari\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

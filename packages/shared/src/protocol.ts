@@ -36,7 +36,7 @@ export type BgRequest =
   // Install flow
   | { type: "StartInstallFromText"; code: string; url?: string }
   | { type: "StartInstallFromUrl"; url: string }
-  | { type: "OpenOptions" }
+  | { type: "OpenOptions"; fragment?: string }
   | { type: "GetPendingInstall"; pendingId: string }
   | { type: "ConfirmInstall"; pendingId: string; decision: "install" | "cancel" }
   // @connect authorization prompt

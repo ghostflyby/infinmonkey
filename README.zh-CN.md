@@ -116,7 +116,7 @@ packages/
   content/     内容脚本（隔离世界）    lib: esnext+dom            —— bridge 桥、安装横幅
   inject/      MAIN world 运行时      lib: esnext+dom            —— runner、GM API 实现
   ui/          扩展页面               lib: esnext+dom            —— options/popup/install/prompt
-  tools/       Deno CLI 工具          lib: esnext+deno.window    —— build、dev_server、e2e
+  tools/       Deno CLI 工具          lib: esnext+deno.window    —— dev_server、e2e、launch
   tests/       单元测试               lib: esnext+deno.window    —— 共享层测试
 ```
 
@@ -124,9 +124,11 @@ packages/
 `document`、shared 引 `Deno` 都会直接报错，见各成员 deno.json）。 依赖版本集中在根 `deno.json` 的
 `imports` 管理，成员以 `workspace:*` 引用 shared。
 
-**依赖说明**：`deno.json` 设置 `nodeModulesDir: "none"`，项目内**没有 node_modules、没有 vendored
-依赖**—— 打包用 `deno bundle`（oxc 内核，TS 直打包），npm 依赖（`webextension-polyfill`）由 Deno
-全局缓存解析， esbuild 已从工具链移除。升级依赖只需改 `deno.json` 里的版本号。
+**依赖说明**：版本只声明在根 `deno.json` 的 `imports` 并由 `deno.lock` 钉定（不 vendor 依赖）。
+`nodeModulesDir: "auto"` 让 Deno 维护一份 gitignored、deno 托管的 `node_modules/` 作为构建工具链的
+安装状态。打包用 Vite（rolldown 内核），配置在根 `vite.config.ts` —— 每个浏览器一次多环境构建
+（`deno run -A npm:vite build --mode <firefox|chrome|safari>`）；Deno 解析（import map、workspace
+成员）由 `unplugin-deno` 提供。升级依赖只需改 `deno.json` 里的版本号。
 
 ## Safari
 
