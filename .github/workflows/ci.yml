@@ -98,7 +98,7 @@ jobs:
           { "browsers": { "firefox": { "binary": "/usr/bin/firefox" } } }
           JSON
       - name: Build
-        run: deno run -A packages/tools/build.ts --browser firefox
+        run: deno task build:firefox
       - name: Start dev server
         run: |
           deno task devserver &
@@ -149,7 +149,7 @@ jobs:
           CFT_CHROME: ${{ steps.cft.outputs.chrome-path }}
           CFT_DRIVER: ${{ steps.cft.outputs.chromedriver-path }}
       - name: Build
-        run: deno run -A packages/tools/build.ts --browser chrome
+        run: deno task build:chrome
       - name: Start dev server
         run: |
           deno task devserver &
