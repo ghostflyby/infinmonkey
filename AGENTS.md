@@ -24,9 +24,17 @@ as non-empty; E2E asserts on DOM markers/attributes (e.g. `data-infin-done`), ne
 ## Toolchain rules (hard constraints)
 
 1. **No `npx`.** Run npm CLIs with `deno run -A npm:<pkg>[@version]`.
-2. **No vendored dependencies.** No `vendor/` or `node_modules/` directories
-   (`nodeModulesDir: "none"`); dependency versions live in the root `deno.json`.
-3. **Bundle with `deno bundle`**, not esbuild or other third-party bundlers.
+2. **No vendored dependencies.** Dependency versions are declared only in the root `deno.json` and
+   pinned by `deno.lock`. The deno-managed `node_modules/` (`nodeModulesDir: "auto"`, gitignored) is
+   install state for the build toolchain (vite/unplugin-deno) — never commit it, never hand-edit it,
+   never pin a version outside `deno.json`.
+3. **Bundle with the root `vite.config.ts`**: one multi-environment build per browser via
+   `deno run -A npm:vite build --mode <firefox|chrome|safari>` (`builder: {}` builds all
+   environments; add `VITE_ZIP=1` to package a zip). The client environment is the chunked ESM pass
+   (pages + module background); the single-entry environments are the iife content scripts, the two
+   classic workers, and the ESM TS worker. Deno resolution (import maps, workspace members) comes
+   from `unplugin-deno`. Do not call other bundlers directly, and do not reintroduce per-entry
+   `deno bundle` loops or a separate orchestrator script.
 4. **Never download browsers or other large binaries without asking first.** E2E browsers/drivers
    come from local config (`.browsers.local.json`, gitignored) or the CI's
    browser-actions/setup-chrome step.

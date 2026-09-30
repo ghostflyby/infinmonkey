@@ -132,7 +132,7 @@ packages/
   content/     content script (isolated world) lib: esnext+dom   — bridge, install banner
   inject/      MAIN world runtime     lib: esnext+dom            — runner, GM API implementation
   ui/          extension pages        lib: esnext+dom            — options/popup/install/prompt
-  tools/       Deno CLI tools         lib: esnext+deno.window    — build, dev_server, e2e
+  tools/       Deno CLI tools         lib: esnext+deno.window    — dev_server, e2e, launch
   tests/       unit tests             lib: esnext+deno.window    — shared-layer tests
 ```
 
@@ -141,10 +141,13 @@ out-of-context references (background referencing `document`, shared referencing
 type check; see each member's deno.json). Dependency versions are centralized in the root
 `deno.json` `imports`; members reference shared via `workspace:*`.
 
-**Dependencies**: `deno.json` sets `nodeModulesDir: "none"` — the project has **no node_modules and
-no vendored dependencies**. Bundling uses `deno bundle` (oxc core, TS bundled directly); the npm
-dependency (`webextension-polyfill`) resolves from Deno's global cache; esbuild has been removed
-from the toolchain. Upgrading a dependency is just a version bump in `deno.json`.
+**Dependencies**: versions live only in the root `deno.json` `imports` and are pinned by `deno.lock`
+(no vendored dependencies). `nodeModulesDir: "auto"` lets Deno maintain a gitignored, deno-managed
+`node_modules/` as install state for the build toolchain. Bundling uses Vite (rolldown core) through
+the root `vite.config.ts` — one multi-environment build per browser
+(`deno run -A npm:vite build --mode <firefox|chrome|safari>`); Deno resolution (import maps,
+workspace members) comes from `unplugin-deno`. Upgrading a dependency is just a version bump in
+`deno.json`.
 
 ## Safari
 
