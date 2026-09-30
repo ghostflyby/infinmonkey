@@ -12,7 +12,7 @@ const buildTarget = kind === "chromium" ? "chrome" : "firefox";
 
 // 1) Build
 const build = new Deno.Command(Deno.execPath(), {
-  args: ["run", "-A", "packages/tools/build.ts", "--browser", buildTarget],
+  args: ["task", `build:${buildTarget}`],
   stdout: "inherit",
   stderr: "inherit",
 });
