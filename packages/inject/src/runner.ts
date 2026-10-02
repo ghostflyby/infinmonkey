@@ -9,6 +9,7 @@ import {
   appendSourceDirectives,
   buildUserScriptBody,
   findUserFrame,
+  innermostAttributedFrame,
 } from "@infinmonkey/shared/inject";
 import type { PreparedScript } from "@infinmonkey/shared/types";
 import { isRecord } from "@infinmonkey/shared/util";
@@ -257,6 +258,16 @@ function main(): void {
   ): { line: number; col: number } | null {
     const frame = findUserFrame(stack, name);
     if (!frame) return null;
+    return toUserLine(frame, userLineOffset);
+  }
+
+  /** Mapping step shared by locateUserFrame and reportAttributedError:
+   * subtracts the wrapper and @require shifts from an already-located frame;
+   * null once the line falls inside the @require prefix. */
+  function toUserLine(
+    frame: { line: number; col: number },
+    userLineOffset: number,
+  ): { line: number; col: number } | null {
     const line = frame.line - functionBodyOffset() - userLineOffset;
     return line >= 1 ? { line, col: frame.col } : null;
   }
@@ -306,12 +317,17 @@ function main(): void {
   function reportAttributedError(error: unknown): void {
     const stack = error instanceof Error ? error.stack : undefined;
     if (!stack) return;
-    for (const a of attributedScripts) {
-      const frame = locateUserFrame(stack, a.name, a.userLineOffset);
-      if (!frame) continue;
-      reportScriptError(a.id, error, frame.line, frame.col);
-      return;
-    }
+    // The innermost matching frame owns the throw — not the first-loaded
+    // script: when B runs a callback through A's helper, A's outer frame
+    // names A too, and scanning in load order would blame A for B's error.
+    const hit = innermostAttributedFrame(stack, attributedScripts);
+    if (!hit) return;
+    // A winning line inside the @require prefix is still the winning
+    // script's own (remote) code: report without a position rather than
+    // falling through to another script that merely appears deeper.
+    const pos = toUserLine(hit, hit.script.userLineOffset);
+    if (pos) reportScriptError(hit.script.id, error, pos.line, pos.col);
+    else reportScriptError(hit.script.id, error);
   }
 
   /** Surfaces a script failure to the bridge, which persists it for the

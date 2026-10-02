@@ -166,6 +166,21 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/** Engine-reported position of a sourceURL frame plus where the match sits
+ * in the stack string: stack strings list the innermost frame first, so an
+ * earlier index is a more inner frame. */
+interface FrameMatch {
+  line: number;
+  col: number;
+  index: number;
+}
+
+function findUserFrameMatch(stack: string, name: string): FrameMatch | null {
+  const m = new RegExp(`InfinMonkey/${escapeRegExp(sourceUrlFileName(name))}:(\\d+):(\\d+)`)
+    .exec(stack);
+  return m ? { line: Number(m[1]), col: Number(m[2]), index: m.index } : null;
+}
+
 /** Locates the first stack frame attributed to a compiled userscript in
  * `stack`: the engine names the anonymous `new Function` frames
  * `InfinMonkey/<file>:line:col` thanks to the sourceURL directive, and the
@@ -176,9 +191,30 @@ export function findUserFrame(
   stack: string,
   name: string,
 ): { line: number; col: number } | null {
-  const m = new RegExp(`InfinMonkey/${escapeRegExp(sourceUrlFileName(name))}:(\\d+):(\\d+)`)
-    .exec(stack);
-  return m ? { line: Number(m[1]), col: Number(m[2]) } : null;
+  const m = findUserFrameMatch(stack, name);
+  return m ? { line: m.line, col: m.col } : null;
+}
+
+/** Attributes an error stack to the userscript that owns its innermost
+ * sourceURL frame. The innermost frame is the throw site, and when scripts
+ * call into each other (B runs a callback through A's helper) A's outer
+ * frame names A too — so candidates are compared by frame position in the
+ * stack, never by the order the scripts were loaded in. Returns the winning
+ * script with the raw engine-reported line/column (still shifted by the
+ * function wrapper and the @require prefix — the caller maps them), or null
+ * when no candidate has a frame in the stack. */
+export function innermostAttributedFrame<S extends { name: string }>(
+  stack: string,
+  scripts: readonly S[],
+): { script: S; line: number; col: number } | null {
+  let best: { script: S; match: FrameMatch } | null = null;
+  for (const script of scripts) {
+    const match = findUserFrameMatch(stack, script.name);
+    if (!match) continue;
+    if (best && best.match.index <= match.index) continue;
+    best = { script, match };
+  }
+  return best ? { script: best.script, line: best.match.line, col: best.match.col } : null;
 }
 
 /** Appends DevTools source-mapping directives to userscript code before it is

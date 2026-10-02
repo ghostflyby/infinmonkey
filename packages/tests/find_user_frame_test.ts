@@ -1,19 +1,22 @@
 /**
  * Stack-frame attribution for userscript errors (findUserFrame +
- * buildUserScriptBody.userLineOffset in shared/inject.ts).
+ * innermostAttributedFrame + buildUserScriptBody.userLineOffset in
+ * shared/inject.ts).
  *
  * The runner reports a userscript line by subtracting two offsets from the
  * engine-reported sourceURL frame: the new Function wrapper lines (probed at
  * runtime in the browser — engine-specific, out of scope here) and the
  * @require prefix line count. These tests pin the pure half: matching a frame
- * by the exact file name appendSourceDirectives emits, and the offset
- * arithmetic that recovers the user line.
+ * by the exact file name appendSourceDirectives emits, the offset arithmetic
+ * that recovers the user line, and picking the script that owns the
+ * innermost frame when several scripts appear in one stack.
  */
 import { assertEquals } from "@std/assert";
 import {
   appendSourceDirectives,
   buildUserScriptBody,
   findUserFrame,
+  innermostAttributedFrame,
 } from "@infinmonkey/shared/inject";
 
 Deno.test("a Chrome-style sourceURL frame yields its line and column", () => {
@@ -93,4 +96,42 @@ Deno.test("with no requires the user line is the engine line minus the wrapper a
   const frame = findUserFrame(`x@InfinMonkey/S.user.js:${engineLine}:2`, "S");
   assertEquals(frame, { line: engineLine, col: 2 });
   assertEquals((frame?.line ?? 0) - userLineOffset - 5, 1);
+});
+
+Deno.test("across scripts, the innermost frame's script wins regardless of load order", () => {
+  // B's callback throws while running through A's helper: A's outer frame is
+  // deeper in the stack, so first-loaded A must not be blamed for B's error.
+  const stack = [
+    "Error: boom",
+    "    at callback (InfinMonkey/B.user.js:3:7)",
+    "    at run (InfinMonkey/A.user.js:9:2)",
+  ].join("\n");
+  const a = { id: "a", name: "A" };
+  const b = { id: "b", name: "B" };
+  assertEquals(innermostAttributedFrame(stack, [a, b]), { script: b, line: 3, col: 7 });
+  assertEquals(innermostAttributedFrame(stack, [b, a]), { script: b, line: 3, col: 7 });
+});
+
+Deno.test("across scripts, a deeper frame of the same innermost script never displaces it", () => {
+  const stack = [
+    "Error: boom",
+    "    at inner (InfinMonkey/A.user.js:20:2)",
+    "    at middle (InfinMonkey/B.user.js:3:7)",
+    "    at outer (InfinMonkey/A.user.js:9:1)",
+  ].join("\n");
+  const a = { id: "a", name: "A" };
+  const b = { id: "b", name: "B" };
+  assertEquals(innermostAttributedFrame(stack, [a, b]), { script: a, line: 20, col: 2 });
+});
+
+Deno.test("across scripts, a script with no frame in the stack is skipped", () => {
+  const stack = "Error: boom\n    at f (InfinMonkey/B.user.js:3:7)";
+  const a = { id: "a", name: "A" };
+  const b = { id: "b", name: "B" };
+  assertEquals(innermostAttributedFrame(stack, [a, b]), { script: b, line: 3, col: 7 });
+});
+
+Deno.test("across scripts, no attributed script matching the stack yields null", () => {
+  const stack = "Error: boom\n    at f (https://page.example/x.js:1:1)";
+  assertEquals(innermostAttributedFrame(stack, [{ id: "a", name: "A" }]), null);
 });
