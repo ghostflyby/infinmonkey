@@ -77,3 +77,19 @@ Deno.test("empty requires keep the body identical at offset zero", () => {
   assertEquals(out.body, code);
   assertEquals(out.userLineOffset, 0);
 });
+
+Deno.test("exotic line terminators count the way the engine counts them", () => {
+  // \r\n is ONE break; lone \r and U+2028/U+2029 are one break each. The
+  // require text is kept byte-for-byte (normalizing would rewrite template
+  // literal values), so the count must mirror the engine, not assume \n.
+  const text = "a\r\nb\rc\u2028d\u2029e\n";
+  const { body, userLineOffset } = buildUserScriptBody({
+    code: "let a = 1;",
+    requires: [{ url: "https://x/one.js", text }],
+  });
+  // text ends with \n already; the block adds "\n;\n" → 5 + 2 = 7 breaks.
+  assertEquals(userLineOffset, 7);
+  const prefix = body.slice(0, body.indexOf("let a = 1;"));
+  assertEquals((prefix.match(/\r\n|[\n\r\u2028\u2029]/g) ?? []).length, userLineOffset);
+  assert(body.includes(text + "\n;\n"), "require text must stay byte-for-byte");
+});

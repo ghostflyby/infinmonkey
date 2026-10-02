@@ -134,8 +134,13 @@ export async function prepareScripts(
  * `userLineOffset` is the exact number of lines before the first line of the
  * user code, counted from the constructed prefix itself (never by
  * re-splitting the assembled body): stack traces from the compiled function
- * shift by exactly this amount. With no requires the body is the user code
- * unchanged and the offset is 0. */
+ * shift by exactly this amount. Line breaks are counted the way the engine
+ * counts them — `\r\n` is one break, and lone `\r`, U+2028 and U+2029 are
+ * each one break — so the count stays exact for minified remote code that
+ * legitimately uses the exotic terminators. The require text itself is kept
+ * byte-for-byte: normalizing terminators would rewrite string and template
+ * literal values. With no requires the body is the user code unchanged and
+ * the offset is 0. */
 export function buildUserScriptBody(
   s: Pick<PreparedScript, "code" | "requires">,
 ): { body: string; userLineOffset: number } {
@@ -144,8 +149,7 @@ export function buildUserScriptBody(
     const text = r.text.endsWith("\n") ? r.text : r.text + "\n";
     prefix += text + "\n;\n";
   }
-  let userLineOffset = 0;
-  for (const ch of prefix) if (ch === "\n") userLineOffset++;
+  const userLineOffset = (prefix.match(/\r\n|[\n\r\u2028\u2029]/g) ?? []).length;
   return { body: prefix + s.code, userLineOffset };
 }
 
