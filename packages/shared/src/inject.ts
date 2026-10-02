@@ -126,6 +126,29 @@ export async function prepareScripts(
   return out;
 }
 
+/** Splices fetched @require bodies ahead of the userscript code (GM
+ * semantics: remote code shares the script's scope and runs first, in
+ * declaration order). Each block is closed by a lone `;` on its own line —
+ * an EmptyStatement that ASI can never merge across, whatever either block
+ * ends with — which also keeps the prefix's line count deterministic.
+ * `userLineOffset` is the exact number of lines before the first line of the
+ * user code, counted from the constructed prefix itself (never by
+ * re-splitting the assembled body): stack traces from the compiled function
+ * shift by exactly this amount. With no requires the body is the user code
+ * unchanged and the offset is 0. */
+export function buildUserScriptBody(
+  s: Pick<PreparedScript, "code" | "requires">,
+): { body: string; userLineOffset: number } {
+  let prefix = "";
+  for (const r of s.requires) {
+    const text = r.text.endsWith("\n") ? r.text : r.text + "\n";
+    prefix += text + "\n;\n";
+  }
+  let userLineOffset = 0;
+  for (const ch of prefix) if (ch === "\n") userLineOffset++;
+  return { body: prefix + s.code, userLineOffset };
+}
+
 /** Appends DevTools source-mapping directives to userscript code before it is
  * compiled with `new Function` in the MAIN-world runner. `//# sourceURL`
  * turns the anonymous compiled function into a named, persistent entry in

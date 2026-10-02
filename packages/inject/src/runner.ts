@@ -5,7 +5,7 @@
  * it must not import any extension API.
  */
 import { PM_TAG, RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
-import { appendSourceDirectives } from "@infinmonkey/shared/inject";
+import { appendSourceDirectives, buildUserScriptBody } from "@infinmonkey/shared/inject";
 import type { PreparedScript } from "@infinmonkey/shared/types";
 import { isRecord } from "@infinmonkey/shared/util";
 import {
@@ -201,10 +201,13 @@ function main(): void {
 
   function executeScript(s: PreparedScript): void {
     const sb = makeSandbox(s);
+    // @require bodies are spliced ahead of the user code, in declaration
+    // order, sharing the same function scope (GM semantics).
     // Named-source directives: the compiled function shows up in DevTools
     // under InfinMonkey/<name>, and dev-mapped scripts additionally map to
     // their served origin file (breakpoints land on the real source).
-    const fn = createEvalFunction(sb.params, appendSourceDirectives(s.code, s.name, s.devUrl));
+    const body = buildUserScriptBody(s);
+    const fn = createEvalFunction(sb.params, appendSourceDirectives(body.body, s.name, s.devUrl));
     if (!fn) {
       reportScriptError(s.id, new Error("脚本编译失败（可能被页面 CSP/Trusted Types 拦截）"));
       return;
