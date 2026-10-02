@@ -128,6 +128,11 @@ export interface ScriptErrorRecord {
   message: string;
   at: number;
   url: string;
+  /** 1-based userscript line of the throw, present only when the runner
+   * mapped the engine stack frame back through the new Function wrapper and
+   * the @require prefix; `col` is the 1-based column on that line. */
+  line?: number;
+  col?: number;
 }
 
 interface PopupCommand {

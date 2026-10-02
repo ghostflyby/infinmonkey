@@ -47,6 +47,9 @@ export interface CodeEditorHandle {
   setValue(value: string): void;
   /** Switches the syntax language in place (model language change). */
   setLanguage(language: EditorLanguage): void;
+  /** Scrolls the 1-based line to the center of the viewport, places the
+   * cursor at its first column and focuses the editor (error jump). */
+  revealLine(line: number): void;
 }
 
 export interface CodeEditorOptions {
@@ -77,6 +80,11 @@ export function createCodeEditor(mount: HTMLElement, opts: CodeEditorOptions): C
     setLanguage: (language: EditorLanguage) => {
       const model = ed.getModel();
       if (model) editor.setModelLanguage(model, language);
+    },
+    revealLine: (line: number) => {
+      ed.revealLineInCenter(line);
+      ed.setPosition({ lineNumber: line, column: 1 });
+      ed.focus();
     },
   };
 }

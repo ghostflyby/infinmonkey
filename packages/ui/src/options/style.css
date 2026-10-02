@@ -607,3 +607,13 @@ button.danger {
   margin-bottom: 8px;
   word-break: break-all;
 }
+
+/* Jump affordance: the record carries a userscript line, clicking reveals it */
+.ed-error.jump {
+  cursor: pointer;
+}
+
+.ed-error.jump:hover {
+  background: #ff6b6b26;
+  border-color: #ff6b6b88;
+}

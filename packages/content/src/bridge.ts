@@ -213,7 +213,12 @@ window.addEventListener("message", (ev: MessageEvent) => {
   const d = ev.data;
   if (!isRecord(d) || d[PM_TAG] !== true) return;
   if (d.dir === "script-error") {
-    void recordScriptError(String(d.scriptId ?? ""), String(d.message ?? ""));
+    void recordScriptError(
+      String(d.scriptId ?? ""),
+      String(d.message ?? ""),
+      typeof d.line === "number" ? d.line : undefined,
+      typeof d.col === "number" ? d.col : undefined,
+    );
     return;
   }
   if (d.dir !== "gm" || typeof d.id !== "number") return;
@@ -246,7 +251,12 @@ const SCRIPT_ERROR_REPEAT_MS = 30_000;
  * collapsed (scripts often throw in a loop). */
 const lastScriptError = new Map<string, { message: string; at: number }>();
 
-async function recordScriptError(scriptId: string, rawMessage: string): Promise<void> {
+async function recordScriptError(
+  scriptId: string,
+  rawMessage: string,
+  line?: number,
+  col?: number,
+): Promise<void> {
   const message = rawMessage.slice(0, 500);
   if (!scriptId || !message) return;
   const prev = lastScriptError.get(scriptId);
@@ -256,7 +266,14 @@ async function recordScriptError(scriptId: string, rawMessage: string): Promise<
       imErrors?: Record<string, ScriptErrorRecord>;
     };
     const errors = st.imErrors ?? {};
-    errors[scriptId] = { message, at: Date.now(), url: location.href.slice(0, 500) };
+    errors[scriptId] = {
+      message,
+      at: Date.now(),
+      url: location.href.slice(0, 500),
+      // Position fields exist only when the runner mapped the throw to a
+      // userscript line; the record stays shaped for the management UI.
+      ...(typeof line === "number" ? { line, col: typeof col === "number" ? col : 1 } : {}),
+    };
     const ids = Object.keys(errors);
     if (ids.length > SCRIPT_ERROR_LIMIT) {
       const oldest = ids.sort((a, b) => errors[a].at - errors[b].at)

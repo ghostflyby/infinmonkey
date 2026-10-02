@@ -5,7 +5,12 @@
  * it must not import any extension API.
  */
 import { PM_TAG, RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
-import { appendSourceDirectives } from "@infinmonkey/shared/inject";
+import {
+  appendSourceDirectives,
+  buildUserScriptBody,
+  findUserFrame,
+  innermostAttributedFrame,
+} from "@infinmonkey/shared/inject";
 import type { PreparedScript } from "@infinmonkey/shared/types";
 import { isRecord } from "@infinmonkey/shared/util";
 import {
@@ -59,6 +64,12 @@ function main(): void {
   // MutationObserver, so both write-before-observe and observe-before-write
   // orders are covered. No listener-registration timing involved.
   const consumedPayloads = new Set<string>();
+
+  /** Scripts already run in this document, kept for error attribution: a
+   * stack that names a script's sourceURL file maps back to exactly these
+   * records (id + the @require prefix line count at compile time). */
+  const attributedScripts: { id: string; name: string; userLineOffset: number }[] = [];
+
   function consumePayloadElement(): void {
     // Primary channel: the payload attribute (readable cross-world in every
     // observed headless engine); fallback: the inert carrier element.
@@ -201,14 +212,22 @@ function main(): void {
 
   function executeScript(s: PreparedScript): void {
     const sb = makeSandbox(s);
+    // @require bodies are spliced ahead of the user code, in declaration
+    // order, sharing the same function scope (GM semantics).
     // Named-source directives: the compiled function shows up in DevTools
     // under InfinMonkey/<name>, and dev-mapped scripts additionally map to
     // their served origin file (breakpoints land on the real source).
-    const fn = createEvalFunction(sb.params, appendSourceDirectives(s.code, s.name, s.devUrl));
+    const body = buildUserScriptBody(s);
+    const fn = createEvalFunction(sb.params, appendSourceDirectives(body.body, s.name, s.devUrl));
     if (!fn) {
       reportScriptError(s.id, new Error("脚本编译失败（可能被页面 CSP/Trusted Types 拦截）"));
       return;
     }
+    // Registered before running: asynchronous throws from this script (timer
+    // callbacks, event handlers, unhandled promise rejections) surface in the
+    // global error listeners below, which re-identify the script by its
+    // sourceURL frame.
+    attributedScripts.push({ id: s.id, name: s.name, userLineOffset: body.userLineOffset });
     try {
       fn.call(window, ...sb.args);
       console.debug(
@@ -218,20 +237,112 @@ function main(): void {
       );
     } catch (e) {
       console.error(`[InfinMonkey] runtime error: ${s.name}`, e);
-      reportScriptError(s.id, e);
+      const stack = e instanceof Error ? e.stack : undefined;
+      const frame = stack ? locateUserFrame(stack, s.name, body.userLineOffset) : null;
+      if (frame) reportScriptError(s.id, e, frame.line, frame.col);
+      else reportScriptError(s.id, e);
     }
+  }
+
+  /** Maps an engine-reported stack frame back to userscript coordinates by
+   * subtracting two shifts: the lines the engine's `new Function` wrapper
+   * adds above the first body line (engine-probed, never hardcoded), then the
+   * @require prefix counted at compile time. Returns null when the stack
+   * carries no frame of this script, or when the resolved line falls inside
+   * the @require prefix (<= 0): that error belongs to remote code, not to a
+   * user-code line, so no position is reported. */
+  function locateUserFrame(
+    stack: string,
+    name: string,
+    userLineOffset: number,
+  ): { line: number; col: number } | null {
+    const frame = findUserFrame(stack, name);
+    if (!frame) return null;
+    return toUserLine(frame, userLineOffset);
+  }
+
+  /** Mapping step shared by locateUserFrame and reportAttributedError:
+   * subtracts the wrapper and @require shifts from an already-located frame;
+   * null once the line falls inside the @require prefix. */
+  function toUserLine(
+    frame: { line: number; col: number },
+    userLineOffset: number,
+  ): { line: number; col: number } | null {
+    const line = frame.line - functionBodyOffset() - userLineOffset;
+    return line >= 1 ? { line, col: frame.col } : null;
+  }
+
+  /** Cached engine offset: lines added by the engine above the first body
+   * line in `new Function` stack traces. Engine-specific, so it is probed
+   * once on first use instead of hardcoded: the probe compiles a body whose
+   * `throw` sits on body line 3 and reads back the line the engine reports
+   * for it. The two leading statements must be inert (declarations, not bare
+   * identifiers — those would throw a ReferenceError from body line 1 and
+   * never reach the probe throw). A probe that cannot be measured (eval
+   * blocked by CSP, stack shape unrecognized) reports 0 — errors then surface
+   * without a mapped line. */
+  let bodyOffsetCache: number | null = null;
+  function functionBodyOffset(): number {
+    if (bodyOffsetCache !== null) return bodyOffsetCache;
+    bodyOffsetCache = 0;
+    try {
+      new Function("var line1;\nvar line2;\nthrow new Error('probe')")();
+    } catch (e) {
+      // Only the probe's own throw measures the offset: a refused eval throws
+      // an EvalError from elsewhere, whose frames would mis-measure.
+      if (e instanceof Error && e.message === "probe") {
+        const m = /:(\d+):(\d+)/.exec(e.stack ?? "");
+        const reported = m ? Number(m[1]) : 0;
+        if (reported >= 3) bodyOffsetCache = reported - 3;
+      }
+    }
+    return bodyOffsetCache;
+  }
+
+  /** Global error attribution: userscript code that throws outside its
+   * synchronous run (timers, event handlers, unhandled promise rejections)
+   * reaches these window listeners instead of executeScript's catch. A stack
+   * that names a loaded script's sourceURL file is reported through the same
+   * script-error channel; everything else is ignored. Installed once per
+   * document — main() itself is guarded by __infinRunnerReady. The sync catch
+   * and these listeners never double-report: a caught throw fires no window
+   * error event. */
+  window.addEventListener("error", (ev: ErrorEvent) => {
+    if (ev.error != null) reportAttributedError(ev.error);
+  });
+  window.addEventListener("unhandledrejection", (ev: PromiseRejectionEvent) => {
+    reportAttributedError(ev.reason);
+  });
+
+  function reportAttributedError(error: unknown): void {
+    const stack = error instanceof Error ? error.stack : undefined;
+    if (!stack) return;
+    // The innermost matching frame owns the throw — not the first-loaded
+    // script: when B runs a callback through A's helper, A's outer frame
+    // names A too, and scanning in load order would blame A for B's error.
+    const hit = innermostAttributedFrame(stack, attributedScripts);
+    if (!hit) return;
+    // A winning line inside the @require prefix is still the winning
+    // script's own (remote) code: report without a position rather than
+    // falling through to another script that merely appears deeper.
+    const pos = toUserLine(hit, hit.script.userLineOffset);
+    if (pos) reportScriptError(hit.script.id, error, pos.line, pos.col);
+    else reportScriptError(hit.script.id, error);
   }
 
   /** Surfaces a script failure to the bridge, which persists it for the
    * management UI (the page console alone is invisible to the user). The
-   * channel is page-observable by design; the bridge truncates fields. */
-  function reportScriptError(scriptId: string, error: unknown): void {
+   * channel is page-observable by design; the bridge truncates fields.
+   * `line`/`col` are the 1-based userscript coordinates from locateUserFrame;
+   * they are only posted together and only for a real user-code line. */
+  function reportScriptError(scriptId: string, error: unknown, line?: number, col?: number): void {
     const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     window.postMessage({
       [PM_TAG]: true,
       dir: "script-error",
       scriptId,
       message: message.slice(0, 500),
+      ...(typeof line === "number" ? { line, col: typeof col === "number" ? col : 1 } : {}),
     }, "*");
   }
 

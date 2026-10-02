@@ -126,6 +126,101 @@ export async function prepareScripts(
   return out;
 }
 
+/** Splices fetched @require bodies ahead of the userscript code (GM
+ * semantics: remote code shares the script's scope and runs first, in
+ * declaration order). Each block is closed by a lone `;` on its own line —
+ * an EmptyStatement that ASI can never merge across, whatever either block
+ * ends with — which also keeps the prefix's line count deterministic.
+ * `userLineOffset` is the exact number of lines before the first line of the
+ * user code, counted from the constructed prefix itself (never by
+ * re-splitting the assembled body): stack traces from the compiled function
+ * shift by exactly this amount. Line breaks are counted the way the engine
+ * counts them — `\r\n` is one break, and lone `\r`, U+2028 and U+2029 are
+ * each one break — so the count stays exact for minified remote code that
+ * legitimately uses the exotic terminators. The require text itself is kept
+ * byte-for-byte: normalizing terminators would rewrite string and template
+ * literal values. With no requires the body is the user code unchanged and
+ * the offset is 0. */
+export function buildUserScriptBody(
+  s: Pick<PreparedScript, "code" | "requires">,
+): { body: string; userLineOffset: number } {
+  let prefix = "";
+  for (const r of s.requires) {
+    const text = r.text.endsWith("\n") ? r.text : r.text + "\n";
+    prefix += text + "\n;\n";
+  }
+  const userLineOffset = (prefix.match(/\r\n|[\n\r\u2028\u2029]/g) ?? []).length;
+  return { body: prefix + s.code, userLineOffset };
+}
+
+/** The DevTools file name a compiled userscript is filed under: the
+ * sanitized script name plus the .user.js suffix (unless already present).
+ * Shared by appendSourceDirectives (which writes the directive) and
+ * findUserFrame (which matches the stack frames it produces), so the two can
+ * never drift apart. */
+export function sourceUrlFileName(name: string): string {
+  const safe = (value: string) => value.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+  const file = safe(name) || "script";
+  return `${file}${file.endsWith(".user.js") ? "" : ".user.js"}`;
+}
+
+/** Escapes a literal into a RegExp source fragment (the sanitized file name
+ * can contain any of `. ( ) [ ]` etc. after newline stripping). */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Engine-reported position of a sourceURL frame plus where the match sits
+ * in the stack string: stack strings list the innermost frame first, so an
+ * earlier index is a more inner frame. */
+interface FrameMatch {
+  line: number;
+  col: number;
+  index: number;
+}
+
+function findUserFrameMatch(stack: string, name: string): FrameMatch | null {
+  const m = new RegExp(`InfinMonkey/${escapeRegExp(sourceUrlFileName(name))}:(\\d+):(\\d+)`)
+    .exec(stack);
+  return m ? { line: Number(m[1]), col: Number(m[2]), index: m.index } : null;
+}
+
+/** Locates the first stack frame attributed to a compiled userscript in
+ * `stack`: the engine names the anonymous `new Function` frames
+ * `InfinMonkey/<file>:line:col` thanks to the sourceURL directive, and the
+ * innermost (first) matching frame is the throw site. Returns the
+ * engine-reported line/column — still shifted by the function wrapper and
+ * the @require prefix — or null when no frame names this script. */
+export function findUserFrame(
+  stack: string,
+  name: string,
+): { line: number; col: number } | null {
+  const m = findUserFrameMatch(stack, name);
+  return m ? { line: m.line, col: m.col } : null;
+}
+
+/** Attributes an error stack to the userscript that owns its innermost
+ * sourceURL frame. The innermost frame is the throw site, and when scripts
+ * call into each other (B runs a callback through A's helper) A's outer
+ * frame names A too — so candidates are compared by frame position in the
+ * stack, never by the order the scripts were loaded in. Returns the winning
+ * script with the raw engine-reported line/column (still shifted by the
+ * function wrapper and the @require prefix — the caller maps them), or null
+ * when no candidate has a frame in the stack. */
+export function innermostAttributedFrame<S extends { name: string }>(
+  stack: string,
+  scripts: readonly S[],
+): { script: S; line: number; col: number } | null {
+  let best: { script: S; match: FrameMatch } | null = null;
+  for (const script of scripts) {
+    const match = findUserFrameMatch(stack, script.name);
+    if (!match) continue;
+    if (best && best.match.index <= match.index) continue;
+    best = { script, match };
+  }
+  return best ? { script: best.script, line: best.match.line, col: best.match.col } : null;
+}
+
 /** Appends DevTools source-mapping directives to userscript code before it is
  * compiled with `new Function` in the MAIN-world runner. `//# sourceURL`
  * turns the anonymous compiled function into a named, persistent entry in
@@ -141,9 +236,8 @@ export function appendSourceDirectives(
   devUrl?: string,
 ): string {
   const safe = (value: string) => value.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
-  const file = safe(name) || "script";
   let out = code.endsWith("\n") ? code : code + "\n";
-  out += `//# sourceURL=InfinMonkey/${file}${file.endsWith(".user.js") ? "" : ".user.js"}`;
+  out += `//# sourceURL=InfinMonkey/${sourceUrlFileName(name)}`;
   if (devUrl) out += `\n//# sourceMappingURL=${safe(devUrl)}`;
   return out;
 }
