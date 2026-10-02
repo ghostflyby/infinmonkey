@@ -149,6 +149,38 @@ export function buildUserScriptBody(
   return { body: prefix + s.code, userLineOffset };
 }
 
+/** The DevTools file name a compiled userscript is filed under: the
+ * sanitized script name plus the .user.js suffix (unless already present).
+ * Shared by appendSourceDirectives (which writes the directive) and
+ * findUserFrame (which matches the stack frames it produces), so the two can
+ * never drift apart. */
+export function sourceUrlFileName(name: string): string {
+  const safe = (value: string) => value.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+  const file = safe(name) || "script";
+  return `${file}${file.endsWith(".user.js") ? "" : ".user.js"}`;
+}
+
+/** Escapes a literal into a RegExp source fragment (the sanitized file name
+ * can contain any of `. ( ) [ ]` etc. after newline stripping). */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Locates the first stack frame attributed to a compiled userscript in
+ * `stack`: the engine names the anonymous `new Function` frames
+ * `InfinMonkey/<file>:line:col` thanks to the sourceURL directive, and the
+ * innermost (first) matching frame is the throw site. Returns the
+ * engine-reported line/column — still shifted by the function wrapper and
+ * the @require prefix — or null when no frame names this script. */
+export function findUserFrame(
+  stack: string,
+  name: string,
+): { line: number; col: number } | null {
+  const m = new RegExp(`InfinMonkey/${escapeRegExp(sourceUrlFileName(name))}:(\\d+):(\\d+)`)
+    .exec(stack);
+  return m ? { line: Number(m[1]), col: Number(m[2]) } : null;
+}
+
 /** Appends DevTools source-mapping directives to userscript code before it is
  * compiled with `new Function` in the MAIN-world runner. `//# sourceURL`
  * turns the anonymous compiled function into a named, persistent entry in
@@ -164,9 +196,8 @@ export function appendSourceDirectives(
   devUrl?: string,
 ): string {
   const safe = (value: string) => value.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
-  const file = safe(name) || "script";
   let out = code.endsWith("\n") ? code : code + "\n";
-  out += `//# sourceURL=InfinMonkey/${file}${file.endsWith(".user.js") ? "" : ".user.js"}`;
+  out += `//# sourceURL=InfinMonkey/${sourceUrlFileName(name)}`;
   if (devUrl) out += `\n//# sourceMappingURL=${safe(devUrl)}`;
   return out;
 }

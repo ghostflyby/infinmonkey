@@ -270,7 +270,9 @@ async function openEditor(id: string): Promise<void> {
 }
 
 /** Shows the entry's most recent runtime error above the editor; hidden once
- * new code is saved (updateCode clears the record). */
+ * new code is saved (updateCode clears the record). When the runner mapped
+ * the throw to a userscript line, the bar names it and clicking jumps the
+ * editor to that line. */
 async function showEditorError(id: string): Promise<void> {
   const bar = $("#ed-error");
   const error = (await loadErrors())?.[id];
@@ -278,9 +280,15 @@ async function showEditorError(id: string): Promise<void> {
   if (id !== editingId) return;
   if (!error) {
     bar.hidden = true;
+    bar.onclick = null;
+    bar.classList.remove("jump");
     return;
   }
-  bar.textContent = `最近运行错误（${new Date(error.at).toLocaleString()}）：${error.message}`;
+  const atLine = typeof error.line === "number" && error.line >= 1;
+  bar.textContent = `最近运行错误（${new Date(error.at).toLocaleString()}）：${error.message}` +
+    (atLine ? `（第 ${error.line} 行）` : "");
+  bar.classList.toggle("jump", atLine);
+  bar.onclick = atLine ? () => codeEditor?.revealLine(error.line as number) : null;
   bar.hidden = false;
 }
 
