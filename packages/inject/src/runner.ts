@@ -275,34 +275,41 @@ function main(): void {
     frame: { line: number; col: number },
     userLineOffset: number,
   ): { line: number; col: number } | null {
-    const line = frame.line - functionBodyOffset() - userLineOffset;
+    const offset = functionBodyOffset();
+    // Offset unavailable (probe unmatched): a position would be wrong by an
+    // unknown shift, so the error surfaces without a mapped line.
+    if (offset === null) return null;
+    const line = frame.line - offset - userLineOffset;
     return line >= 1 ? { line, col: frame.col } : null;
   }
 
-  /** Cached engine offset: lines added by the engine above the first body
-   * line in `new Function` stack traces. Engine-specific, so it is probed
-   * once on first use instead of hardcoded: the probe compiles a body whose
-   * `throw` sits on body line 3 and reads back the line the engine reports
-   * for it. The two leading statements must be inert (declarations, not bare
-   * identifiers — those would throw a ReferenceError from body line 1 and
-   * never reach the probe throw). A probe that cannot be measured (eval
-   * blocked by CSP, stack shape unrecognized) reports 0 — errors then surface
-   * without a mapped line. */
-  let bodyOffsetCache: number | null = null;
-  function functionBodyOffset(): number {
-    if (bodyOffsetCache !== null) return bodyOffsetCache;
-    bodyOffsetCache = 0;
+  /** Cached engine offset: lines the engine adds above the first body line
+   * in `new Function` stack traces. Engine- and embedding-specific (V8 in
+   * Chrome and in Deno report different frame shapes), so it is probed once
+   * on first use instead of hardcoded. The probe compiles a body whose
+   * throw sits on body line 3 and carries its own sourceURL, then locates
+   * that frame with the SAME matcher the user frames go through — the
+   * engine's frame format and wrapper height cancel in the subtraction.
+   * (The earlier version matched the first line:column pair anywhere in the
+   * stack, which on Chromium hit a caller frame and over-measured by the
+   * whole probe body.) When the probe frame cannot be found the offset stays
+   * null and errors surface without a mapped line. */
+  let bodyOffsetCache: number | null | undefined = undefined;
+  function functionBodyOffset(): number | null {
+    if (bodyOffsetCache !== undefined) return bodyOffsetCache;
     try {
-      new Function("var line1;\nvar line2;\nthrow new Error('probe')")();
+      new Function(
+        "var line1;\nvar line2;\nthrow new Error('probe');\n//# sourceURL=InfinMonkey/OffsetProbe.user.js",
+      )();
     } catch (e) {
       // Only the probe's own throw measures the offset: a refused eval throws
       // an EvalError from elsewhere, whose frames would mis-measure.
       if (e instanceof Error && e.message === "probe") {
-        const m = /:(\d+):(\d+)/.exec(e.stack ?? "");
-        const reported = m ? Number(m[1]) : 0;
-        if (reported >= 3) bodyOffsetCache = reported - 3;
+        const m = findUserFrame(e.stack ?? "", "OffsetProbe");
+        if (m && m.line >= 3) bodyOffsetCache = m.line - 3;
       }
     }
+    if (bodyOffsetCache === undefined) bodyOffsetCache = null;
     return bodyOffsetCache;
   }
 
