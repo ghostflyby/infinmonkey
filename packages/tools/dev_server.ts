@@ -9,6 +9,7 @@
  * - GET /                      file index page (mapping URLs can be copied)
  */
 import { relative, resolve } from "@std/path";
+import { buildLineOffsetSourceMap } from "@infinmonkey/shared/sourcemap";
 
 const args = processArgs();
 const ROOT = resolve(args.dir);
@@ -143,7 +144,7 @@ function broadcastChanged(files: string[]): void {
   }
 }
 
-function handle(req: Request): Response | Promise<Response> {
+async function handle(req: Request): Promise<Response> {
   requestStats.count++;
   requestStats.last = new URL(req.url).pathname;
   const url = new URL(req.url);
@@ -163,6 +164,35 @@ function handle(req: Request): Response | Promise<Response> {
   if (url.pathname === "/") return indexPage();
   const rel = safePath(url.pathname);
   if (!rel) return new Response("Bad Request", { status: 400 });
+  // ?immap=N: the line-offset source map the runner's sourceMappingURL points
+  // at for this file (N = @require prefix lines). Served as proper source-map
+  // JSON with sourcesContent, so DevTools resolves breakpoints against the
+  // original file.
+  const immap = url.searchParams.get("immap");
+  if (immap !== null) {
+    const offset = Number(immap);
+    if (!Number.isInteger(offset) || offset < 0) {
+      return new Response("Bad Request: immap must be a non-negative integer", { status: 400 });
+    }
+    const full = resolve(ROOT, rel);
+    if (!full.startsWith(ROOT)) return new Response("Forbidden", { status: 403 });
+    const text = await Deno.readTextFile(full).catch(() => null);
+    if (text === null) return new Response("Not Found", { status: 404 });
+    const sourceUrl = `${url.origin}/${rel}`;
+    const map = buildLineOffsetSourceMap({
+      sourceContent: text,
+      sourceUrl,
+      generatedLineOffset: offset,
+      file: rel,
+    });
+    return new Response(map, {
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "access-control-allow-origin": "*",
+      },
+    });
+  }
   // Only real navigations (Accept: text/html) get the wrapped view; extension background fetches (Accept: */*) get the raw code
   const wantsHtml = url.searchParams.get("as") === "html" &&
     (req.headers.get("accept") ?? "").includes("text/html");
