@@ -323,11 +323,6 @@ function main(): void {
    * error event. */
   window.addEventListener("error", (ev: ErrorEvent) => {
     // TEMP debug breadcrumb (probe-only, removed before merge)
-    try {
-      const st = ev.error instanceof Error ? ev.error.stack : "";
-      document.documentElement.dataset.infinAsyncDebug = "fired:" +
-        (st ? (st.match(/InfinMonkey\/[^:)\n]*/) ?? ["none"])[0] : "nostack");
-    } catch { /* ignore */ }
     if (ev.error != null) reportAttributedError(ev.error);
   });
   window.addEventListener("unhandledrejection", (ev: PromiseRejectionEvent) => {

@@ -341,12 +341,6 @@ try {
     );
     ok(requireMark === "loaded", "@require spliced and executed", String(requireMark));
     const stack = await poll(10000, "return document.documentElement.dataset.infinStack ?? ''");
-    // TEMP: async listener breadcrumb (read after the 30ms timer + attribution)
-    const adb = await poll(
-      5000,
-      "return document.documentElement.dataset.infinAsyncDebug ?? 'not-fired'",
-    );
-    console.log(`  [dbg] infinAsyncDebug = ${adb}`);
     ok(
       typeof stack === "string" && stack.includes("InfinMonkey/e2e-diag.user.js:"),
       "sourceURL names engine stack frames",
@@ -426,9 +420,13 @@ try {
               `${parsed.length} scripts parsed`,
             );
             const diag = named.find((sc) => sc.url.includes("e2e-diag.user.js"));
+            // The runner merges immap=<prefix lines> into the mapped dev url,
+            // which may carry its own query (the fixtures are installed via
+            // the ?as=html view), so assert the shape, not the exact query.
             ok(
               !!diag && !!diag.sourceMapURL &&
-                diag.sourceMapURL.startsWith(`${DEV}/e2e-diag.user.js?immap=`),
+                diag.sourceMapURL.startsWith(`${DEV}/e2e-diag.user.js`) &&
+                diag.sourceMapURL.includes("immap="),
               "dev script sourceMapURL registered",
               diag?.sourceMapURL ?? "none",
             );
@@ -436,18 +434,28 @@ try {
             // source url (which only exists through the served map — the
             // compiled script's own name is InfinMonkey/…) resolves into the
             // compiled code. 0-based line 22 = file line 23, the throw.
-            const bp = await withTimeout(
-              send("Debugger.setBreakpointByUrl", {
-                urlRegex: "^http://127\.0\.0\.1:17321/e2e-diag\.user\.js$",
-                lineNumber: 22,
-                columnNumber: 0,
-              }),
-              10000,
-            ) as { locations?: unknown[] };
+            // The debugger agent loads the source map asynchronously after
+            // scriptParsed, so the first resolution can come back empty —
+            // retry until it resolves or the budget runs out.
+            let locations: unknown[] = [];
+            const bpDl = Date.now() + 8000;
+            while (Date.now() < bpDl) {
+              const bp = await withTimeout(
+                send("Debugger.setBreakpointByUrl", {
+                  urlRegex: "^http://127\.0\.0\.1:17321/e2e-diag\.user\.js$",
+                  lineNumber: 22,
+                  columnNumber: 0,
+                }),
+                10000,
+              ) as { locations?: unknown[] };
+              locations = bp.locations ?? [];
+              if (locations.length > 0) break;
+              await sleep(1000);
+            }
             ok(
-              (bp.locations?.length ?? 0) > 0,
+              locations.length > 0,
               "breakpoint resolves through the source map",
-              JSON.stringify(bp).slice(0, 200),
+              JSON.stringify(locations).slice(0, 200),
             );
           } catch (e) {
             ok(false, "CDP assertions", String(e));
