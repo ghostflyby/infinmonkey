@@ -125,3 +125,25 @@ export async function prepareScripts(
   }
   return out;
 }
+
+/** Appends DevTools source-mapping directives to userscript code before it is
+ * compiled with `new Function` in the MAIN-world runner. `//# sourceURL`
+ * turns the anonymous compiled function into a named, persistent entry in
+ * the DevTools Sources panel with readable stack frames; for dev-mapped
+ * scripts (whose code is byte-identical to the served origin file) the
+ * `//# sourceMappingURL` additionally lets DevTools fetch the original file,
+ * so breakpoints land on the real source. Both directives are line comments,
+ * so the only escape is a newline: names and URLs are sanitized onto a
+ * single line and the block always starts on a fresh line of its own. */
+export function appendSourceDirectives(
+  code: string,
+  name: string,
+  devUrl?: string,
+): string {
+  const safe = (value: string) => value.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+  const file = safe(name) || "script";
+  let out = code.endsWith("\n") ? code : code + "\n";
+  out += `//# sourceURL=InfinMonkey/${file}${file.endsWith(".user.js") ? "" : ".user.js"}`;
+  if (devUrl) out += `\n//# sourceMappingURL=${safe(devUrl)}`;
+  return out;
+}
