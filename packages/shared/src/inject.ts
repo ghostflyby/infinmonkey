@@ -224,20 +224,25 @@ export function innermostAttributedFrame<S extends { name: string }>(
 /** Appends DevTools source-mapping directives to userscript code before it is
  * compiled with `new Function` in the MAIN-world runner. `//# sourceURL`
  * turns the anonymous compiled function into a named, persistent entry in
- * the DevTools Sources panel with readable stack frames; for dev-mapped
- * scripts (whose code is byte-identical to the served origin file) the
- * `//# sourceMappingURL` additionally lets DevTools fetch the original file,
- * so breakpoints land on the real source. Both directives are line comments,
- * so the only escape is a newline: names and URLs are sanitized onto a
- * single line and the block always starts on a fresh line of its own. */
+ * the DevTools Sources panel with readable stack frames, and the
+ * `//# sourceMappingURL` gives DevTools the pristine original with
+ * breakpoints resolving into the compiled code — a line-offset map served by
+ * the dev server for dev-mapped scripts, an embedded data: map (sourcesContent
+ * carries the source) for scripts written in the extension. Both directives
+ * are line comments, so the only escape is a newline: names and URLs are
+ * sanitized onto a single line and the block always starts on a fresh line
+ * of its own. */
 export function appendSourceDirectives(
   code: string,
   name: string,
-  devUrl?: string,
+  sourceMapUrl?: string,
 ): string {
-  const safe = (value: string) => value.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+  // The map URL is machine-generated and can be long (inline data: maps
+  // carry the whole source), so it is newline-collapsed but never truncated;
+  // only the name is length-capped (inside sourceUrlFileName).
+  const oneLine = (value: string) => value.replace(/[\r\n]+/g, " ").trim();
   let out = code.endsWith("\n") ? code : code + "\n";
   out += `//# sourceURL=InfinMonkey/${sourceUrlFileName(name)}`;
-  if (devUrl) out += `\n//# sourceMappingURL=${safe(devUrl)}`;
+  if (sourceMapUrl) out += `\n//# sourceMappingURL=${oneLine(sourceMapUrl)}`;
   return out;
 }

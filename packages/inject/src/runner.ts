@@ -5,7 +5,7 @@
  * it must not import any extension API.
  */
 import { PM_TAG, RUNTIME_NAME, RUNTIME_VERSION } from "@infinmonkey/shared/constants";
-import { devMapUrl } from "@infinmonkey/shared/sourcemap";
+import { devMapUrl, inlineSourceMapUrl } from "@infinmonkey/shared/sourcemap";
 import {
   appendSourceDirectives,
   buildUserScriptBody,
@@ -216,10 +216,15 @@ function main(): void {
     // @require bodies are spliced ahead of the user code, in declaration
     // order, sharing the same function scope (GM semantics).
     // Named-source directives: the compiled function shows up in DevTools
-    // under InfinMonkey/<name>, and dev-mapped scripts additionally map to
-    // their served origin file (breakpoints land on the real source).
+    // under InfinMonkey/<name>, and the source map resolves breakpoints back
+    // to the pristine source — dev-mapped scripts via the dev server's
+    // live map, inline scripts via an embedded data: map.
     const body = buildUserScriptBody(s);
-    const mapUrl = s.devUrl ? devMapUrl(s.devUrl, body.userLineOffset) : undefined;
+    const mapUrl = s.devUrl ? devMapUrl(s.devUrl, body.userLineOffset) : inlineSourceMapUrl({
+      sourceContent: s.code,
+      name: s.name,
+      generatedLineOffset: body.userLineOffset,
+    });
     const fn = createEvalFunction(sb.params, appendSourceDirectives(body.body, s.name, mapUrl));
     if (!fn) {
       reportScriptError(s.id, new Error("脚本编译失败（可能被页面 CSP/Trusted Types 拦截）"));

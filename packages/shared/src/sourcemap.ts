@@ -70,3 +70,35 @@ export function devMapUrl(devUrl: string, generatedLineOffset: number): string {
   const sep = devUrl.includes("?") ? "&" : "?";
   return `${devUrl}${sep}immap=${generatedLineOffset}`;
 }
+
+/** UTF-8-safe base64 (btoa alone mangles non-Latin1 text — userscript
+ * comments are frequently Chinese). Chunks the byte array to avoid blowing
+ * the call stack on large scripts. */
+function utf8ToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+/** Builds an embedded data:-URL source map for scripts that have no serving
+ * origin (written in the extension itself): the map carries sourcesContent,
+ * so DevTools shows the pristine original and resolves breakpoints against
+ * it — no server involved, and the fetch is DevTools' own, outside page CSP.
+ * The source entry is named to match the script's sourceURL directive. */
+export function inlineSourceMapUrl(opts: {
+  sourceContent: string;
+  name: string;
+  generatedLineOffset: number;
+}): string {
+  const file = opts.name.replace(/[\r\n]+/g, " ").trim().slice(0, 200) || "script";
+  const map = buildLineOffsetSourceMap({
+    sourceContent: opts.sourceContent,
+    sourceUrl: `InfinMonkey/${file}${file.endsWith(".user.js") ? "" : ".user.js"}`,
+    generatedLineOffset: opts.generatedLineOffset,
+    file: `${file}${file.endsWith(".user.js") ? "" : ".user.js"}`,
+  });
+  return `data:application/json;base64,${utf8ToBase64(map)}`;
+}

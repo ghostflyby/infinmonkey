@@ -7,8 +7,14 @@
  * the decoded mappings are reconstructed back into absolute
  * (generated line ↔ original line) pairs.
  */
+import { appendSourceDirectives } from "@infinmonkey/shared/inject";
 import { assert, assertEquals } from "@std/assert";
-import { buildLineOffsetSourceMap, devMapUrl, vlqEncode } from "@infinmonkey/shared/sourcemap";
+import {
+  buildLineOffsetSourceMap,
+  devMapUrl,
+  inlineSourceMapUrl,
+  vlqEncode,
+} from "@infinmonkey/shared/sourcemap";
 
 const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -127,4 +133,45 @@ Deno.test("devMapUrl appends immap and merges into existing queries", () => {
     devMapUrl("http://x/a.user.js?as=html", 2),
     "http://x/a.user.js?as=html&immap=2",
   );
+});
+
+Deno.test("inline data: map round-trips the original source, including UTF-8", () => {
+  const code = '// 中文注释\nconst a = 1;\nthrow new Error("x");';
+  const url = inlineSourceMapUrl({
+    sourceContent: code,
+    name: "我的脚本",
+    generatedLineOffset: 2,
+  });
+  assert(url.startsWith("data:application/json;base64,"), url.slice(0, 40));
+  // btoa/TextEncoder round-trip must survive the Chinese name and comments.
+  const json = JSON.parse(
+    new TextDecoder().decode(
+      Uint8Array.from(
+        atob(url.slice("data:application/json;base64,".length)),
+        (c) => c.charCodeAt(0),
+      ),
+    ),
+  );
+  assertEquals(json.sourcesContent, [code]);
+  assertEquals(json.sources, ["InfinMonkey/我的脚本.user.js"]);
+  const segments = decodeMappings(json.mappings);
+  assertEquals(segments.length, code.split("\n").length);
+  for (let l = 0; l < segments.length; l++) {
+    assertEquals(segments[l].genLine, l + 2);
+    assertEquals(segments[l].srcLine, l);
+  }
+});
+
+Deno.test("inline data: maps survive appendSourceDirectives untruncated", () => {
+  const code = "x";
+  const longBody = "a".repeat(600);
+  const url = inlineSourceMapUrl({
+    sourceContent: `const s = "${longBody}";`,
+    name: "Demo",
+    generatedLineOffset: 0,
+  });
+  const out = appendSourceDirectives(code, "Demo", url);
+  const lines = out.split("\n");
+  assertEquals(lines.length, 3);
+  assertEquals(lines[2], `//# sourceMappingURL=${url}`);
 });
