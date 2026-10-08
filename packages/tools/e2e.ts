@@ -341,6 +341,12 @@ try {
     );
     ok(requireMark === "loaded", "@require spliced and executed", String(requireMark));
     const stack = await poll(10000, "return document.documentElement.dataset.infinStack ?? ''");
+    // TEMP: async listener breadcrumb (read after the 30ms timer + attribution)
+    const adb = await poll(
+      5000,
+      "return document.documentElement.dataset.infinAsyncDebug ?? 'not-fired'",
+    );
+    console.log(`  [dbg] infinAsyncDebug = ${adb}`);
     ok(
       typeof stack === "string" && stack.includes("InfinMonkey/e2e-diag.user.js:"),
       "sourceURL names engine stack frames",
