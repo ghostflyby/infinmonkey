@@ -344,68 +344,9 @@ try {
     // Give the async script's 30ms timer + attribution + storage write time.
     await sleep(1500);
 
-    // ---- 6. error line mapping through the extension-page channel ----
-    console.log("[e2e] 6. error line mapping…");
-    await nav(`${DEV}/e2e-diag-async.user.js?as=html`);
-    await poll(10000, "return !!document.querySelector(\"div[style*='2147483647']\")");
-    await exec(
-      "const h = document.querySelector(\"div[style*='2147483647']\");" +
-        "h.dataset.infinOpenFragment = '#e2e';" +
-        "h.shadowRoot.querySelector('.manage').click(); return 'ok'",
-    );
-    // The options tab is the only extension context WebDriver can reach, and
-    // even there only the URL is readable — the self-check reports both its
-    // own verdict and the recorded error lines (name:line) in the hash.
-    let verdict = "";
-    {
-      // tabs.create lands asynchronously: poll for the new handle instead of
-      // reading once (observed racing the click on headless Chromium).
-      let other = "";
-      {
-        const dl = Date.now() + 15000;
-        while (Date.now() < dl && !other) {
-          const handles = await wd("GET", `/session/${sid}/window/handles`).catch(
-            () => [],
-          ) as string[];
-          const current = await wd("GET", `/session/${sid}/window`).catch(() => "") as string;
-          other = (handles as string[]).find((h) => h !== current) ?? "";
-          if (!other) await sleep(500);
-        }
-      }
-      if (!other) {
-        ok(false, "options tab opened", "no second window handle");
-      } else {
-        await wd("POST", `/session/${sid}/window`, { handle: other });
-        const dl = Date.now() + 120000;
-        while (Date.now() < dl) {
-          const u = await wd("GET", `/session/${sid}/url`).catch(() => "");
-          const h = typeof u === "string" && u.includes("#e2e:")
-            ? decodeURIComponent(u.split("#")[1])
-            : "";
-          if (h.includes("e2e:pass") || h.includes("e2e:fail")) {
-            verdict = h;
-            break;
-          }
-          await sleep(1000);
-        }
-      }
-    }
-    ok(
-      verdict.includes("e2e-diag:23"),
-      "sync error maps to its source line",
-      verdict.slice(0, 200),
-    );
-    ok(
-      verdict.includes("e2e-diag-async:11"),
-      "async error attributed to its source line",
-      verdict.slice(0, 200),
-    );
-    ok(verdict.includes("e2e:pass"), "worker self-check still passes", verdict.slice(0, 140));
-    await screenshot("07-error-lines");
-
-    // ---- 7. Chrome/CDP: source maps registered + breakpoints resolve ----
+    // ---- 6. Chrome/CDP: source maps registered + breakpoints resolve ----
     if (kind === "chromium") {
-      console.log("[e2e] 7. CDP source maps…");
+      console.log("[e2e] 6. CDP source maps…");
       const sessInfo = await wd("GET", `/session/${sid}`) as {
         capabilities?: { "goog:chromeOptions"?: { debuggerAddress?: string } };
       };
@@ -508,6 +449,91 @@ try {
         }
       }
     }
+
+    // ---- 7. error line mapping through the extension-page channel ----
+    console.log("[e2e] 7. error line mapping…");
+    // The options page is an extension context: Firefox must be driven there
+    // through the extension's own manage button (direct moz-extension
+    // navigation is refused), and even then only the URL is readable — the
+    // self-check reports its verdict plus the recorded error lines
+    // (name:line) in the hash. Chromium can navigate to the extension page
+    // directly (chromedriver allows chrome-extension:// schemes); the
+    // extension id comes from the CDP target list (the background service
+    // worker's url). tabs.create was observed to open nothing on headless
+    // Chromium, so the manage-button route is Firefox-only.
+    const extId = kind === "chromium"
+      ? await (async () => {
+        const sessInfo = await wd("GET", `/session/${sid}`) as {
+          capabilities?: { "goog:chromeOptions"?: { debuggerAddress?: string } };
+        };
+        const da = sessInfo.capabilities?.["goog:chromeOptions"]?.debuggerAddress;
+        if (!da) return "";
+        const targets = await (await fetch(`http://${da}/json/list`)).json() as Array<{
+          type: string;
+          url: string;
+        }>;
+        const sw = targets.find((t) => t.url.startsWith("chrome-extension://"));
+        return sw ? new URL(sw.url).host : "";
+      })()
+      : "";
+    if (kind === "chromium") {
+      ok(extId.length > 0, "extension id resolved from CDP targets", extId);
+      if (extId) {
+        await nav(`chrome-extension://${extId}/options/index.html#e2e`);
+      }
+    } else {
+      await nav(`${DEV}/e2e-diag-async.user.js?as=html`);
+      await poll(10000, "return !!document.querySelector(\"div[style*='2147483647']\")");
+      await exec(
+        "const h = document.querySelector(\"div[style*='2147483647']\");" +
+          "h.dataset.infinOpenFragment = '#e2e';" +
+          "h.shadowRoot.querySelector('.manage').click(); return 'ok'",
+      );
+      // tabs.create lands asynchronously: poll for the new handle instead of
+      // reading once (observed racing the click on headless Chromium).
+      let other = "";
+      const dl = Date.now() + 15000;
+      while (Date.now() < dl && !other) {
+        const handles = await wd("GET", `/session/${sid}/window/handles`).catch(
+          () => [],
+        ) as string[];
+        const current = await wd("GET", `/session/${sid}/window`).catch(() => "") as string;
+        other = (handles as string[]).find((h) => h !== current) ?? "";
+        if (!other) await sleep(500);
+      }
+      if (!other) {
+        ok(false, "options tab opened", "no second window handle");
+      } else {
+        await wd("POST", `/session/${sid}/window`, { handle: other });
+      }
+    }
+    let verdict = "";
+    {
+      const dl = Date.now() + 120000;
+      while (Date.now() < dl) {
+        const u = await wd("GET", `/session/${sid}/url`).catch(() => "");
+        const h = typeof u === "string" && u.includes("#e2e:")
+          ? decodeURIComponent(u.split("#")[1])
+          : "";
+        if (h.includes("e2e:pass") || h.includes("e2e:fail")) {
+          verdict = h;
+          break;
+        }
+        await sleep(1000);
+      }
+    }
+    ok(
+      verdict.includes("e2e-diag:23"),
+      "sync error maps to its source line",
+      verdict.slice(0, 200),
+    );
+    ok(
+      verdict.includes("e2e-diag-async:11"),
+      "async error attributed to its source line",
+      verdict.slice(0, 200),
+    );
+    ok(verdict.includes("e2e:pass"), "worker self-check still passes", verdict.slice(0, 140));
+    await screenshot("07-error-lines");
   }
 
   console.log(`[e2e] ${passed} passed, ${failed} failed`);
