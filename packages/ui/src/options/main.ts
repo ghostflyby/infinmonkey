@@ -825,11 +825,13 @@ if (location.hash === "#e2e") {
       await loadList();
       const names = new Map(lastItems.map((e) => [e.id, e.meta.name] as const));
       const errors = await loadErrors();
+      // Every record is reported (noline when the runner could not map the
+      // throw to a source line; "empty" when there are no records at all) —
+      // the E2E asserts on the mapped ones, and the rest is diagnosis.
       const err = Object.entries(errors ?? {})
-        .filter(([, r]) => r.line != null)
-        .map(([id, r]) => `${names.get(id) ?? id}:${r.line}`)
-        .join(",");
-      history.replaceState(null, "", `#e2e:${v}${err ? ` err=${err}` : ""}`);
+        .map(([id, r]) => `${names.get(id) ?? id}:${r.line ?? "noline"}`)
+        .join(",") || "empty";
+      history.replaceState(null, "", `#e2e:${v} err=${err}`);
     })
     .catch((e) => history.replaceState(null, "", `#e2e:err:${String(e).slice(0, 60)}`));
 }
