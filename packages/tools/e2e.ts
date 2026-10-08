@@ -4,7 +4,9 @@
  * Usage: deno run -A packages/tools/e2e.ts [--browser <name>] [--suite smoke|full]
  *   --browser resolves via browsers.ts (CLI > INFIN_BROWSER > .browsers.local.json > zen),
  *   the driver executable comes from the entry's driver field, defaulting to geckodriver/chromedriver on PATH per engine kind.
- *   --suite smoke runs only the install flow + injection core (the CI Firefox leg); full adds GM_xhr/clipboard.
+ *   --suite smoke runs only the install flow + injection core (the CI Firefox leg); full adds GM_xhr/clipboard
+ *   and the source-mapping assertions (@require splicing, sourceURL stack frames, error line mapping, and on
+ *   Chromium a CDP pass: sourceMapURL registration + breakpoint resolution through the served map).
  */
 import { dirname, fromFileUrl, join } from "@std/path";
 import { cliBrowserName, resolveBrowser } from "./browsers.ts";
@@ -187,6 +189,11 @@ try {
   const sess = await wd("POST", "/session", { capabilities: caps });
   sid = (sess as { sessionId: string }).sessionId;
   if (!sid) throw new Error("session response has no sessionId");
+  // chromedriver exposes the DevTools endpoint here (W3C mode rejects later
+  // session introspection, so this is the only place to get it).
+  const chromeDebuggerAddress = (sess as {
+    capabilities?: { "goog:chromeOptions"?: { debuggerAddress?: string } };
+  }).capabilities?.["goog:chromeOptions"]?.debuggerAddress ?? "";
 
   if (kind === "firefox") {
     console.log("[e2e] addon install…");
@@ -307,6 +314,277 @@ try {
       "return document.getElementById('infin-e2e-out')?.textContent ?? ''",
     );
     ok(typeof clipT === "string" && clipT.includes("clip-ok"), "GM_setClipboard", String(clipT));
+  }
+
+  if (!smoke) {
+    // ---- 5. source mapping: @require splicing + sourceURL stack frames ----
+    console.log("[e2e] 5. source mapping…");
+    // Install both diag scripts through the banner flow (dev origin: direct
+    // storage write; the scripts then run on every devserver page load).
+    for (const f of ["e2e-diag.user.js", "e2e-diag-async.user.js"]) {
+      await nav(`${DEV}/${f}?as=html`);
+      await poll(10000, "return !!document.querySelector(\"div[style*='2147483647']\")");
+      await exec(
+        "document.querySelector(\"div[style*='2147483647']\")?.shadowRoot?.querySelector('.install')?.click()",
+      );
+      await poll(
+        5000,
+        `return document.querySelector("div[style*='2147483647']")?.shadowRoot?.querySelector('[data-infin-done]')?.dataset.infinDone ?? ''`,
+      );
+    }
+    // Reload a diag page so both scripts run: the @require lib must define
+    // the global, and the probe stack must carry the sourceURL frame name.
+    await nav(`${DEV}/e2e-diag.user.js?as=html`);
+    const requireMark = await poll(
+      10000,
+      "return document.documentElement.dataset.infinRequire ?? ''",
+    );
+    ok(requireMark === "loaded", "@require spliced and executed", String(requireMark));
+    const stack = await poll(10000, "return document.documentElement.dataset.infinStack ?? ''");
+    ok(
+      typeof stack === "string" && stack.includes("InfinMonkey/e2e-diag.user.js:"),
+      "sourceURL names engine stack frames",
+      String(stack).slice(0, 90),
+    );
+    // Give the async script's 30ms timer + attribution + storage write time.
+    await sleep(1500);
+
+    // ---- 6. Chrome/CDP: source maps registered + breakpoints resolve ----
+    if (kind === "chromium") {
+      console.log("[e2e] 6. CDP source maps…");
+      const da = chromeDebuggerAddress;
+      ok(typeof da === "string" && da.length > 0, "CDP endpoint available", String(da));
+      if (typeof da === "string" && da.length > 0) {
+        const targets = await (await fetch(`http://${da}/json/list`)).json() as Array<{
+          type: string;
+          url: string;
+          webSocketDebuggerUrl: string;
+        }>;
+        const page = targets.find((t) => t.type === "page" && t.url.includes("127.0.0.1:17321"));
+        ok(!!page, "diag page target found");
+        if (page) {
+          const ws = new WebSocket(page.webSocketDebuggerUrl);
+          await new Promise<void>((res, rej) => {
+            ws.onopen = () => res();
+            ws.onerror = () => rej(new Error("cdp ws failed"));
+          });
+          let msgId = 0;
+          const pending = new Map<number, (m: Record<string, unknown>) => void>();
+          const parsed: Array<{ url: string; sourceMapURL?: string }> = [];
+          ws.onmessage = (ev) => {
+            const m = JSON.parse(ev.data as string) as {
+              id?: number;
+              method?: string;
+              params?: Record<string, unknown>;
+              error?: unknown;
+              result?: Record<string, unknown>;
+            };
+            if (m.id && pending.has(m.id)) {
+              pending.get(m.id)!(m);
+              pending.delete(m.id);
+            } else if (m.method === "Debugger.scriptParsed") {
+              parsed.push({
+                url: String(m.params?.url ?? ""),
+                sourceMapURL: m.params?.sourceMapURL === undefined
+                  ? undefined
+                  : String(m.params.sourceMapURL),
+              });
+            }
+          };
+          const send = (method: string, params: Record<string, unknown> = {}) =>
+            new Promise<Record<string, unknown>>((res, rej) => {
+              const id = ++msgId;
+              pending.set(
+                id,
+                (m) =>
+                  m.error
+                    ? rej(new Error(JSON.stringify(m.error)))
+                    : res((m.result ?? {}) as Record<string, unknown>),
+              );
+              ws.send(JSON.stringify({ id, method, params }));
+            });
+          const withTimeout = <T>(p: Promise<T>, ms: number) =>
+            Promise.race([
+              p,
+              new Promise<never>((_, rej) => setTimeout(() => rej(new Error("cdp timeout")), ms)),
+            ]);
+          try {
+            // Debugger.enable replays scriptParsed for every script the page
+            // already compiled — including the MAIN-world userscripts.
+            await withTimeout(send("Debugger.enable"), 10000);
+            await sleep(1000);
+            const named = parsed.filter((sc) => sc.url.startsWith("InfinMonkey/"));
+            ok(
+              named.length > 0,
+              "sourceURL scripts registered in the debugger",
+              `${parsed.length} scripts parsed`,
+            );
+            const diag = named.find((sc) => sc.url.includes("e2e-diag.user.js"));
+            // The runner merges immap=<prefix lines> into the mapped dev url,
+            // which may carry its own query (the fixtures are installed via
+            // the ?as=html view), so assert the shape, not the exact query.
+            ok(
+              !!diag && !!diag.sourceMapURL &&
+                diag.sourceMapURL.startsWith(`${DEV}/e2e-diag.user.js`) &&
+                diag.sourceMapURL.includes("immap="),
+              "dev script sourceMapURL registered",
+              diag?.sourceMapURL ?? "none",
+            );
+            // Source-map resolution lives in the DevTools FRONTEND — the raw
+            // CDP Debugger domain never translates original positions. So
+            // translate here: fetch the served map, find the generated line
+            // it assigns to the original throw line, and prove the engine
+            // accepts a breakpoint at exactly that position in the compiled
+            // script (map content ↔ engine reality).
+            const map = await (await fetch(diag!.sourceMapURL!)).json() as {
+              sources: string[];
+              sourcesContent: string[];
+              mappings: string;
+            };
+            const raw = await (await fetch(`${DEV}/e2e-diag.user.js`)).text();
+            ok(
+              map.sources[0] === `${DEV}/e2e-diag.user.js` &&
+                map.sourcesContent[0] === raw,
+              "source map serves the pristine original",
+            );
+            // Decode the one-segment-per-line mappings: find the segment
+            // whose source line is the throw (0-based 22) and take its
+            // generated line (0-based).
+            const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            let genLine = -1;
+            let src = 0;
+            const genLines = map.mappings.split(";");
+            for (let gl = 0; gl < genLines.length && genLine < 0; gl++) {
+              for (const seg of genLines[gl].split(",")) {
+                if (seg === "") continue;
+                const fields: number[] = [];
+                let rest = seg;
+                while (rest.length > 0) {
+                  let value = 0;
+                  let shift = 0;
+                  do {
+                    const digit = B64URL.indexOf(rest[0]);
+                    value += (digit & 31) << shift;
+                    shift += 5;
+                    rest = rest.slice(1);
+                    if ((digit & 32) === 0) break;
+                  } while (true);
+                  fields.push(value & 1 ? -(value >> 1) : value >> 1);
+                }
+                src += fields[2];
+                if (src === 22) genLine = gl;
+                break;
+              }
+            }
+            ok(genLine >= 0, "map maps the original throw line", `genLine=${genLine}`);
+            const bp = await withTimeout(
+              send("Debugger.setBreakpointByUrl", {
+                urlRegex: "^InfinMonkey/e2e-diag\.user\.js$",
+                lineNumber: genLine,
+                columnNumber: 0,
+              }),
+              10000,
+            ) as { locations?: unknown[] };
+            ok(
+              (bp.locations?.length ?? 0) > 0,
+              "breakpoint resolves at the map-translated position in the compiled script",
+              JSON.stringify(bp).slice(0, 200),
+            );
+          } catch (e) {
+            ok(false, "CDP assertions", String(e));
+          } finally {
+            ws.close();
+          }
+        }
+      }
+    }
+
+    // ---- 7. error line mapping through the extension-page channel ----
+    console.log("[e2e] 7. error line mapping…");
+    // The options page is an extension context: Firefox must be driven there
+    // through the extension's own manage button (direct moz-extension
+    // navigation is refused), and even then only the URL is readable — the
+    // self-check reports its verdict plus the recorded error lines
+    // (name:line) in the hash. Chromium can navigate to the extension page
+    // directly (chromedriver allows chrome-extension:// schemes); the
+    // extension id comes from the CDP target list (the background service
+    // worker's url). tabs.create was observed to open nothing on headless
+    // Chromium, so the manage-button route is Firefox-only.
+    const extId = kind === "chromium"
+      ? await (async () => {
+        const da = chromeDebuggerAddress;
+        if (!da) return "";
+        const targets = await (await fetch(`http://${da}/json/list`)).json() as Array<{
+          type: string;
+          url: string;
+        }>;
+        const sw = targets.find((t) => t.url.startsWith("chrome-extension://"));
+        return sw ? new URL(sw.url).host : "";
+      })()
+      : "";
+    if (kind === "chromium") {
+      ok(extId.length > 0, "extension id resolved from CDP targets", extId);
+      if (extId) {
+        await nav(`chrome-extension://${extId}/options/index.html#e2e`);
+      }
+    } else {
+      await nav(`${DEV}/e2e-diag-async.user.js?as=html`);
+      await poll(10000, "return !!document.querySelector(\"div[style*='2147483647']\")");
+      await exec(
+        "const h = document.querySelector(\"div[style*='2147483647']\");" +
+          "h.dataset.infinOpenFragment = '#e2e';" +
+          "h.shadowRoot.querySelector('.manage').click(); return 'ok'",
+      );
+      // tabs.create lands asynchronously: poll for the new handle instead of
+      // reading once (observed racing the click on headless Chromium).
+      let other = "";
+      const dl = Date.now() + 15000;
+      while (Date.now() < dl && !other) {
+        const handles = await wd("GET", `/session/${sid}/window/handles`).catch(
+          () => [],
+        ) as string[];
+        const current = await wd("GET", `/session/${sid}/window`).catch(() => "") as string;
+        other = (handles as string[]).find((h) => h !== current) ?? "";
+        if (!other) await sleep(500);
+      }
+      if (!other) {
+        ok(false, "options tab opened", "no second window handle");
+      } else {
+        await wd("POST", `/session/${sid}/window`, { handle: other });
+      }
+    }
+    let verdict = "";
+    {
+      const dl = Date.now() + 120000;
+      while (Date.now() < dl) {
+        const u = await wd("GET", `/session/${sid}/url`).catch(() => "");
+        const h = typeof u === "string" && u.includes("#e2e:")
+          ? decodeURIComponent(u.split("#")[1])
+          : "";
+        if (h.includes("e2e:pass") || h.includes("e2e:fail")) {
+          verdict = h;
+          break;
+        }
+        await sleep(1000);
+      }
+    }
+    // The err= segment trails the (long) self-check verdict — show it whole
+    // in failure details, the 200-char slice would cut it off.
+    const errPart = verdict.includes(" err=")
+      ? "err=" + verdict.split(" err=")[1]
+      : "no err= segment";
+    ok(
+      verdict.includes("e2e-diag:23"),
+      "sync error maps to its source line",
+      errPart,
+    );
+    ok(
+      verdict.includes("e2e-diag-async:11"),
+      "async error attributed to its source line",
+      errPart,
+    );
+    ok(verdict.includes("e2e:pass"), "worker self-check still passes", verdict.slice(0, 140));
+    await screenshot("07-error-lines");
   }
 
   console.log(`[e2e] ${passed} passed, ${failed} failed`);

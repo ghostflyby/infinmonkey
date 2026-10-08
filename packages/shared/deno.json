@@ -17,7 +17,8 @@
     "./connect": "./src/connect.ts",
     "./authorize": "./src/authorize.ts",
     "./settings": "./src/settings.ts",
-    "./payload": "./src/payload.ts"
+    "./payload": "./src/payload.ts",
+    "./sourcemap": "./src/sourcemap.ts"
   },
   "compilerOptions": {
     "strict": true,

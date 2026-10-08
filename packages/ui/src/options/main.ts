@@ -270,7 +270,9 @@ async function openEditor(id: string): Promise<void> {
 }
 
 /** Shows the entry's most recent runtime error above the editor; hidden once
- * new code is saved (updateCode clears the record). */
+ * new code is saved (updateCode clears the record). When the runner mapped
+ * the throw to a userscript line, the bar names it and clicking jumps the
+ * editor to that line. */
 async function showEditorError(id: string): Promise<void> {
   const bar = $("#ed-error");
   const error = (await loadErrors())?.[id];
@@ -278,9 +280,15 @@ async function showEditorError(id: string): Promise<void> {
   if (id !== editingId) return;
   if (!error) {
     bar.hidden = true;
+    bar.onclick = null;
+    bar.classList.remove("jump");
     return;
   }
-  bar.textContent = `最近运行错误（${new Date(error.at).toLocaleString()}）：${error.message}`;
+  const atLine = typeof error.line === "number" && error.line >= 1;
+  bar.textContent = `最近运行错误（${new Date(error.at).toLocaleString()}）：${error.message}` +
+    (atLine ? `（第 ${error.line} 行）` : "");
+  bar.classList.toggle("jump", atLine);
+  bar.onclick = atLine ? () => codeEditor?.revealLine(error.line as number) : null;
   bar.hidden = false;
 }
 
@@ -808,9 +816,23 @@ void loadList();
 
 // Automation self-check (#e2e): verify the TS language worker chain and
 // report through the hash — see runTsWorkerSelfCheck for what it covers.
+// The verdict also carries the recorded runtime error lines (name:line per
+// entry with a mapped position), which is how the E2E asserts the error →
+// source-line pipeline end to end in a real browser.
 if (location.hash === "#e2e") {
   void runTsWorkerSelfCheck()
-    .then((v) => history.replaceState(null, "", `#e2e:${v}`))
+    .then(async (v) => {
+      await loadList();
+      const names = new Map(lastItems.map((e) => [e.id, e.meta.name] as const));
+      const errors = await loadErrors();
+      // Every record is reported (noline when the runner could not map the
+      // throw to a source line; "empty" when there are no records at all) —
+      // the E2E asserts on the mapped ones, and the rest is diagnosis.
+      const err = Object.entries(errors ?? {})
+        .map(([id, r]) => `${names.get(id) ?? id}:${r.line ?? "noline"}`)
+        .join(",") || "empty";
+      history.replaceState(null, "", `#e2e:${v} err=${err}`);
+    })
     .catch((e) => history.replaceState(null, "", `#e2e:err:${String(e).slice(0, 60)}`));
 }
 
