@@ -816,9 +816,21 @@ void loadList();
 
 // Automation self-check (#e2e): verify the TS language worker chain and
 // report through the hash — see runTsWorkerSelfCheck for what it covers.
+// The verdict also carries the recorded runtime error lines (name:line per
+// entry with a mapped position), which is how the E2E asserts the error →
+// source-line pipeline end to end in a real browser.
 if (location.hash === "#e2e") {
   void runTsWorkerSelfCheck()
-    .then((v) => history.replaceState(null, "", `#e2e:${v}`))
+    .then(async (v) => {
+      await loadList();
+      const names = new Map(lastItems.map((e) => [e.id, e.meta.name] as const));
+      const errors = await loadErrors();
+      const err = Object.entries(errors ?? {})
+        .filter(([, r]) => r.line != null)
+        .map(([id, r]) => `${names.get(id) ?? id}:${r.line}`)
+        .join(",");
+      history.replaceState(null, "", `#e2e:${v}${err ? ` err=${err}` : ""}`);
+    })
     .catch((e) => history.replaceState(null, "", `#e2e:err:${String(e).slice(0, 60)}`));
 }
 
