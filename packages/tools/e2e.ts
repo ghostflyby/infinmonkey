@@ -521,15 +521,20 @@ try {
         await sleep(1000);
       }
     }
+    // The err= segment trails the (long) self-check verdict — show it whole
+    // in failure details, the 200-char slice would cut it off.
+    const errPart = verdict.includes(" err=")
+      ? "err=" + verdict.split(" err=")[1]
+      : "no err= segment";
     ok(
       verdict.includes("e2e-diag:23"),
       "sync error maps to its source line",
-      verdict.slice(0, 200),
+      errPart,
     );
     ok(
       verdict.includes("e2e-diag-async:11"),
       "async error attributed to its source line",
-      verdict.slice(0, 200),
+      errPart,
     );
     ok(verdict.includes("e2e:pass"), "worker self-check still passes", verdict.slice(0, 140));
     await screenshot("07-error-lines");
