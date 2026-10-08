@@ -189,6 +189,11 @@ try {
   const sess = await wd("POST", "/session", { capabilities: caps });
   sid = (sess as { sessionId: string }).sessionId;
   if (!sid) throw new Error("session response has no sessionId");
+  // chromedriver exposes the DevTools endpoint here (W3C mode rejects later
+  // session introspection, so this is the only place to get it).
+  const chromeDebuggerAddress = (sess as {
+    capabilities?: { "goog:chromeOptions"?: { debuggerAddress?: string } };
+  }).capabilities?.["goog:chromeOptions"]?.debuggerAddress ?? "";
 
   if (kind === "firefox") {
     console.log("[e2e] addon install…");
@@ -347,10 +352,7 @@ try {
     // ---- 6. Chrome/CDP: source maps registered + breakpoints resolve ----
     if (kind === "chromium") {
       console.log("[e2e] 6. CDP source maps…");
-      const sessInfo = await wd("GET", `/session/${sid}`) as {
-        capabilities?: { "goog:chromeOptions"?: { debuggerAddress?: string } };
-      };
-      const da = sessInfo.capabilities?.["goog:chromeOptions"]?.debuggerAddress;
+      const da = chromeDebuggerAddress;
       ok(typeof da === "string" && da.length > 0, "CDP endpoint available", String(da));
       if (typeof da === "string" && da.length > 0) {
         const targets = await (await fetch(`http://${da}/json/list`)).json() as Array<{
@@ -463,10 +465,7 @@ try {
     // Chromium, so the manage-button route is Firefox-only.
     const extId = kind === "chromium"
       ? await (async () => {
-        const sessInfo = await wd("GET", `/session/${sid}`) as {
-          capabilities?: { "goog:chromeOptions"?: { debuggerAddress?: string } };
-        };
-        const da = sessInfo.capabilities?.["goog:chromeOptions"]?.debuggerAddress;
+        const da = chromeDebuggerAddress;
         if (!da) return "";
         const targets = await (await fetch(`http://${da}/json/list`)).json() as Array<{
           type: string;
