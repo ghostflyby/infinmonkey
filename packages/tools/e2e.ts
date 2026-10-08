@@ -371,6 +371,7 @@ try {
           let msgId = 0;
           const pending = new Map<number, (m: Record<string, unknown>) => void>();
           const parsed: Array<{ url: string; sourceMapURL?: string }> = [];
+          const resolved: string[] = [];
           ws.onmessage = (ev) => {
             const m = JSON.parse(ev.data as string) as {
               id?: number;
@@ -382,6 +383,8 @@ try {
             if (m.id && pending.has(m.id)) {
               pending.get(m.id)!(m);
               pending.delete(m.id);
+            } else if (m.method === "Debugger.breakpointResolved") {
+              resolved.push(String(m.params?.breakpointId ?? ""));
             } else if (m.method === "Debugger.scriptParsed") {
               parsed.push({
                 url: String(m.params?.url ?? ""),
@@ -435,27 +438,36 @@ try {
             // compiled script's own name is InfinMonkey/…) resolves into the
             // compiled code. 0-based line 22 = file line 23, the throw.
             // The debugger agent loads the source map asynchronously after
-            // scriptParsed, so the first resolution can come back empty —
-            // retry until it resolves or the budget runs out.
-            let locations: unknown[] = [];
-            const bpDl = Date.now() + 8000;
-            while (Date.now() < bpDl) {
-              const bp = await withTimeout(
-                send("Debugger.setBreakpointByUrl", {
-                  urlRegex: "^http://127\.0\.0\.1:17321/e2e-diag\.user\.js$",
-                  lineNumber: 22,
-                  columnNumber: 0,
-                }),
-                10000,
-              ) as { locations?: unknown[] };
-              locations = bp.locations ?? [];
-              if (locations.length > 0) break;
-              await sleep(1000);
+            // scriptParsed, so the first setBreakpointByUrl can resolve with
+            // no locations — the breakpoint still exists and CDP reports its
+            // resolution through the breakpointResolved event (re-sending
+            // the identical breakpoint errors with "already exists").
+            const bp = await withTimeout(
+              send("Debugger.setBreakpointByUrl", {
+                urlRegex: "^http://127\.0\.0\.1:17321/e2e-diag\.user\.js$",
+                lineNumber: 22,
+                columnNumber: 0,
+              }),
+              10000,
+            ) as { breakpointId?: string; locations?: unknown[] };
+            let locations = bp.locations ?? [];
+            const bpId = bp.breakpointId ?? "";
+            if (locations.length === 0 && bpId) {
+              const dl = Date.now() + 8000;
+              while (Date.now() < dl && locations.length === 0) {
+                if (resolved.includes(bpId)) {
+                  // The event carries the location; re-query by removing and
+                  // re-adding would drop it, so success is the event itself.
+                  locations = [{ breakpointId: bpId }];
+                  break;
+                }
+                await sleep(500);
+              }
             }
             ok(
               locations.length > 0,
               "breakpoint resolves through the source map",
-              JSON.stringify(locations).slice(0, 200),
+              `${locations.length} location(s), resolved=${resolved.length}`,
             );
           } catch (e) {
             ok(false, "CDP assertions", String(e));
