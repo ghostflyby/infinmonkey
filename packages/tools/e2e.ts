@@ -358,9 +358,20 @@ try {
     // own verdict and the recorded error lines (name:line) in the hash.
     let verdict = "";
     {
-      const handles = await wd("GET", `/session/${sid}/window/handles`) as string[];
-      const current = await wd("GET", `/session/${sid}/window`) as string;
-      const other = (handles as string[]).find((h) => h !== current);
+      // tabs.create lands asynchronously: poll for the new handle instead of
+      // reading once (observed racing the click on headless Chromium).
+      let other = "";
+      {
+        const dl = Date.now() + 15000;
+        while (Date.now() < dl && !other) {
+          const handles = await wd("GET", `/session/${sid}/window/handles`).catch(
+            () => [],
+          ) as string[];
+          const current = await wd("GET", `/session/${sid}/window`).catch(() => "") as string;
+          other = (handles as string[]).find((h) => h !== current) ?? "";
+          if (!other) await sleep(500);
+        }
+      }
       if (!other) {
         ok(false, "options tab opened", "no second window handle");
       } else {
