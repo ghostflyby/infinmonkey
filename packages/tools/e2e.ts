@@ -371,7 +371,6 @@ try {
           let msgId = 0;
           const pending = new Map<number, (m: Record<string, unknown>) => void>();
           const parsed: Array<{ url: string; sourceMapURL?: string }> = [];
-          const resolved: string[] = [];
           ws.onmessage = (ev) => {
             const m = JSON.parse(ev.data as string) as {
               id?: number;
@@ -383,8 +382,6 @@ try {
             if (m.id && pending.has(m.id)) {
               pending.get(m.id)!(m);
               pending.delete(m.id);
-            } else if (m.method === "Debugger.breakpointResolved") {
-              resolved.push(String(m.params?.breakpointId ?? ""));
             } else if (m.method === "Debugger.scriptParsed") {
               parsed.push({
                 url: String(m.params?.url ?? ""),
@@ -433,41 +430,65 @@ try {
               "dev script sourceMapURL registered",
               diag?.sourceMapURL ?? "none",
             );
-            // The gold assertion: a breakpoint requested on the ORIGINAL
-            // source url (which only exists through the served map — the
-            // compiled script's own name is InfinMonkey/…) resolves into the
-            // compiled code. 0-based line 22 = file line 23, the throw.
-            // The debugger agent loads the source map asynchronously after
-            // scriptParsed, so the first setBreakpointByUrl can resolve with
-            // no locations — the breakpoint still exists and CDP reports its
-            // resolution through the breakpointResolved event (re-sending
-            // the identical breakpoint errors with "already exists").
+            // Source-map resolution lives in the DevTools FRONTEND — the raw
+            // CDP Debugger domain never translates original positions. So
+            // translate here: fetch the served map, find the generated line
+            // it assigns to the original throw line, and prove the engine
+            // accepts a breakpoint at exactly that position in the compiled
+            // script (map content ↔ engine reality).
+            const map = await (await fetch(diag!.sourceMapURL!)).json() as {
+              sources: string[];
+              sourcesContent: string[];
+              mappings: string;
+            };
+            const raw = await (await fetch(`${DEV}/e2e-diag.user.js`)).text();
+            ok(
+              map.sources[0] === `${DEV}/e2e-diag.user.js` &&
+                map.sourcesContent[0] === raw,
+              "source map serves the pristine original",
+            );
+            // Decode the one-segment-per-line mappings: find the segment
+            // whose source line is the throw (0-based 22) and take its
+            // generated line (0-based).
+            const B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            let genLine = -1;
+            let src = 0;
+            const genLines = map.mappings.split(";");
+            for (let gl = 0; gl < genLines.length && genLine < 0; gl++) {
+              for (const seg of genLines[gl].split(",")) {
+                if (seg === "") continue;
+                const fields: number[] = [];
+                let rest = seg;
+                while (rest.length > 0) {
+                  let value = 0;
+                  let shift = 0;
+                  do {
+                    const digit = B64URL.indexOf(rest[0]);
+                    value += (digit & 31) << shift;
+                    shift += 5;
+                    rest = rest.slice(1);
+                    if ((digit & 32) === 0) break;
+                  } while (true);
+                  fields.push(value & 1 ? -(value >> 1) : value >> 1);
+                }
+                src += fields[2];
+                if (src === 22) genLine = gl;
+                break;
+              }
+            }
+            ok(genLine >= 0, "map maps the original throw line", `genLine=${genLine}`);
             const bp = await withTimeout(
               send("Debugger.setBreakpointByUrl", {
-                urlRegex: "^http://127\.0\.0\.1:17321/e2e-diag\.user\.js$",
-                lineNumber: 22,
+                urlRegex: "^InfinMonkey/e2e-diag\.user\.js$",
+                lineNumber: genLine,
                 columnNumber: 0,
               }),
               10000,
-            ) as { breakpointId?: string; locations?: unknown[] };
-            let locations = bp.locations ?? [];
-            const bpId = bp.breakpointId ?? "";
-            if (locations.length === 0 && bpId) {
-              const dl = Date.now() + 8000;
-              while (Date.now() < dl && locations.length === 0) {
-                if (resolved.includes(bpId)) {
-                  // The event carries the location; re-query by removing and
-                  // re-adding would drop it, so success is the event itself.
-                  locations = [{ breakpointId: bpId }];
-                  break;
-                }
-                await sleep(500);
-              }
-            }
+            ) as { locations?: unknown[] };
             ok(
-              locations.length > 0,
-              "breakpoint resolves through the source map",
-              `${locations.length} location(s), resolved=${resolved.length}`,
+              (bp.locations?.length ?? 0) > 0,
+              "breakpoint resolves at the map-translated position in the compiled script",
+              JSON.stringify(bp).slice(0, 200),
             );
           } catch (e) {
             ok(false, "CDP assertions", String(e));
