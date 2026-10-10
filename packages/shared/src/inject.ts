@@ -155,9 +155,10 @@ export function buildUserScriptBody(
 
 /** The DevTools file name a compiled userscript is filed under: the
  * sanitized script name plus the .user.js suffix (unless already present).
- * Shared by appendSourceDirectives (which writes the directive) and
- * findUserFrame (which matches the stack frames it produces), so the two can
- * never drift apart. */
+ * Shared by appendSourceDirectives (which writes the directive), findUserFrame
+ * (which matches the stack frames it produces), and inlineSourceMapUrl (whose
+ * embedded map names its source entry identically), so all three can never
+ * drift apart. */
 export function sourceUrlFileName(name: string): string {
   const safe = (value: string) => value.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
   const file = safe(name) || "script";
