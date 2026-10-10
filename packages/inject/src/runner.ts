@@ -322,7 +322,6 @@ function main(): void {
    * and these listeners never double-report: a caught throw fires no window
    * error event. */
   window.addEventListener("error", (ev: ErrorEvent) => {
-    // TEMP debug breadcrumb (probe-only, removed before merge)
     if (ev.error != null) reportAttributedError(ev.error);
   });
   window.addEventListener("unhandledrejection", (ev: PromiseRejectionEvent) => {
