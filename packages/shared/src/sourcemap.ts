@@ -13,6 +13,8 @@
  * between injection and debugging.
  */
 
+import { sourceUrlFileName } from "./inject.ts";
+
 const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /** Base64-VLQ encodes one signed number (source map spec §mappings). */
@@ -93,12 +95,12 @@ export function inlineSourceMapUrl(opts: {
   name: string;
   generatedLineOffset: number;
 }): string {
-  const file = opts.name.replace(/[\r\n]+/g, " ").trim().slice(0, 200) || "script";
+  const file = sourceUrlFileName(opts.name);
   const map = buildLineOffsetSourceMap({
     sourceContent: opts.sourceContent,
-    sourceUrl: `InfinMonkey/${file}${file.endsWith(".user.js") ? "" : ".user.js"}`,
+    sourceUrl: `InfinMonkey/${file}`,
     generatedLineOffset: opts.generatedLineOffset,
-    file: `${file}${file.endsWith(".user.js") ? "" : ".user.js"}`,
+    file,
   });
   return `data:application/json;base64,${utf8ToBase64(map)}`;
 }
