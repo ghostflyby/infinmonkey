@@ -86,6 +86,12 @@ async function poll(deadlineMs: number, script: string): Promise<unknown> {
   return null;
 }
 
+/** Polls the async diag fixture's marker and asserts it fired on this load. */
+async function expectAsyncFired(name: string): Promise<void> {
+  const mark = await poll(10000, "return document.documentElement.dataset.infinAsync ?? ''");
+  ok(mark === "fired", name, String(mark));
+}
+
 function argAfter(flag: string): string | undefined {
   const i = Deno.args.indexOf(flag);
   return i >= 0 && Deno.args[i + 1] ? Deno.args[i + 1] : undefined;
@@ -346,7 +352,14 @@ try {
       "sourceURL names engine stack frames",
       String(stack).slice(0, 90),
     );
-    // Give the async script's 30ms timer + attribution + storage write time.
+    // The async record asserted in step 7 only exists if the async script was
+    // injected on THIS load and its timer fired. A failure anywhere in the
+    // install/inject pipeline on this load — including the install loop's
+    // banner/done polls above, whose results are discarded — means the script
+    // never ran and no record was written, which used to fail step 7 with no
+    // hint why. Assert the marker instead of assuming.
+    await expectAsyncFired("async diag script injected and its timer fired");
+    // Attribution + the error record's storage write trail the throw.
     await sleep(1500);
 
     // ---- 6. Chrome/CDP: source maps registered + breakpoints resolve ----
@@ -525,11 +538,21 @@ try {
     if (kind === "chromium") {
       ok(extId.length > 0, "extension id resolved from CDP targets", extId);
       if (extId) {
+        // Re-drive a fresh load before reading: the Firefox leg always
+        // re-injected here, while this leg read the records step 5 left
+        // behind — a load whose install/inject failed silently (the loop's
+        // banner/done poll results are discarded) leaves the async record
+        // missing, so this leg used to judge a stale snapshot with no hint
+        // why. A fresh load re-records both diag errors, so the assertions
+        // below judge the pipeline on this load.
+        await nav(`${DEV}/e2e-diag-async.user.js?as=html`);
+        await expectAsyncFired("fresh diag load fired the async script");
         await nav(`chrome-extension://${extId}/options/index.html#e2e`);
       }
     } else {
       await nav(`${DEV}/e2e-diag-async.user.js?as=html`);
       await poll(10000, "return !!document.querySelector(\"div[style*='2147483647']\")");
+      await expectAsyncFired("fresh diag load fired the async script");
       await exec(
         "const h = document.querySelector(\"div[style*='2147483647']\");" +
           "h.dataset.infinOpenFragment = '#e2e';" +
@@ -579,7 +602,7 @@ try {
       errPart,
     );
     ok(
-      verdict.includes("e2e-diag-async:11"),
+      verdict.includes("e2e-diag-async:12"),
       "async error attributed to its source line",
       errPart,
     );

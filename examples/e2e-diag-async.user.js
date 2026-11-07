@@ -8,5 +8,6 @@
 // ==/UserScript==
 
 setTimeout(() => {
+  document.documentElement.dataset.infinAsync = "fired";
   throw new Error("diag-async");
 }, 30);
